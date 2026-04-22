@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Gemiredmine</string>
+    <string name="title_activity_main">Gemiredmine</string>
+    <string name="package_name">com.gemiredmine.app</string>
+    <string name="custom_url_scheme">com.gemiredmine.app</string>
+</resources>
