@@ -1,11 +1,11 @@
 <script lang="ts">
   import Sidebar from './Sidebar.svelte';
   import AddServerForm from './AddServerForm.svelte';
-  import { activeServerId, servers } from './lib/store';
+  import { activeServerId, serversById } from './lib/store';
 
   let showAddForm = false;
 
-  $: activeServer = $servers.find(s => s.id === $activeServerId);
+  $: activeServer = $activeServerId ? $serversById.get($activeServerId) : null;
 </script>
 
 <div class="flex h-screen w-full bg-gray-50 font-sans">

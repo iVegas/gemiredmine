@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store';
+import { writable, derived } from 'svelte/store';
 
 export interface ServerConnection {
   id: string;
@@ -11,6 +11,10 @@ export interface ServerConnection {
 
 export const servers = writable<ServerConnection[]>([]);
 export const activeServerId = writable<string | null>(null);
+
+export const serversById = derived(servers, ($servers) =>
+  new Map($servers.map(server => [server.id, server]))
+);
 
 export function addServer(server: Omit<ServerConnection, 'id'>) {
   const id = crypto.randomUUID();
