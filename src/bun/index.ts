@@ -1,4 +1,4 @@
-import { Electrobun, BrowserWindow } from 'electrobun';
+import Electrobun, { BrowserWindow } from 'electrobun';
 
 const win = new BrowserWindow({
     title: 'Gemiredmine',
