@@ -6,6 +6,15 @@
   let showAddForm = false;
 
   $: activeServer = $activeServerId ? $serversById.get($activeServerId) : null;
+
+  function isValidUrl(urlString: string): boolean {
+    try {
+      const url = new URL(urlString);
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  }
 </script>
 
 <div class="flex h-screen w-full bg-gray-50 font-sans">
@@ -25,7 +34,11 @@
       {#if activeServer && !showAddForm}
         <header class="mb-8">
           <h1 class="text-3xl font-bold text-gray-900">{activeServer.name}</h1>
-          <a href={activeServer.url} target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">{activeServer.url}</a>
+          {#if isValidUrl(activeServer.url)}
+            <a href={activeServer.url} target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">{activeServer.url}</a>
+          {:else}
+            <span class="text-gray-600">{activeServer.url}</span>
+          {/if}
         </header>
 
         <div class="bg-white p-6 rounded-lg shadow border border-gray-200 flex-1 flex items-center justify-center">
