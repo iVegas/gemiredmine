@@ -18,14 +18,19 @@ export class RedmineContextService {
    * stripping down verbose data to minimize LLM token usage.
    */
   async getServerContext(workflow: WorkflowType): Promise<WorkflowContext> {
-    switch (workflow) {
-      case 'time_logging':
-        return this.getTimeLoggingContext();
-      case 'issue_creation':
-        return this.getIssueCreationContext();
-      case 'general':
-      default:
-        return this.getGeneralContext();
+    try {
+      switch (workflow) {
+        case 'time_logging':
+          return await this.getTimeLoggingContext();
+        case 'issue_creation':
+          return await this.getIssueCreationContext();
+        case 'general':
+        default:
+          return await this.getGeneralContext();
+      }
+    } catch (error) {
+      console.error(`Failed to fetch ${workflow.replace('_', ' ')} context:`, error);
+      throw error;
     }
   }
 
