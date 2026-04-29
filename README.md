@@ -8,7 +8,7 @@
 
 ## 🚀 Download
 
-The latest client builds for Ubuntu (Debian) and Android are available on the GitHub Releases page:
+The latest client builds for Ubuntu (Linux tar.gz) and Android (APK) are automatically built via GitHub Actions and are available on the GitHub Releases page:
 
 **[Download gemiredmine on GitHub Releases](https://github.com/iVegas/gemiredmine/releases)**
 
