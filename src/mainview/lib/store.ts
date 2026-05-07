@@ -13,7 +13,7 @@ export const servers = writable<ServerConnection[]>([]);
 export const activeServerId = writable<string | null>(null);
 
 export const serversById = derived(servers, ($servers) =>
-  new Map($servers.map(server => [server.id, server]))
+  $servers.reduce((acc, server) => acc.set(server.id, server), new Map<string, ServerConnection>())
 );
 
 export function addServer(server: Omit<ServerConnection, 'id'>) {
