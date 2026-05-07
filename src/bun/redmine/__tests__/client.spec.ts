@@ -76,4 +76,15 @@ describe('RedmineClient', () => {
     // btoa('user:password') = dXNlcjpwYXNzd29yZA==
     expect(headers.get('Authorization')).toBe('Basic dXNlcjpwYXNzd29yZA==');
   });
+
+  it('handles empty response body gracefully', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce({
+      ok: true,
+      text: async () => ''
+    } as Response);
+
+    const result = await client.getTrackers();
+
+    expect(result).toBeUndefined();
+  });
 });
