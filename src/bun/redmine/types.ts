@@ -67,7 +67,3 @@ export interface IssuePrioritiesResponse {
 export interface TimeEntryActivitiesResponse {
   time_entry_activities: RedmineEnumeration[];
 }
-
-export interface DocumentCategoriesResponse {
-  document_categories: RedmineEnumeration[];
-}
