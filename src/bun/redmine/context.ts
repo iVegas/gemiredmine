@@ -29,7 +29,8 @@ export class RedmineContextService {
           return await this.getGeneralContext();
       }
     } catch (error) {
-      console.error(`Failed to fetch ${workflow.replace('_', ' ')} context:`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`Failed to fetch ${workflow.replace('_', ' ')} context:`, errorMessage);
       throw error;
     }
   }

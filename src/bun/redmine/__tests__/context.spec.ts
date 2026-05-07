@@ -106,7 +106,7 @@ describe('RedmineContextService', () => {
       mockClient.getTimeEntryActivities.mockRejectedValue(error);
 
       await expect(service.getServerContext('time_logging')).rejects.toThrow(error);
-      expect(console.error).toHaveBeenCalledWith('Failed to fetch time logging context:', error);
+      expect(console.error).toHaveBeenCalledWith('Failed to fetch time logging context:', 'Network failure');
     });
 
     it('handles error in getIssueCreationContext', async () => {
@@ -114,7 +114,7 @@ describe('RedmineContextService', () => {
       mockClient.getTrackers.mockRejectedValue(error);
 
       await expect(service.getServerContext('issue_creation')).rejects.toThrow(error);
-      expect(console.error).toHaveBeenCalledWith('Failed to fetch issue creation context:', error);
+      expect(console.error).toHaveBeenCalledWith('Failed to fetch issue creation context:', 'API error');
     });
 
     it('handles error in getGeneralContext', async () => {
@@ -122,7 +122,7 @@ describe('RedmineContextService', () => {
       mockClient.getTrackers.mockRejectedValue(error);
 
       await expect(service.getServerContext('general')).rejects.toThrow(error);
-      expect(console.error).toHaveBeenCalledWith('Failed to fetch general context:', error);
+      expect(console.error).toHaveBeenCalledWith('Failed to fetch general context:', 'Timeout');
     });
   });
 });
