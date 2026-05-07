@@ -11,8 +11,7 @@ import type {
   CustomFieldsResponse,
   RolesResponse,
   IssuePrioritiesResponse,
-  TimeEntryActivitiesResponse,
-  DocumentCategoriesResponse
+  TimeEntryActivitiesResponse
 } from './types';
 
 export class RedmineClient {
@@ -78,9 +77,5 @@ export class RedmineClient {
 
   async getTimeEntryActivities(): Promise<TimeEntryActivitiesResponse> {
     return this.request<TimeEntryActivitiesResponse>('/enumerations/time_entry_activities.json');
-  }
-
-  async getDocumentCategories(): Promise<DocumentCategoriesResponse> {
-    return this.request<DocumentCategoriesResponse>('/enumerations/document_categories.json');
   }
 }
