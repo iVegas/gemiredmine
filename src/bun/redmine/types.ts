@@ -67,3 +67,58 @@ export interface IssuePrioritiesResponse {
 export interface TimeEntryActivitiesResponse {
   time_entry_activities: RedmineEnumeration[];
 }
+
+export interface RedmineReference {
+  id: number;
+  name: string;
+}
+
+export interface RedmineUser {
+  id: number;
+  login: string;
+  firstname: string;
+  lastname: string;
+  mail?: string;
+  api_key?: string;
+}
+
+export interface CurrentUserResponse {
+  user: RedmineUser;
+}
+
+export interface RedmineTimeEntry {
+  id: number;
+  project: RedmineReference;
+  issue?: { id: number };
+  user: RedmineReference;
+  activity: RedmineReference;
+  hours: number;
+  comments?: string;
+  spent_on: string;
+}
+
+export interface TimeEntriesResponse {
+  time_entries: RedmineTimeEntry[];
+  total_count: number;
+  offset: number;
+  limit: number;
+}
+
+export interface RedmineIssue {
+  id: number;
+  project: RedmineReference;
+  tracker: RedmineReference;
+  status: RedmineReference;
+  priority: RedmineReference;
+  subject: string;
+  start_date?: string | null;
+  due_date?: string | null;
+  done_ratio?: number;
+}
+
+export interface IssuesResponse {
+  issues: RedmineIssue[];
+  total_count: number;
+  offset: number;
+  limit: number;
+}
