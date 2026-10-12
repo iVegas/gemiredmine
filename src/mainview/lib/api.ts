@@ -1,5 +1,6 @@
 import { Electroview } from 'electrobun/view';
 import type { GemiRPCSchema, ServerAccess, DateRange, SignInParams } from '../../shared/rpc';
+import type { LogLevel } from '../../bun/diagnostics/aggregator';
 
 const defineRpc = () =>
   Electroview.defineRPC<GemiRPCSchema>({
@@ -32,4 +33,11 @@ export const redmineApi = {
     backend().listTimeEntries({ ...access, ...range }),
   listOpenTasks: (access: ServerAccess, dueRange: { dueFrom: string; dueTo: string }) =>
     backend().listOpenTasks({ ...access, ...dueRange }),
+  getDevPreviewStatus: () => backend().getDevPreviewStatus(),
+  setDevPreviewEnabled: (enabled: boolean) => backend().setDevPreviewEnabled({ enabled }),
+  recordDiagnostic: (level: LogLevel, scope: string, message: string) =>
+    backend().recordDiagnostic({ level, scope, message }),
+  createFeedback: (input: { title: string; description: string; includeLogs: boolean }) =>
+    backend().createFeedback(input),
+  openIssueLink: (url: string) => backend().openIssueLink({ url }),
 };
