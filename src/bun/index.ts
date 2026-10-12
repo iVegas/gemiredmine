@@ -1,4 +1,5 @@
 import Electrobun, { BrowserWindow } from 'electrobun';
+import { rpc } from './rpc';
 
 const win = new BrowserWindow({
     title: 'Gemiredmine',
@@ -6,7 +7,8 @@ const win = new BrowserWindow({
     frame: {
         width: 1024,
         height: 768,
-    }
+    },
+    rpc,
 });
 
 Electrobun.events.on('will-finish-launching', () => {
