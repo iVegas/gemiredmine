@@ -1,27 +1,33 @@
-name: Weekly Tests
+name: Weekly tests
 
 on:
   schedule:
-    # Runs at 05:00 UTC every Monday
     - cron: '0 5 * * 1'
-  workflow_dispatch: # Allows manual triggering
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
+      - name: Check out
         uses: actions/checkout@v4
-        with:
-          ref: main
 
-      - name: Setup Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20' # Assuming Node 20, adjust as necessary for Electrobun
+          node-version: '24'
+          cache: npm
 
       - name: Install dependencies
+        env:
+          HUSKY: '0'
         run: npm ci
 
-      - name: Run tests
+      - name: Test
         run: npm test
+
+      - name: Type check
+        run: npm run typecheck

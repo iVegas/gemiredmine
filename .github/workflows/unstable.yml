@@ -1,0 +1,41 @@
+# Unstable channel: every push to main builds a new unstable AppImage. The three newest
+# builds are kept as releases; older ones are removed by the publish step.
+name: Unstable
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: release-unstable
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      channel: unstable
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Download AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-unstable
+          path: dist/linux/unstable
+
+      - name: Publish unstable release and prune old builds
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/publish.mjs publish --dir dist/linux/unstable

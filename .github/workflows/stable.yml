@@ -1,0 +1,63 @@
+# Stable channel: a manually started release from main. Only the two newest stable releases
+# are kept, and canary builds that are no longer newer than the new stable are removed.
+name: Stable
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: release-stable
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Check the release version against the channel policy
+        run: node scripts/release/publish.mjs validate --channel stable --branch "$GITHUB_REF_NAME"
+
+  build:
+    needs: validate
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      channel: stable
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    # Attach required reviewers to this environment in the repository settings to approve each release.
+    environment: stable-release
+    permissions:
+      contents: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Download AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-stable
+          path: dist/linux/stable
+
+      - name: Publish stable release and prune
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/publish.mjs publish --dir dist/linux/stable
