@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { get } from 'svelte/store';
-import { servers, activeServerId, addServer } from '../store';
+import { servers, activeServerId, activeServer, addServer, updateServer, removeServer } from '../store';
 
 describe('Server Store', () => {
   beforeEach(() => {
@@ -39,5 +39,50 @@ describe('Server Store', () => {
     });
 
     expect(get(activeServerId)).toBe(currentServers[0].id);
+  });
+
+  it('updates a server in place', () => {
+    const id = addServer({ name: 'Dev', url: 'https://dev.local' });
+
+    updateServer(id, { apiToken: 'key', user: { id: 1, login: 'ana', firstname: 'Ana', lastname: 'K' } });
+
+    expect(get(servers)[0]).toMatchObject({ id, name: 'Dev', apiToken: 'key', user: { login: 'ana' } });
+  });
+
+  it('removes a server and keeps the active selection when another server was removed', () => {
+    const first = addServer({ name: 'One', url: 'https://1.com' });
+    const second = addServer({ name: 'Two', url: 'https://2.com' });
+
+    removeServer(second);
+
+    expect(get(servers).map(s => s.id)).toEqual([first]);
+    expect(get(activeServerId)).toBe(first);
+  });
+
+  it('moves the selection to the first remaining server when the active one is removed', () => {
+    const first = addServer({ name: 'One', url: 'https://1.com' });
+    const second = addServer({ name: 'Two', url: 'https://2.com' });
+    activeServerId.set(second);
+
+    removeServer(second);
+
+    expect(get(activeServerId)).toBe(first);
+  });
+
+  it('clears the selection when the last server is removed', () => {
+    const only = addServer({ name: 'Only', url: 'https://only.com' });
+
+    removeServer(only);
+
+    expect(get(servers)).toHaveLength(0);
+    expect(get(activeServerId)).toBeNull();
+  });
+
+  it('derives the active server object', () => {
+    const id = addServer({ name: 'Dev', url: 'https://dev.local' });
+
+    expect(get(activeServer)?.id).toBe(id);
+    activeServerId.set(null);
+    expect(get(activeServer)).toBeNull();
   });
 });
