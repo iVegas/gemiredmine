@@ -1,11 +1,12 @@
 <script lang="ts">
   import Sidebar from './Sidebar.svelte';
   import AddServerForm from './AddServerForm.svelte';
-  import { activeServerId, serversById } from './lib/store';
+  import ServerContextSelector from './ServerContextSelector.svelte';
+  import ServerLogin from './ServerLogin.svelte';
+  import CalendarView from './CalendarView.svelte';
+  import { activeServer } from './lib/store';
 
   let showAddForm = false;
-
-  $: activeServer = $activeServerId ? $serversById.get($activeServerId) : null;
 
   function isValidUrl(urlString: string): boolean {
     try {
@@ -22,7 +23,7 @@
 
   <main class="flex-1 overflow-auto relative">
     {#if showAddForm}
-      <div class="absolute inset-0 bg-gray-50 z-10 p-4">
+      <div class="absolute inset-0 bg-gray-50 z-10 p-4 overflow-auto">
         <AddServerForm
           onCancel={() => showAddForm = false}
           onSuccess={() => showAddForm = false}
@@ -30,20 +31,25 @@
       </div>
     {/if}
 
-    <div class="p-8 h-full flex flex-col">
-      {#if activeServer && !showAddForm}
-        <header class="mb-8">
-          <h1 class="text-3xl font-bold text-gray-900">{activeServer.name}</h1>
-          {#if isValidUrl(activeServer.url)}
-            <a href={activeServer.url} target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">{activeServer.url}</a>
-          {:else}
-            <span class="text-gray-600">{activeServer.url}</span>
-          {/if}
+    <div class="p-8 min-h-full flex flex-col gap-6">
+      {#if $activeServer && !showAddForm}
+        <header class="flex flex-wrap items-end justify-between gap-4">
+          <div class="min-w-0">
+            <h1 class="text-3xl font-bold text-gray-900 truncate">{$activeServer.name}</h1>
+            {#if isValidUrl($activeServer.url)}
+              <a href={$activeServer.url} target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">{$activeServer.url}</a>
+            {:else}
+              <span class="text-gray-600 break-all">{$activeServer.url}</span>
+            {/if}
+          </div>
+          <ServerContextSelector />
         </header>
 
-        <div class="bg-white p-6 rounded-lg shadow border border-gray-200 flex-1 flex items-center justify-center">
-          <p class="text-gray-500 text-lg">Server Dashboard Integration Pending...</p>
-        </div>
+        {#if $activeServer.apiToken}
+          <CalendarView server={$activeServer} />
+        {:else}
+          <ServerLogin server={$activeServer} />
+        {/if}
       {:else if !showAddForm}
         <div class="h-full flex flex-col items-center justify-center text-center">
           <h2 class="text-2xl font-semibold text-gray-700 mb-2">No Server Selected</h2>

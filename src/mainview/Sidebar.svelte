@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { servers, activeServerId } from './lib/store';
+  import { servers, activeServerId, removeServer } from './lib/store';
 
   export let onAddServerClick: () => void;
 </script>
@@ -10,14 +10,29 @@
   </div>
 
   <ul class="flex-1 overflow-y-auto">
-    {#each $servers as server}
-      <li>
+    {#each $servers as server (server.id)}
+      <li class="flex items-stretch border-b border-gray-200 {$activeServerId === server.id ? 'bg-blue-100 border-l-4 border-l-blue-500' : ''}">
         <button
-          class="w-full text-left p-4 hover:bg-gray-200 transition-colors {$activeServerId === server.id ? 'bg-blue-100 border-l-4 border-blue-500' : ''}"
+          class="flex-1 min-w-0 text-left p-4 hover:bg-gray-200 transition-colors"
+          aria-current={$activeServerId === server.id ? 'true' : undefined}
           on:click={() => activeServerId.set(server.id)}
         >
           <div class="font-medium text-gray-800">{server.name}</div>
           <div class="text-sm text-gray-500 truncate">{server.url}</div>
+          {#if server.apiToken}
+            <div class="text-xs text-green-700 mt-1">Signed in as {server.user?.login ?? 'user'}</div>
+          {:else}
+            <div class="text-xs text-amber-700 mt-1">Not signed in</div>
+          {/if}
+        </button>
+        <button
+          type="button"
+          class="px-3 text-gray-500 hover:text-red-700 hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500"
+          aria-label="Remove {server.name}"
+          title="Remove server"
+          on:click={() => removeServer(server.id)}
+        >
+          ✕
         </button>
       </li>
     {/each}
