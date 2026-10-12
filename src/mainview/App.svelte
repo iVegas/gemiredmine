@@ -4,9 +4,11 @@
   import ServerContextSelector from './ServerContextSelector.svelte';
   import ServerLogin from './ServerLogin.svelte';
   import CalendarView from './CalendarView.svelte';
+  import AboutView from './AboutView.svelte';
   import { activeServer } from './lib/store';
 
   let showAddForm = false;
+  let showAbout = false;
 
   function isValidUrl(urlString: string): boolean {
     try {
@@ -19,7 +21,7 @@
 </script>
 
 <div class="flex h-screen w-full bg-gray-50 font-sans">
-  <Sidebar onAddServerClick={() => showAddForm = true} />
+  <Sidebar onAddServerClick={() => showAddForm = true} onAboutClick={() => showAbout = true} />
 
   <main class="flex-1 overflow-auto relative">
     {#if showAddForm}
@@ -28,6 +30,12 @@
           onCancel={() => showAddForm = false}
           onSuccess={() => showAddForm = false}
         />
+      </div>
+    {/if}
+
+    {#if showAbout}
+      <div class="absolute inset-0 bg-gray-50 z-10 p-8 overflow-auto">
+        <AboutView onClose={() => showAbout = false} />
       </div>
     {/if}
 

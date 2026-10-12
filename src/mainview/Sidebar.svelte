@@ -1,7 +1,9 @@
 <script lang="ts">
   import { servers, activeServerId, removeServer } from './lib/store';
+  import { buildInfo } from '../shared/build-info.generated';
 
   export let onAddServerClick: () => void;
+  export let onAboutClick: () => void = () => {};
 </script>
 
 <aside class="w-64 bg-gray-100 h-full border-r border-gray-200 flex flex-col">
@@ -43,12 +45,21 @@
     {/if}
   </ul>
 
-  <div class="p-4 border-t border-gray-200">
+  <div class="p-4 border-t border-gray-200 space-y-2">
     <button
       class="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium transition-colors"
       on:click={onAddServerClick}
     >
       + Add Server
     </button>
+    <button
+      class="w-full py-2 px-4 bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 rounded font-medium transition-colors"
+      on:click={onAboutClick}
+    >
+      About
+    </button>
+    <p class="text-xs text-center text-gray-500" aria-label="Application version">
+      {buildInfo.productName} {buildInfo.version}
+    </p>
   </div>
 </aside>

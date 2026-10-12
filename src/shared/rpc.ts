@@ -2,6 +2,8 @@
 // Type-only imports keep this file free of runtime code on either side.
 import type { RPCSchema } from 'electrobun/view';
 import type { RedmineIssue, RedmineTimeEntry, RedmineUser } from '../bun/redmine/types';
+import type { DevPreviewStatus, FeedbackResult } from '../bun/diagnostics/service';
+import type { LogLevel } from '../bun/diagnostics/aggregator';
 
 /** Identifies a Redmine server and the API key the webview holds for it. */
 export interface ServerAccess {
@@ -39,6 +41,14 @@ export type GemiRPCSchema = {
         params: ServerAccess & { dueFrom: string; dueTo: string };
         response: RedmineIssue[];
       };
+      getDevPreviewStatus: { params: void; response: DevPreviewStatus };
+      setDevPreviewEnabled: { params: { enabled: boolean }; response: DevPreviewStatus };
+      recordDiagnostic: { params: { level: LogLevel; scope: string; message: string }; response: void };
+      createFeedback: {
+        params: { title: string; description: string; includeLogs: boolean };
+        response: FeedbackResult;
+      };
+      openIssueLink: { params: { url: string }; response: void };
     };
   }>;
   webview: RPCSchema;
