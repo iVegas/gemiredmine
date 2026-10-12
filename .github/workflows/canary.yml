@@ -1,0 +1,61 @@
+# Canary channel: a manually started release candidate. The version in package.json must be a
+# release candidate (for example 1.0.0-rc.1) and newer than the latest stable release.
+name: Canary
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: release-canary
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Check the candidate version against the channel policy
+        run: node scripts/release/publish.mjs validate --channel canary --branch "$GITHUB_REF_NAME"
+
+  build:
+    needs: validate
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      channel: canary
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Download AppImage
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-canary
+          path: dist/linux/canary
+
+      - name: Publish canary release and prune
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/publish.mjs publish --dir dist/linux/canary

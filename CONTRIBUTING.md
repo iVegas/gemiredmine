@@ -21,14 +21,24 @@ This is enforced via a `commit-msg` git hook using `commitlint`.
 Before a commit is allowed, automated tests and checks will run via a `pre-commit` hook.
 You must ensure your code passes all tests locally before committing. The hook will execute tests automatically to prevent breaking changes from being committed.
 
-### 3. Changelog Generation
-We use standard tooling to automatically generate `CHANGELOG.md` based on the commit history.
-Before creating a new version tag (e.g., cutting a release), the changelog **must** be updated.
+### 3. Versions and releases
+The version lives only in `version` in `package.json`. Do not edit versions anywhere else.
 
-The process for a maintainer to cut a release:
-1. Run the release script (e.g., `npm run release`) which will:
-   - Bump the version in package files.
-   - Generate/update the `CHANGELOG.md` from the commit history.
-   - Create a commit for the release.
-   - Create a git tag for the new version.
-2. Push the commits and tags to the repository.
+Releases are made with the workflows in `.github/workflows` (Unstable, Canary, Stable). Do not
+create release tags by hand. See [`RELEASE_POLICY.md`](./RELEASE_POLICY.md) for the channel rules
+and the steps to publish each channel.
+
+`npm run release` (standard-version) updates `CHANGELOG.md` and the version, but it also creates a
+local tag. Push the commit only, and let the Stable workflow create the tag.
+
+## Testing and checks
+
+- `npm test` runs the unit tests. It regenerates `src/shared/build-info.generated.ts` first.
+- `npm run typecheck` type-checks the whole project, including the release scripts.
+- The reusable build workflow runs both before it packages anything.
+
+## Developer preview
+
+Canary, unstable and dev builds offer an opt-in developer preview in the About screen (off by
+default). Stable builds do not include it. The implementation lives in `src/bun/diagnostics/`, and
+the webview panel in `src/mainview/components/DeveloperPreview.svelte`.

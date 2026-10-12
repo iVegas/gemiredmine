@@ -1,3 +1,9 @@
 node_modules/
 build/
 views/
+src/shared/build-info.generated.ts
+src/bun/dev-preview.generated.ts
+src/mainview/dev-preview.generated.ts
+dist/
+artifacts/
+*.tsbuildinfo
