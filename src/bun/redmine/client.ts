@@ -92,7 +92,7 @@ export class RedmineClient {
 
     // Return the response as JSON. Some endpoints might return empty body, handle it gracefully.
     const text = await response.text();
-    return text ? JSON.parse(text) : undefined;
+    return (text ? JSON.parse(text) : undefined) as T;
   }
 
   async getTrackers(): Promise<TrackersResponse> {

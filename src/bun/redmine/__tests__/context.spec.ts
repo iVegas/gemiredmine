@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mocked } from 'vitest';
 import { RedmineContextService } from '../context';
 import { RedmineClient } from '../client';
 
@@ -6,10 +6,10 @@ vi.mock('../client');
 
 describe('RedmineContextService', () => {
   let service: RedmineContextService;
-  let mockClient: vi.Mocked<RedmineClient>;
+  let mockClient: Mocked<RedmineClient>;
 
   beforeEach(() => {
-    mockClient = new RedmineClient({ baseUrl: 'http://test' }) as vi.Mocked<RedmineClient>;
+    mockClient = new RedmineClient({ baseUrl: 'http://test' }) as Mocked<RedmineClient>;
     service = new RedmineContextService(mockClient);
   });
 
