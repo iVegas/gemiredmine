@@ -12,7 +12,7 @@ describe('RedmineClient', () => {
 
   beforeEach(() => {
     client = new RedmineClient({ baseUrl: 'https://redmine.example.com', apiKey: 'test-key' });
-    global.fetch = vi.fn();
+    vi.stubGlobal('fetch', vi.fn());
   });
 
   it('formats baseUrl correctly by removing trailing slash', () => {

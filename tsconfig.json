@@ -9,7 +9,6 @@
 		"noEmit": true,
 		"composite": true,
 		"strict": true,
-		"downlevelIteration": true,
 		"skipLibCheck": true,
 		"jsx": "preserve",
 		"allowSyntheticDefaultImports": true,
@@ -17,7 +16,9 @@
 		"allowJs": true,
 		"types": [
 			"vite/client",
-			"svelte"
+			"svelte",
+			"node"
 		]
-	}
+	},
+	"exclude": ["node_modules", "build", "views", "dist", "dist-*"]
 }
