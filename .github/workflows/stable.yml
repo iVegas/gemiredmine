@@ -40,6 +40,7 @@ jobs:
     uses: ./.github/workflows/build-windows.yml
     with:
       channel: stable
+      signing: trusted
     secrets: inherit
 
   publish:

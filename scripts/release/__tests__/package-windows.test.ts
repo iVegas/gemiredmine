@@ -16,6 +16,12 @@ exit 0
 `;
 
 type Asset = { name: string; pointer: boolean };
+type Exporter = (args: { pfx: string; password: string; out: string }) => string;
+
+const fakeExport: Exporter = ({ out }) => {
+  writeFileSync(out, 'CER-BYTES');
+  return out;
+};
 
 describe('packageWindows', () => {
   let root: string;
@@ -37,6 +43,18 @@ describe('packageWindows', () => {
       else result[key] = value;
     }
     return result;
+  };
+
+  const selfSigned = {
+    WINDOWS_SIGNING: 'self-signed',
+    WINDOWS_SELF_SIGNED_PFX_BASE64: Buffer.from('pfx-bytes').toString('base64'),
+    WINDOWS_SELF_SIGNED_PASSWORD: 'self-secret',
+  };
+  const trusted = {
+    WINDOWS_SIGNING: 'trusted',
+    WINDOWS_TRUSTED_PFX_BASE64: Buffer.from('trusted-pfx').toString('base64'),
+    WINDOWS_TRUSTED_PASSWORD: 'trusted-secret',
+    WINDOWS_TRUSTED_PUBLISHER: 'CN=Acme Ltd',
   };
 
   beforeEach(() => {
@@ -72,61 +90,77 @@ describe('packageWindows', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('packages an unsigned unstable build with a pointer feed and a manifest that starts the launcher', () => {
-    const { outDir, metadata, signed } = packageWindows({ env: env({ WINDOWS_CERT_PFX_BASE64: undefined }), root });
+  it('produces an unsigned local package when no signing is configured', () => {
+    const { outDir, metadata, signing } = packageWindows({ env: env(), root, exportCertificate: fakeExport });
 
-    expect(signed).toBe(false);
+    expect(signing).toBe('none');
     expect(metadata).toMatchObject({ channel: 'unstable', platform: 'windows', tag: 'unstable-v1.0.0-unstable.7', pointerTag: 'unstable-latest' });
+    expect(metadata.assets.map((a: Asset) => a.name)).not.toContain('Gemiredmine-Unstable-self-signed.cer');
+    expect(existsSync(log)).toBe(false);
 
     const manifest = readFileSync(join(outDir, 'Gemiredmine-Unstable-1.0.0-unstable.7-x64.msix'), 'utf8');
     expect(manifest).toContain('Name="com.gemiredmine.app.unstable"');
     expect(manifest).toContain('Version="1.0.0.7"');
+    expect(manifest).toContain('Publisher="CN=Gemiredmine"');
     expect(manifest).toContain('Executable="bin\\launcher.exe"');
-
-    const installer = readFileSync(join(outDir, 'Gemiredmine-Unstable.appinstaller'), 'utf8');
-    expect(installer).toContain('Version="1.0.0.7"');
-    expect(installer).toContain('releases/download/unstable-latest/Gemiredmine-Unstable-x64.msix');
-
-    expect(existsSync(join(outDir, 'Gemiredmine-Unstable-x64.msix'))).toBe(true);
-    expect(existsSync(join(outDir, 'SHA256SUMS-windows.txt'))).toBe(true);
-    expect(existsSync(join(outDir, 'payload'))).toBe(false);
-    expect(metadata.assets.filter((a: Asset) => a.pointer).map((a: Asset) => a.name).sort()).toEqual([
-      'Gemiredmine-Unstable-x64.msix',
-      'Gemiredmine-Unstable.appinstaller',
-    ]);
   });
 
-  it('uses GitHub\'s latest-release address for stable and keeps the fixed names in the release itself', () => {
-    const { outDir, metadata } = packageWindows({
-      env: env({ CHANNEL: 'stable', GITHUB_RUN_NUMBER: undefined, WINDOWS_CERT_PFX_BASE64: undefined }),
+  it('signs canary and unstable with the self-signed certificate, skips the trust check, and ships the public certificate', () => {
+    const { outDir, metadata, signing } = packageWindows({
+      env: env({ ...selfSigned, REQUIRE_SIGNING: '1' }),
       root,
+      exportCertificate: fakeExport,
     });
 
-    expect(metadata).toMatchObject({ channel: 'stable', pointerTag: null, tag: 'v1.0.0' });
-    expect(metadata.assets.every((a: Asset) => !a.pointer)).toBe(true);
-    const installer = readFileSync(join(outDir, 'Gemiredmine.appinstaller'), 'utf8');
-    expect(installer).toContain('releases/latest/download/Gemiredmine-x64.msix');
-    expect(installer).toContain('Version="1.0.0.0"');
-  });
-
-  it('signs and verifies the package when a certificate is configured, and removes the certificate file afterwards', () => {
-    const { outDir, signed } = packageWindows({
-      env: env({ WINDOWS_CERT_PFX_BASE64: Buffer.from('pfx-bytes').toString('base64'), WINDOWS_CERT_PASSWORD: 'secret' }),
-      root,
-    });
-
-    expect(signed).toBe(true);
+    expect(signing).toBe('self-signed');
     const calls = readFileSync(log, 'utf8').trim().split('\n');
+    expect(calls).toHaveLength(1);
     expect(calls[0]).toContain('sign /fd SHA256');
     expect(calls[0]).toContain('/tr http://timestamp.digicert.com');
-    expect(calls[1]).toContain('verify /pa /v');
+    expect(readFileSync(join(outDir, 'Gemiredmine-Unstable-self-signed.cer'), 'utf8')).toBe('CER-BYTES');
     expect(existsSync(join(outDir, 'signing-certificate.pfx'))).toBe(false);
+
+    const cer = metadata.assets.find((a: Asset) => a.name === 'Gemiredmine-Unstable-self-signed.cer');
+    expect(cer).toEqual({ name: 'Gemiredmine-Unstable-self-signed.cer', pointer: true });
+    const installer = readFileSync(join(outDir, 'Gemiredmine-Unstable.appinstaller'), 'utf8');
+    expect(installer).toContain('Publisher="CN=Gemiredmine"');
+    expect(JSON.parse(readFileSync(join(outDir, 'release.json'), 'utf8'))).toMatchObject({ signing: 'self-signed', publisher: 'CN=Gemiredmine' });
   });
 
-  it('refuses to produce an unsigned release when signing is required', () => {
+  it('signs and verifies stable with the trusted certificate and publishes no certificate', () => {
+    const { outDir, metadata, signing } = packageWindows({
+      env: env({ ...trusted, CHANNEL: 'stable', GITHUB_RUN_NUMBER: undefined, REQUIRE_SIGNING: '1' }),
+      root,
+      exportCertificate: fakeExport,
+    });
+
+    expect(signing).toBe('trusted');
+    expect(metadata).toMatchObject({ channel: 'stable', pointerTag: null, tag: 'v1.0.0' });
+    expect(metadata.assets.every((a: Asset) => !a.pointer)).toBe(true);
+    expect(metadata.assets.some((a: Asset) => a.name.endsWith('.cer'))).toBe(false);
+
+    const calls = readFileSync(log, 'utf8').trim().split('\n');
+    expect(calls[0]).toContain('sign /fd SHA256');
+    expect(calls[1]).toContain('verify /pa /v');
+    expect(readFileSync(join(outDir, 'Gemiredmine.appinstaller'), 'utf8')).toContain('Publisher="CN=Acme Ltd"');
+    expect(readFileSync(join(outDir, 'Gemiredmine.appinstaller'), 'utf8')).toContain('releases/latest/download/Gemiredmine-x64.msix');
+    expect(JSON.parse(readFileSync(join(outDir, 'release.json'), 'utf8'))).toMatchObject({ signing: 'trusted', publisher: 'CN=Acme Ltd' });
+  });
+
+  it('never signs stable with the self-signed certificate', () => {
     expect(() =>
-      packageWindows({ env: env({ WINDOWS_CERT_PFX_BASE64: undefined, REQUIRE_SIGNING: '1' }), root })
-    ).toThrow('must be signed');
+      packageWindows({ env: env({ ...selfSigned, CHANNEL: 'stable', GITHUB_RUN_NUMBER: undefined }), root, exportCertificate: fakeExport })
+    ).toThrow('Stable releases must use trusted signing');
+  });
+
+  it('refuses an unsigned release build', () => {
+    expect(() => packageWindows({ env: env({ REQUIRE_SIGNING: '1' }), root, exportCertificate: fakeExport })).toThrow('must be signed');
+  });
+
+  it('names the missing secret when the chosen profile has no certificate', () => {
+    expect(() =>
+      packageWindows({ env: env({ WINDOWS_SIGNING: 'self-signed', WINDOWS_SELF_SIGNED_PFX_BASE64: undefined }), root, exportCertificate: fakeExport })
+    ).toThrow('WINDOWS_SELF_SIGNED_PFX_BASE64');
   });
 
   it('uses the genuine launcher from the Electrobun Windows core when the build only has the extensionless launcher', () => {
@@ -137,7 +171,7 @@ describe('packageWindows', () => {
     mkdirSync(core, { recursive: true });
     writeFileSync(join(core, 'launcher.exe'), 'GENUINE');
 
-    const { outDir } = packageWindows({ env: env({ WINDOWS_CERT_PFX_BASE64: undefined }), root });
+    const { outDir } = packageWindows({ env: env(), root, exportCertificate: fakeExport });
 
     expect(readFileSync(join(outDir, 'Gemiredmine-Unstable-1.0.0-unstable.7-x64.msix'), 'utf8')).toContain('Executable="bin\\launcher.exe"');
   });

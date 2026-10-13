@@ -40,6 +40,7 @@ jobs:
     uses: ./.github/workflows/build-windows.yml
     with:
       channel: canary
+      signing: self-signed
     secrets: inherit
 
   publish:

@@ -41,10 +41,16 @@ local tag. Push the commit only, and let the Stable workflow create the tag.
 
 `scripts/release/package-windows.mjs` builds the MSIX for a channel. It needs the Windows 10/11 SDK tools
 (`makeappx.exe` and `signtool.exe`), which the GitHub Windows runner provides. To run it locally on Windows,
-set `CHANNEL` and optionally `MAKEAPPX` and `SIGNTOOL` to the tool paths. Without a certificate a local build is
-unsigned and cannot be installed. Set `REQUIRE_SIGNING=1` to make it fail instead.
+set `CHANNEL` and optionally `MAKEAPPX` and `SIGNTOOL` to the tool paths. Without `WINDOWS_SIGNING` the package
+is unsigned and cannot be installed.
 
-The release workflows need the three secrets described in [`RELEASE_POLICY.md`](./RELEASE_POLICY.md#signing-secrets-windows).
+To create the self-signed certificate used by canary and unstable, run this once on Windows:
+
+```powershell
+.\scripts\release\New-SelfSignedCodeSigningCertificate.ps1 -SetGitHubSecrets
+```
+
+The release workflows read the secrets listed in [`RELEASE_POLICY.md`](./RELEASE_POLICY.md#signing-secrets-windows).
 
 ## Developer preview
 

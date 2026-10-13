@@ -77,13 +77,22 @@ const PLATFORM_NOTES = {
   windows: 'Windows 11: the .msix package. Open the .appinstaller file to install; Windows keeps it up to date.',
 };
 
-function releaseNotes(metadata, platforms) {
+function selfSignedNote(certificateName) {
+  return [
+    'Windows: this build is signed with a self-signed certificate, so Windows will not install it until the certificate is trusted.',
+    `Before opening the .appinstaller, import ${certificateName} as an administrator:`,
+    `  Import-Certificate -FilePath ${certificateName} -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople`,
+  ].join('\n');
+}
+
+function releaseNotes(metadata, platforms, { windowsSigning, certificateName }) {
   const label = CHANNEL_LABEL[metadata.channel];
   const lines = [
     `${label} build ${metadata.version} from commit ${metadata.commit}.`,
     '',
     ...platforms.map(platform => PLATFORM_NOTES[platform]),
     '',
+    ...(windowsSigning === 'self-signed' ? [selfSignedNote(certificateName), ''] : []),
     'Each channel is installed separately and keeps its own settings.',
   ];
   return lines.join('\n');
@@ -118,10 +127,20 @@ export function loadArtifacts(dirs) {
     }
   }
 
+  // Stable must never ship a package that only a self-signed certificate signed.
+  const windows = packages.find(({ metadata }) => metadata.platform === 'windows');
+  const windowsSigning = windows?.metadata.signing ?? null;
+  if (first.channel === 'stable' && windows && windowsSigning !== 'trusted') {
+    throw new Error(`Stable Windows packages must be signed with trusted signing, but this one is "${windowsSigning}".`);
+  }
+  const certificate = assets.find(asset => asset.name.endsWith('-self-signed.cer'));
+
   return {
     metadata: first,
     platforms: packages.map(({ metadata }) => metadata.platform ?? 'linux'),
     assets,
+    windowsSigning,
+    certificateName: certificate?.name ?? null,
   };
 }
 
@@ -139,7 +158,7 @@ function releaseExists(tag, { dryRun, log }) {
 }
 
 export function publish({ dirs, dryRun = false, log = console.log }) {
-  const { metadata, platforms, assets } = loadArtifacts(dirs);
+  const { metadata, platforms, assets, windowsSigning, certificateName } = loadArtifacts(dirs);
   const { channel, tag, pointerTag, commitSha } = metadata;
   const files = assets.filter(asset => !asset.pointer).map(asset => asset.path);
   const pointerFiles = assets.filter(asset => asset.pointer || isChecksumFile(asset.name)).map(asset => asset.path);
@@ -150,7 +169,7 @@ export function publish({ dirs, dryRun = false, log = console.log }) {
     // GitHub writes the notes from the commits since the previous release.
     createArgs.push('--latest', '--generate-notes');
   } else {
-    createArgs.push('--prerelease', '--notes', releaseNotes(metadata, platforms));
+    createArgs.push('--prerelease', '--notes', releaseNotes(metadata, platforms, { windowsSigning, certificateName }));
   }
   gh(createArgs, { dryRun, log });
 
