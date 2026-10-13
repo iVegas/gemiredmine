@@ -1,7 +1,7 @@
 # Release and Channel Policy
 
-Gemiredmine ships three release channels for Linux (AppImage). Each channel is a separate
-application: it can be installed next to the others, and it keeps its own settings.
+Gemiredmine ships three release channels for Linux (AppImage) and Windows 11 (MSIX). Each channel is a
+separate application on each platform: it can be installed next to the others, and it keeps its own settings.
 
 ## Versions come from one place
 
@@ -36,7 +36,34 @@ Each channel also has a pointer release (`unstable-latest`, `canary-latest`). It
 newest build of that channel under a fixed file name, and it is what AppImageUpdate follows. Pointer
 releases are never pruned.
 
-## Installing and updating
+## Installing and updating on Windows 11
+
+Each channel is its own MSIX package identity, so the channels install side by side and each one
+upgrades in place:
+
+| Channel  | Package identity                  | Install from (App Installer)                                                              |
+|----------|-----------------------------------|-------------------------------------------------------------------------------------------|
+| Stable   | `com.gemiredmine.app`             | `https://github.com/iVegas/gemiredmine/releases/latest/download/Gemiredmine.appinstaller` |
+| Canary   | `com.gemiredmine.app.canary`      | `https://github.com/iVegas/gemiredmine/releases/download/canary-latest/Gemiredmine-Canary.appinstaller` |
+| Unstable | `com.gemiredmine.app.unstable`    | `https://github.com/iVegas/gemiredmine/releases/download/unstable-latest/Gemiredmine-Unstable.appinstaller` |
+
+Open the link (or use `ms-appinstaller:?source=<link>`) to install the channel. Windows then checks
+the App Installer feed when the app starts, every 8 hours, and upgrades the installed package in place.
+Only one package is installed per channel. Settings live under `%LOCALAPPDATA%` in a folder named for
+the channel, and the packaged app's data is private to its identity, so channels never share settings.
+Uninstalling a channel from Windows Settings removes its package and its data.
+
+MSIX versions have four numbers, so each build maps onto them in order: stable `1.2.0` becomes
+`1.2.0.0`, canary `1.2.0-rc.3` becomes `1.2.0.3`, and unstable `1.2.0-unstable.42` becomes `1.2.0.42`.
+Within a channel the version always increases, so every upgrade is accepted.
+
+Packages are signed with a code-signing certificate. Release builds refuse to publish an unsigned package,
+because Windows will not install one. The publisher in the manifest must match the certificate subject, which
+is why it is set from a secret (see the contributor guide). Windows must trust the certificate: use a
+publicly trusted code-signing certificate for releases. A self-signed certificate only works on machines that
+trust it.
+
+## Installing and updating on Linux
 
 Each channel's AppImage has its own file name, application identifier, desktop entry and settings
 folder:
@@ -76,6 +103,14 @@ Electrobun stays on the 1.x line for now. Electrobun 2.x delivers its applicatio
 Hutch devkit rather than npm, so adopting it means changing the build toolchain, not just bumping a
 version. That migration is a separate decision.
 
+## Signing secrets (Windows)
+
+The Windows release workflows read these repository secrets:
+
+- `WINDOWS_CERT_PFX_BASE64`: the code-signing certificate, as a base64-encoded `.pfx` file
+- `WINDOWS_CERT_PASSWORD`: the password of that `.pfx`
+- `WINDOWS_PUBLISHER`: the certificate subject exactly as written in the manifest, for example `CN=Gemiredmine, O=...`
+
 ## Running a release
 
 1. **Unstable**: merge to `main`. Nothing else to do.
@@ -86,6 +121,10 @@ version. That migration is a separate decision.
    publish job uses the `stable-release` environment, so configure required reviewers there.
 
 Each workflow validates the version against this policy before it builds anything.
+
+## Host requirements (Windows 11)
+
+Windows 11 (build 22000 or later) on x64. The app uses the WebView2 runtime, which ships with Windows 11.
 
 ## Host requirements (Linux)
 
@@ -99,5 +138,8 @@ sudo apt install libwebkit2gtk-4.1-0 libsoup-3.0-0 libjavascriptcoregtk-4.1-0 li
 ## Not covered yet
 
 - Android builds are not part of this pipeline.
-- AppImages are not code-signed.
-- Updates are not verified against a signature, only against the checksums published with each release.
+- AppImages are not code-signed. Windows packages are signed only when the signing secrets are set.
+- The Linux update path has not been tested with a published release yet, and the Windows packages have not been
+  installed on a Windows machine by the pipeline (see the verification notes in the pull request).
+- Windows on ARM and the Microsoft Store are not covered. winget is a possible next step.
+- Updates are verified only against the checksums published with each release.
