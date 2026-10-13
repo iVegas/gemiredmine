@@ -4,6 +4,15 @@
 name: Build Windows package
 
 on:
+  # Runs from the Actions tab for a build-only check (no publishing), for example before a merge.
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: stable, canary or unstable
+        required: true
+        default: unstable
+        type: choice
+        options: [unstable, canary, stable]
   workflow_call:
     inputs:
       channel:
