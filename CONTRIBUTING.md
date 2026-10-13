@@ -37,6 +37,15 @@ local tag. Push the commit only, and let the Stable workflow create the tag.
 - `npm run typecheck` type-checks the whole project, including the release scripts.
 - The reusable build workflow runs both before it packages anything.
 
+## Windows packages and signing
+
+`scripts/release/package-windows.mjs` builds the MSIX for a channel. It needs the Windows 10/11 SDK tools
+(`makeappx.exe` and `signtool.exe`), which the GitHub Windows runner provides. To run it locally on Windows,
+set `CHANNEL` and optionally `MAKEAPPX` and `SIGNTOOL` to the tool paths. Without a certificate a local build is
+unsigned and cannot be installed. Set `REQUIRE_SIGNING=1` to make it fail instead.
+
+The release workflows need the three secrets described in [`RELEASE_POLICY.md`](./RELEASE_POLICY.md#signing-secrets-windows).
+
 ## Developer preview
 
 Canary, unstable and dev builds offer an opt-in developer preview in the About screen (off by

@@ -17,9 +17,14 @@ installed next to the others.
 | Canary   | Testing the next stable release (release candidates) | [Releases](https://github.com/iVegas/gemiredmine/releases) (`canary-v*`) |
 | Unstable | Following `main`, built on every change        | [Releases](https://github.com/iVegas/gemiredmine/releases) (`unstable-v*`) |
 
-Make the AppImage executable and run it. Updates are not downloaded by the app itself; use
-`AppImageUpdate`, or the release page, to get a newer version. See
-[`RELEASE_POLICY.md`](./RELEASE_POLICY.md) for the channel rules and host requirements.
+**Linux:** make the AppImage executable and run it. Updates are not downloaded by the app itself; use
+`AppImageUpdate`, or the release page, to get a newer version.
+
+**Windows 11:** open the App Installer link for the channel you want, and install it. Windows keeps the
+channel up to date from that link. The links are listed in [`RELEASE_POLICY.md`](./RELEASE_POLICY.md).
+Channels install side by side, one package per channel.
+
+See [`RELEASE_POLICY.md`](./RELEASE_POLICY.md) for the channel rules and host requirements.
 
 Android builds are not part of the current release pipeline.
 
@@ -64,6 +69,7 @@ We welcome contributions! Please review our [`CONTRIBUTING.md`](./CONTRIBUTING.m
    - Webview: `npm run build`
    - Desktop app (Electrobun): `npm run build:electrobun`. Set `CHANNEL=stable|canary|unstable|dev` to build a channel. The default is `dev`.
    - Linux AppImage: `CHANNEL=<channel> npm run build:electrobun && CHANNEL=<channel> node scripts/release/package-linux.mjs`. Packaging needs `zsync` installed and downloads a pinned `appimagetool`.
+   - Windows 11 MSIX (on Windows): `set TARGET_PLATFORM=windows` (PowerShell: `$env:TARGET_PLATFORM='windows'`), then `CHANNEL=<channel>` with `npm run build:electrobun` and `node scripts/release/package-windows.mjs`. It needs the Windows SDK tools; without a signing certificate the package is unsigned.
    - Android (Capacitor): `npx cap sync android`
 
 The version is set only in `version` in `package.json`. The app's name, identifier, settings folder and
