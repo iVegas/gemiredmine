@@ -60,6 +60,6 @@ export function appRunScript(installDir) {
 }
 
 /** Metadata the publish step reads. Written next to the artifacts, so publishing never recomputes anything. */
-export function releaseMetadata({ channel, version, commit, commitSha = commit, tag, pointerTag = null, assets }) {
-  return { channel, version, commit, commitSha, tag, pointerTag, assets };
+export function releaseMetadata({ channel, platform = 'linux', version, commit, commitSha = commit, tag, pointerTag = null, assets }) {
+  return { channel, platform, version, commit, commitSha, tag, pointerTag, assets };
 }

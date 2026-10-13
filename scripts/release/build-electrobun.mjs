@@ -15,4 +15,10 @@ if (!CHANNELS.includes(channel)) {
   throw new Error(`Unknown channel "${channel}". Expected one of: ${CHANNELS.join(', ')}`);
 }
 
-execFileSync('npx', ['electrobun', 'build', '--env=dev'], { stdio: 'inherit', env: process.env });
+// On Windows npx is a batch file, which needs a shell to run.
+const onWindows = process.platform === 'win32';
+execFileSync(onWindows ? 'npx.cmd' : 'npx', ['electrobun', 'build', '--env=dev'], {
+  stdio: 'inherit',
+  env: process.env,
+  shell: onWindows,
+});

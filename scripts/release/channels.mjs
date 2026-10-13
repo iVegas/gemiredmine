@@ -108,9 +108,17 @@ export function coreVersion(version) {
  * - unstable: every main-branch build gets `<core>-unstable.<buildNumber>`.
  * - dev:      local builds use the package version unchanged.
  */
-export function deriveBuildInfo({ packageVersion, channel, buildNumber = 0, commit = 'unknown', buildDate }) {
+export const PLATFORMS = Object.freeze(['linux', 'windows']);
+
+/** The platform a build targets. Builds run on their target platform, so this is the host platform. */
+export function hostPlatform(processPlatform = process.platform) {
+  return processPlatform === 'win32' ? 'windows' : 'linux';
+}
+
+export function deriveBuildInfo({ packageVersion, channel, platform = 'linux', buildNumber = 0, commit = 'unknown', buildDate }) {
   const config = CHANNELS[channel];
   if (!config) throw new Error(`Unknown channel "${channel}". Expected one of: ${Object.keys(CHANNELS).join(', ')}`);
+  if (!PLATFORMS.includes(platform)) throw new Error(`Unknown platform "${platform}". Expected one of: ${PLATFORMS.join(', ')}`);
 
   let version;
   switch (channel) {
@@ -142,6 +150,7 @@ export function deriveBuildInfo({ packageVersion, channel, buildNumber = 0, comm
     identifier: `${BASE_IDENTIFIER}${config.identifierSuffix}`,
     dataDirName: config.dataDirName,
     devPreviewAvailable: config.devPreviewAvailable,
+    platform,
     repositoryUrl: REPOSITORY_URL,
     commit,
     buildDate,

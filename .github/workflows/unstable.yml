@@ -1,5 +1,5 @@
-# Unstable channel: every push to main builds a new unstable AppImage. The three newest
-# builds are kept as releases; older ones are removed by the publish step.
+# Unstable channel: every push to main builds new unstable packages for Linux and Windows. The three
+# newest builds are kept as releases; older ones are removed by the publish step.
 name: Unstable
 
 on:
@@ -15,13 +15,19 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  build-linux:
     uses: ./.github/workflows/build-linux.yml
     with:
       channel: unstable
 
+  build-windows:
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      channel: unstable
+    secrets: inherit
+
   publish:
-    needs: build
+    needs: [build-linux, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -29,13 +35,19 @@ jobs:
       - name: Check out
         uses: actions/checkout@v4
 
-      - name: Download AppImage
+      - name: Download Linux package
         uses: actions/download-artifact@v4
         with:
           name: linux-unstable
           path: dist/linux/unstable
 
+      - name: Download Windows package
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-unstable
+          path: dist/windows/unstable
+
       - name: Publish unstable release and prune old builds
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/release/publish.mjs publish --dir dist/linux/unstable
+        run: node scripts/release/publish.mjs publish --dir dist/linux/unstable --dir dist/windows/unstable

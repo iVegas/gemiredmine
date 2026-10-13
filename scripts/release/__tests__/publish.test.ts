@@ -89,7 +89,7 @@ describe('publish CLI logic', () => {
       })
     );
 
-    publish({ dir: artifacts, dryRun: true, log });
+    publish({ dirs: [artifacts], dryRun: true, log });
 
     expect(logs.find(line => line.includes('release create unstable-v1.0.0-unstable.7'))).toContain(
       '--target abc1234567890abcdef1234567890abcdef12345'
@@ -97,5 +97,63 @@ describe('publish CLI logic', () => {
     expect(logs.find(line => line.includes('release upload unstable-latest'))).toContain('--clobber');
     expect(logs.find(line => line.includes('release upload unstable-latest'))).toContain('SHA256SUMS');
     expect(readFileSync(join(artifacts, 'release.json'), 'utf8')).toContain('unstable-latest');
+  });
+
+  // Each file is [name, pointer]: pointer files go to the pointer release, the others to the versioned release.
+  const artifactFolder = (name: string, platform: string, overrides: Record<string, unknown> = {}, files: Array<[string, boolean]> = []) => {
+    const folder = join(dir, name);
+    mkdirSync(folder);
+    const assets = files.map(([file, pointer]) => ({ name: file, pointer }));
+    for (const [file] of files) writeFileSync(join(folder, file), file);
+    writeFileSync(
+      join(folder, 'release.json'),
+      JSON.stringify({
+        channel: 'unstable',
+        platform,
+        version: '1.0.0-unstable.7',
+        commit: 'abc1234',
+        commitSha: 'abc1234567890abcdef1234567890abcdef12345',
+        tag: 'unstable-v1.0.0-unstable.7',
+        pointerTag: 'unstable-latest',
+        assets,
+        ...overrides,
+      })
+    );
+    return folder;
+  };
+
+  it('publishes Linux and Windows artifacts as one release with both platforms described', () => {
+    const linux = artifactFolder('linux', 'linux', {}, [['Gemiredmine-Unstable-1.0.0-unstable.7-x86_64.AppImage', false], ['SHA256SUMS-linux.txt', false]]);
+    const windows = artifactFolder('windows', 'windows', {}, [
+      ['Gemiredmine-Unstable-1.0.0-unstable.7-x64.msix', false],
+      ['Gemiredmine-Unstable-x64.msix', true],
+      ['Gemiredmine-Unstable.appinstaller', true],
+      ['SHA256SUMS-windows.txt', false],
+    ]);
+
+    publish({ dirs: [linux, windows], dryRun: true, log });
+
+    const create = logs.find(line => line.includes('release create unstable-v1.0.0-unstable.7'));
+    expect(create).toContain('Gemiredmine-Unstable-1.0.0-unstable.7-x64.msix');
+    expect(create).toContain('AppImage');
+    const upload = logs.find(line => line.includes('release upload unstable-latest'));
+    expect(upload).toContain('Gemiredmine-Unstable-x64.msix');
+    expect(upload).toContain('Gemiredmine-Unstable.appinstaller');
+    expect(upload).toContain('SHA256SUMS-linux.txt');
+    expect(upload).toContain('SHA256SUMS-windows.txt');
+  });
+
+  it('refuses to combine artifacts built from different commits or versions', () => {
+    const linux = artifactFolder('linux', 'linux', {}, [['a.AppImage', false]]);
+    const windows = artifactFolder('windows', 'windows', { commitSha: 'ffffffffffffffffffffffffffffffffffffffff' }, [['b.msix', false]]);
+
+    expect(() => publish({ dirs: [linux, windows], dryRun: true, log })).toThrow('disagree on commitSha');
+  });
+
+  it('refuses two packages that produce the same file name', () => {
+    const linux = artifactFolder('linux', 'linux', {}, [['same.txt', false]]);
+    const windows = artifactFolder('windows', 'windows', {}, [['same.txt', false]]);
+
+    expect(() => publish({ dirs: [linux, windows], dryRun: true, log })).toThrow('more than one package');
   });
 });
