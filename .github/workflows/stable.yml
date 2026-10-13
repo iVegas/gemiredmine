@@ -1,5 +1,5 @@
-# Stable channel: a manually started release from main. Only the two newest stable releases
-# are kept, and canary builds that are no longer newer than the new stable are removed.
+# Stable channel: a manually started release from main for Linux and Windows. Only the two newest
+# stable releases are kept, and canary builds that are no longer newer than the new stable are removed.
 name: Stable
 
 on:
@@ -29,14 +29,21 @@ jobs:
       - name: Check the release version against the channel policy
         run: node scripts/release/publish.mjs validate --channel stable --branch "$GITHUB_REF_NAME"
 
-  build:
+  build-linux:
     needs: validate
     uses: ./.github/workflows/build-linux.yml
     with:
       channel: stable
 
+  build-windows:
+    needs: validate
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      channel: stable
+    secrets: inherit
+
   publish:
-    needs: build
+    needs: [build-linux, build-windows]
     runs-on: ubuntu-latest
     # Attach required reviewers to this environment in the repository settings to approve each release.
     environment: stable-release
@@ -51,13 +58,19 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Download AppImage
+      - name: Download Linux package
         uses: actions/download-artifact@v4
         with:
           name: linux-stable
           path: dist/linux/stable
 
+      - name: Download Windows package
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-stable
+          path: dist/windows/stable
+
       - name: Publish stable release and prune
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/release/publish.mjs publish --dir dist/linux/stable
+        run: node scripts/release/publish.mjs publish --dir dist/linux/stable --dir dist/windows/stable

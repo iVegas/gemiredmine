@@ -54,11 +54,18 @@
 
   <section aria-labelledby="updates-heading" class="bg-white rounded-lg shadow border border-gray-200 p-6 space-y-3">
     <h2 id="updates-heading" class="text-lg font-semibold text-gray-900">Updates</h2>
-    <p class="text-sm text-gray-700">
-      Gemiredmine does not download or replace itself. Updates come from the way you installed it: use
-      <code class="font-mono text-xs">AppImageUpdate</code> for the AppImage, or your package manager where one is available.
-      Each channel updates only within its own channel.
-    </p>
+    {#if buildInfo.platform === 'windows'}
+      <p class="text-sm text-gray-700">
+        Gemiredmine does not download or replace itself. Windows keeps this channel up to date from its App Installer file,
+        which the app checks for when it starts. Each channel is a separate app, so install the channels you want from their own App Installer links.
+      </p>
+    {:else}
+      <p class="text-sm text-gray-700">
+        Gemiredmine does not download or replace itself. Updates come from the way you installed it: use
+        <code class="font-mono text-xs">AppImageUpdate</code> for the AppImage, or your package manager where one is available.
+        Each channel updates only within its own channel.
+      </p>
+    {/if}
     <p class="text-sm text-gray-700">
       Release notes and downloads are on the
       <a href="https://github.com/iVegas/gemiredmine/releases" target="_blank" rel="noopener noreferrer" class="text-blue-700 underline">releases page</a>.

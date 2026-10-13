@@ -3,7 +3,7 @@
 // release workflows; authenticates through the GH_TOKEN environment variable of `gh`.
 //
 //   node scripts/release/publish.mjs validate --channel <stable|canary|unstable> [--branch <name>] [--releases-json <file>]
-//   node scripts/release/publish.mjs publish  --dir dist/linux/<channel> [--dry-run]
+//   node scripts/release/publish.mjs publish  --dir dist/linux/<channel> [--dir dist/windows/<channel>] [--dry-run]
 //   node scripts/release/publish.mjs prune    [--releases-json <file>] [--dry-run]
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
@@ -24,10 +24,11 @@ const CHANNEL_LABEL = { stable: 'Stable', canary: 'Canary', unstable: 'Unstable'
 
 function parseArgs(argv) {
   const [command, ...rest] = argv;
-  const options = { command };
+  const options = { command, dir: [] };
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i];
     if (arg === '--dry-run') options.dryRun = true;
+    else if (arg === '--dir') options.dir.push(rest[++i]);
     else if (arg.startsWith('--')) options[arg.slice(2)] = rest[++i];
     else throw new Error(`Unexpected argument: ${arg}`);
   }
@@ -71,17 +72,61 @@ export function validate({ channel, branch, releasesJson, env = process.env, log
   return { version, latestStable: latest };
 }
 
-function releaseNotes(metadata) {
+const PLATFORM_NOTES = {
+  linux: 'Linux: the AppImage. Updates come from AppImageUpdate, not from the app.',
+  windows: 'Windows 11: the .msix package. Open the .appinstaller file to install; Windows keeps it up to date.',
+};
+
+function releaseNotes(metadata, platforms) {
   const label = CHANNEL_LABEL[metadata.channel];
   const lines = [
     `${label} build ${metadata.version} from commit ${metadata.commit}.`,
     '',
-    'Install the AppImage for this channel. Updates come from AppImageUpdate, not from the app.',
+    ...platforms.map(platform => PLATFORM_NOTES[platform]),
     '',
     'Each channel is installed separately and keeps its own settings.',
   ];
   return lines.join('\n');
 }
+
+/**
+ * Reads the artifact folders of one release (one per platform) and checks they belong together.
+ * Each folder's release.json names its files; an asset name may only come from one folder.
+ */
+export function loadArtifacts(dirs) {
+  if (dirs.length === 0) throw new Error('Pass at least one --dir with release artifacts.');
+  const packages = dirs.map(dir => ({ dir, metadata: JSON.parse(readFileSync(join(dir, 'release.json'), 'utf8')) }));
+
+  const first = packages[0].metadata;
+  for (const { metadata } of packages.slice(1)) {
+    for (const key of ['channel', 'version', 'tag', 'pointerTag', 'commitSha']) {
+      if (metadata[key] !== first[key]) {
+        throw new Error(`Artifacts disagree on ${key}: "${first[key]}" and "${metadata[key]}". Build all platforms from the same commit.`);
+      }
+    }
+  }
+
+  const assets = [];
+  const names = new Set();
+  for (const { dir, metadata } of packages) {
+    for (const asset of metadata.assets) {
+      const path = join(dir, asset.name);
+      if (!existsSync(path)) throw new Error(`Missing artifact ${path}`);
+      if (names.has(asset.name)) throw new Error(`${asset.name} is produced by more than one package.`);
+      names.add(asset.name);
+      assets.push({ name: asset.name, path, pointer: asset.pointer === true });
+    }
+  }
+
+  return {
+    metadata: first,
+    platforms: packages.map(({ metadata }) => metadata.platform ?? 'linux'),
+    assets,
+  };
+}
+
+/** Checksum files are attached to the pointer release too, so it can be verified on its own. */
+const isChecksumFile = name => name.startsWith('SHA256SUMS');
 
 function releaseExists(tag, { dryRun, log }) {
   if (dryRun) return false;
@@ -93,18 +138,11 @@ function releaseExists(tag, { dryRun, log }) {
   }
 }
 
-export function publish({ dir, dryRun = false, log = console.log }) {
-  const metadata = JSON.parse(readFileSync(join(dir, 'release.json'), 'utf8'));
+export function publish({ dirs, dryRun = false, log = console.log }) {
+  const { metadata, platforms, assets } = loadArtifacts(dirs);
   const { channel, tag, pointerTag, commitSha } = metadata;
-  const files = metadata.assets.filter(asset => !asset.pointer).map(asset => join(dir, asset.name));
-  // Checksums describe every file, so the pointer release carries them too.
-  const pointerFiles = metadata.assets
-    .filter(asset => asset.pointer || asset.name === 'SHA256SUMS')
-    .map(asset => join(dir, asset.name));
-
-  for (const file of [...files, ...pointerFiles]) {
-    if (!existsSync(file)) throw new Error(`Missing artifact ${file}`);
-  }
+  const files = assets.filter(asset => !asset.pointer).map(asset => asset.path);
+  const pointerFiles = assets.filter(asset => asset.pointer || isChecksumFile(asset.name)).map(asset => asset.path);
 
   const title = `${CHANNEL_LABEL[channel]} ${metadata.version}`;
   const createArgs = ['release', 'create', tag, ...files, '--title', title, '--target', commitSha];
@@ -112,7 +150,7 @@ export function publish({ dir, dryRun = false, log = console.log }) {
     // GitHub writes the notes from the commits since the previous release.
     createArgs.push('--latest', '--generate-notes');
   } else {
-    createArgs.push('--prerelease', '--notes', releaseNotes(metadata));
+    createArgs.push('--prerelease', '--notes', releaseNotes(metadata, platforms));
   }
   gh(createArgs, { dryRun, log });
 
@@ -122,7 +160,7 @@ export function publish({ dir, dryRun = false, log = console.log }) {
         [
           'release', 'create', pointerTag, '--prerelease',
           '--title', `${CHANNEL_LABEL[channel]} (latest build)`,
-          '--notes', 'Always points at the newest build of this channel. Used by AppImageUpdate.',
+          '--notes', 'Always points at the newest build of this channel. Used by AppImageUpdate and the Windows App Installer.',
           '--target', commitSha,
         ],
         { dryRun, log }
@@ -153,7 +191,7 @@ function main() {
       validate({ channel: options.channel, branch: options.branch ?? process.env.GITHUB_REF_NAME, releasesJson: options['releases-json'] });
       break;
     case 'publish':
-      publish({ dir: options.dir, dryRun: options.dryRun });
+      publish({ dirs: options.dir, dryRun: options.dryRun });
       prune({ dryRun: options.dryRun });
       break;
     case 'prune':

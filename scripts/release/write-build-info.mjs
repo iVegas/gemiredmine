@@ -5,10 +5,11 @@
 //   CHANNEL             stable | canary | unstable | dev (default: dev)
 //   GITHUB_RUN_NUMBER   CI run number, used as the unstable build number
 //   BUILD_DATE          override for reproducible builds (ISO 8601)
+//   TARGET_PLATFORM     linux | windows (default: the host platform)
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { deriveBuildInfo } from './channels.mjs';
+import { deriveBuildInfo, hostPlatform } from './channels.mjs';
 
 const OUTPUT = fileURLToPath(new URL('../../src/shared/build-info.generated.ts', import.meta.url));
 const DEV_PREVIEW_ENTRY = fileURLToPath(new URL('../../src/bun/dev-preview.generated.ts', import.meta.url));
@@ -28,6 +29,7 @@ export function generateBuildInfo(env = process.env) {
   const info = deriveBuildInfo({
     packageVersion: version,
     channel: env.CHANNEL || 'dev',
+    platform: env.TARGET_PLATFORM || hostPlatform(),
     buildNumber: Number(env.GITHUB_RUN_NUMBER || 0),
     commit: gitCommit(),
     buildDate: env.BUILD_DATE || new Date().toISOString(),

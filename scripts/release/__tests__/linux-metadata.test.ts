@@ -61,6 +61,7 @@ describe('releaseMetadata', () => {
   it('carries the tags and assets the publish step needs', () => {
     expect(releaseMetadata({ channel: 'stable', version: '1.0.0', commit: 'abc', tag: 'v1.0.0', pointerTag: null, assets: [] })).toEqual({
       channel: 'stable',
+      platform: 'linux',
       version: '1.0.0',
       commit: 'abc',
       commitSha: 'abc',

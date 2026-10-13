@@ -2,6 +2,7 @@
 """Generates the per-channel application icons in assets/icons/.
 
 Each channel gets its own colour and label so side-by-side installs are easy to tell apart.
+It writes the Linux PNG, the Windows .ico, and the Windows package tiles.
 Re-run after changing the design; the PNGs are committed so builds do not need Pillow.
 """
 from pathlib import Path
@@ -54,11 +55,40 @@ def render(name: str, colour: tuple[int, int, int], label: str | None) -> Image.
     return image
 
 
+# Tile sizes the Windows package needs (MSIX Assets folder). Square tiles use the icon itself;
+# the wide tile centres it on the channel colour.
+WINDOWS_TILES = {
+    "Square44x44Logo.png": (44, 44),
+    "Square150x150Logo.png": (150, 150),
+    "StoreLogo.png": (50, 50),
+    "Wide310x150Logo.png": (310, 150),
+}
+ICO_SIZES = [(16, 16), (32, 32), (48, 48), (256, 256)]
+
+
+def windows_tile(icon: Image.Image, size: tuple[int, int], colour: tuple[int, int, int]) -> Image.Image:
+    width, height = size
+    if width == height:
+        return icon.resize(size, Image.LANCZOS)
+    canvas = Image.new("RGBA", size, colour + (255,))
+    side = height - 20
+    canvas.paste(icon.resize((side, side), Image.LANCZOS), ((width - side) // 2, 10), icon.resize((side, side), Image.LANCZOS))
+    return canvas
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     for name, (colour, label) in CHANNELS.items():
-        render(name, colour, label).save(OUT / f"{name}.png", optimize=True)
-        print(f"wrote {OUT / f'{name}.png'}")
+        icon = render(name, colour, label)
+        icon.save(OUT / f"{name}.png", optimize=True)
+        icon.save(OUT / f"{name}.ico", sizes=ICO_SIZES)
+        print(f"wrote {OUT / f'{name}.png'} and {name}.ico")
+
+        windows_dir = ROOT / "assets" / "windows" / name
+        windows_dir.mkdir(parents=True, exist_ok=True)
+        for tile, size in WINDOWS_TILES.items():
+            windows_tile(icon, size, colour).save(windows_dir / tile, optimize=True)
+        print(f"wrote {len(WINDOWS_TILES)} Windows tiles to {windows_dir}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,59 @@
+# Reusable build: Electrobun Windows build and signed MSIX for one release channel.
+# Called by the unstable, canary and stable workflows. Nothing is published from here.
+# Release packages must be signed, so the signing secrets are required.
+name: Build Windows package
+
+on:
+  workflow_call:
+    inputs:
+      channel:
+        description: stable, canary or unstable
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 75
+    env:
+      CHANNEL: ${{ inputs.channel }}
+      TARGET_PLATFORM: windows
+      REQUIRE_SIGNING: '1'
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        env:
+          HUSKY: '0'
+        run: npm ci
+
+      - name: Build webview
+        run: npm run build
+
+      - name: Build Electrobun app
+        run: npm run build:electrobun
+
+      - name: Package and sign MSIX
+        env:
+          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+          WINDOWS_PUBLISHER: ${{ secrets.WINDOWS_PUBLISHER }}
+        run: node scripts/release/package-windows.mjs
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ inputs.channel }}
+          path: dist/windows/${{ inputs.channel }}/
+          if-no-files-found: error
+          retention-days: 30

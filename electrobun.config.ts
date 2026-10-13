@@ -1,6 +1,6 @@
 import type { ElectrobunConfig } from 'electrobun';
 import { readFileSync } from 'node:fs';
-import { deriveBuildInfo } from './scripts/release/channels.mjs';
+import { deriveBuildInfo, hostPlatform } from './scripts/release/channels.mjs';
 
 // Version, name and identifier all come from the same derivation the app uses
 // (package.json is the single hand-edited version source).
@@ -9,6 +9,7 @@ const channel = process.env.CHANNEL || 'dev';
 const info = deriveBuildInfo({
   packageVersion,
   channel,
+  platform: process.env.TARGET_PLATFORM || hostPlatform(),
   buildNumber: Number(process.env.GITHUB_RUN_NUMBER || 0),
   buildDate: process.env.BUILD_DATE || new Date().toISOString(),
 });
@@ -37,6 +38,7 @@ export default {
     },
     win: {
       bundleCEF: false,
+      icon: `assets/icons/${channel}.ico`,
     },
   },
   // Updates are delivered by the platform (AppImageUpdate, package managers),

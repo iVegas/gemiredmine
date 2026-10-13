@@ -11,6 +11,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REPOSITORY, deriveBuildInfo } from './channels.mjs';
 import { POINTER_TAGS, tagFor } from './policy.mjs';
+import { findAppBuild } from './build-output.mjs';
 import {
   appImageFileName,
   appRunScript,
@@ -46,25 +47,6 @@ function ensureAppImageTool(cacheDir, run) {
   }
   chmodSync(path, 0o755);
   return path;
-}
-
-/**
- * Finds the directory Electrobun produced for the app. Electrobun names it `<app>` for the
- * stable environment and `<app>-<env>` for others, for example
- * build/canary-linux-x64/Gemiredmine-Unstable-canary. Only those exact names are accepted,
- * so one channel can never package another channel's build.
- */
-export function findAppBuild(buildRoot, appName) {
-  if (!existsSync(buildRoot)) throw new Error(`No Electrobun build found at ${buildRoot}. Run the build first.`);
-  for (const envDir of readdirSync(buildRoot)) {
-    const electrobunEnv = /^(.+)-linux-x64$/.exec(envDir)?.[1];
-    if (!electrobunEnv) continue;
-    for (const name of [appName, `${appName}-${electrobunEnv}`]) {
-      const candidate = join(buildRoot, envDir, name);
-      if (existsSync(join(candidate, 'bin', 'launcher'))) return candidate;
-    }
-  }
-  throw new Error(`No ${appName} build found under ${buildRoot}.`);
 }
 
 function gitCommit(root, ref = 'HEAD', short = false) {
@@ -138,12 +120,14 @@ export function packageLinux({ env = process.env, root = ROOT, run = execFileSyn
     }
   }
 
+  // Platform-specific checksum names, so Linux and Windows assets can share one release.
   const checksums = assets.map(asset => `${sha256(asset.path)}  ${asset.name}`).join('\n');
-  writeFileSync(join(outDir, 'SHA256SUMS'), `${checksums}\n`);
-  assets.push({ name: 'SHA256SUMS', path: join(outDir, 'SHA256SUMS'), pointer: false });
+  writeFileSync(join(outDir, 'SHA256SUMS-linux.txt'), `${checksums}\n`);
+  assets.push({ name: 'SHA256SUMS-linux.txt', path: join(outDir, 'SHA256SUMS-linux.txt'), pointer: false });
 
   const metadata = releaseMetadata({
     channel,
+    platform: 'linux',
     version: info.version,
     commit: info.commit,
     commitSha,
