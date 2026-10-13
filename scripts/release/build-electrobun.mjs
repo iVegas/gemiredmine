@@ -6,7 +6,7 @@
 // the AppImage is already a compressed, self-contained package, so it wraps the
 // unpacked layout instead. Channel identity (name, identifier, version) comes from
 // electrobun.config.ts, not from Electrobun's environment.
-import { execFileSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 
 const CHANNELS = ['stable', 'canary', 'unstable', 'dev'];
 
@@ -15,10 +15,10 @@ if (!CHANNELS.includes(channel)) {
   throw new Error(`Unknown channel "${channel}". Expected one of: ${CHANNELS.join(', ')}`);
 }
 
-// On Windows npx is a batch file, which needs a shell to run.
-const onWindows = process.platform === 'win32';
-execFileSync(onWindows ? 'npx.cmd' : 'npx', ['electrobun', 'build', '--env=dev'], {
-  stdio: 'inherit',
-  env: process.env,
-  shell: onWindows,
-});
+const args = ['electrobun', 'build', '--env=dev'];
+if (process.platform === 'win32') {
+  // On Windows npx is a batch file, so it runs through the shell. The arguments are fixed, so nothing is injected.
+  execSync(['npx.cmd', ...args].join(' '), { stdio: 'inherit', env: process.env });
+} else {
+  execFileSync('npx', args, { stdio: 'inherit', env: process.env });
+}

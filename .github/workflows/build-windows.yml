@@ -46,6 +46,32 @@ jobs:
       - name: Check out
         uses: actions/checkout@v4
 
+      - name: Check signing secrets
+        shell: bash
+        env:
+          WINDOWS_SELF_SIGNED_PFX_BASE64: ${{ secrets.WINDOWS_SELF_SIGNED_PFX_BASE64 }}
+          WINDOWS_SELF_SIGNED_PASSWORD: ${{ secrets.WINDOWS_SELF_SIGNED_PASSWORD }}
+          WINDOWS_SELF_SIGNED_PUBLISHER: ${{ secrets.WINDOWS_SELF_SIGNED_PUBLISHER }}
+          WINDOWS_TRUSTED_PFX_BASE64: ${{ secrets.WINDOWS_TRUSTED_PFX_BASE64 }}
+          WINDOWS_TRUSTED_PASSWORD: ${{ secrets.WINDOWS_TRUSTED_PASSWORD }}
+          WINDOWS_TRUSTED_PUBLISHER: ${{ secrets.WINDOWS_TRUSTED_PUBLISHER }}
+        run: |
+          # Fail before the slow build steps when the secrets for this signing profile are not set.
+          case "$WINDOWS_SIGNING" in
+            self-signed) required="WINDOWS_SELF_SIGNED_PFX_BASE64 WINDOWS_SELF_SIGNED_PASSWORD" ;;
+            trusted) required="WINDOWS_TRUSTED_PFX_BASE64 WINDOWS_TRUSTED_PASSWORD WINDOWS_TRUSTED_PUBLISHER" ;;
+            *) echo "::error::Unknown signing profile '$WINDOWS_SIGNING'"; exit 1 ;;
+          esac
+          missing=""
+          for name in $required; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error title=Windows signing secrets missing::Set these repository secrets for the $WINDOWS_SIGNING profile:$missing. See RELEASE_POLICY.md, 'Signing secrets (Windows)'."
+            exit 1
+          fi
+          echo "All secrets for the $WINDOWS_SIGNING profile are set."
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
