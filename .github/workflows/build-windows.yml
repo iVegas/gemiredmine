@@ -13,10 +13,20 @@ on:
         default: unstable
         type: choice
         options: [unstable, canary, stable]
+      signing:
+        description: self-signed (canary, unstable) or trusted (stable)
+        required: true
+        default: self-signed
+        type: choice
+        options: [self-signed, trusted]
   workflow_call:
     inputs:
       channel:
         description: stable, canary or unstable
+        required: true
+        type: string
+      signing:
+        description: self-signed (canary, unstable) or trusted (stable)
         required: true
         type: string
 
@@ -31,6 +41,7 @@ jobs:
       CHANNEL: ${{ inputs.channel }}
       TARGET_PLATFORM: windows
       REQUIRE_SIGNING: '1'
+      WINDOWS_SIGNING: ${{ inputs.signing }}
     steps:
       - name: Check out
         uses: actions/checkout@v4
@@ -54,9 +65,12 @@ jobs:
 
       - name: Package and sign MSIX
         env:
-          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
-          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
-          WINDOWS_PUBLISHER: ${{ secrets.WINDOWS_PUBLISHER }}
+          WINDOWS_SELF_SIGNED_PFX_BASE64: ${{ secrets.WINDOWS_SELF_SIGNED_PFX_BASE64 }}
+          WINDOWS_SELF_SIGNED_PASSWORD: ${{ secrets.WINDOWS_SELF_SIGNED_PASSWORD }}
+          WINDOWS_SELF_SIGNED_PUBLISHER: ${{ secrets.WINDOWS_SELF_SIGNED_PUBLISHER }}
+          WINDOWS_TRUSTED_PFX_BASE64: ${{ secrets.WINDOWS_TRUSTED_PFX_BASE64 }}
+          WINDOWS_TRUSTED_PASSWORD: ${{ secrets.WINDOWS_TRUSTED_PASSWORD }}
+          WINDOWS_TRUSTED_PUBLISHER: ${{ secrets.WINDOWS_TRUSTED_PUBLISHER }}
         run: node scripts/release/package-windows.mjs
 
       - name: Upload artifacts

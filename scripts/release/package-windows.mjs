@@ -1,13 +1,13 @@
 #!/usr/bin/env node
-// Packages the Electrobun Windows build of one channel as a signed MSIX with an App Installer feed.
+// Packages the Electrobun Windows build of one channel as an MSIX with an App Installer feed.
 //
 // Inputs:  CHANNEL, GITHUB_RUN_NUMBER (unstable build number), GITHUB_SHA (optional)
-//          WINDOWS_CERT_PFX_BASE64, WINDOWS_CERT_PASSWORD  code-signing certificate (base64 PFX)
-//          WINDOWS_PUBLISHER   must equal the certificate subject (default CN=Gemiredmine)
+//          WINDOWS_SIGNING     none | self-signed | trusted (see windows-signing.mjs)
 //          REQUIRE_SIGNING=1   refuse to produce an unsigned package (release builds)
+//          the secrets for the chosen profile, WINDOWS_SELF_SIGNED_* or WINDOWS_TRUSTED_*
 //          MAKEAPPX, SIGNTOOL  optional paths to the Windows SDK tools
 // Outputs: dist/windows/<channel>/ with the MSIX, its fixed-name copy, the App Installer file,
-//          SHA256SUMS-windows.txt and release.json, which the publish step reads.
+//          the public certificate (self-signed only), SHA256SUMS-windows.txt and release.json.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -17,6 +17,7 @@ import { REPOSITORY, deriveBuildInfo } from './channels.mjs';
 import { POINTER_TAGS, tagFor } from './policy.mjs';
 import { findAppBuild } from './build-output.mjs';
 import { releaseMetadata } from './linux-metadata.mjs';
+import { resolveSigning } from './windows-signing.mjs';
 import {
   appInstallerFileName,
   buildAppInstaller,
@@ -29,8 +30,14 @@ import {
 } from './windows-metadata.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-const DEFAULT_PUBLISHER = 'CN=Gemiredmine';
 const TIMESTAMP_URL = 'http://timestamp.digicert.com';
+
+// Reads the certificate's public part from the PFX. The password is passed through the environment, not the command line.
+const EXPORT_PUBLIC_CERTIFICATE = [
+  '$password = ConvertTo-SecureString $env:GEMI_PFX_PASSWORD -AsPlainText -Force',
+  '$certificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($env:GEMI_PFX, $password)',
+  '[System.IO.File]::WriteAllBytes($env:GEMI_CER, $certificate.Export("Cert"))',
+].join('; ');
 
 export function sha256(path) {
   return createHash('sha256').update(readFileSync(path)).digest('hex');
@@ -86,26 +93,37 @@ function copyAssets(assetDir, targetDir) {
   }
 }
 
-function signPackage({ msixPath, env, run, signtool }) {
-  const base64 = env.WINDOWS_CERT_PFX_BASE64;
-  if (!base64) {
-    if (env.REQUIRE_SIGNING === '1') {
-      throw new Error('This release must be signed, but WINDOWS_CERT_PFX_BASE64 is not set.');
-    }
-    return false;
-  }
-  const pfx = join(dirname(msixPath), 'signing-certificate.pfx');
-  writeFileSync(pfx, Buffer.from(base64, 'base64'), { mode: 0o600 });
+/** Writes the certificate's public part (a .cer) so testers can trust a self-signed package. */
+export function exportPublicCertificate({ pfx, password, out, run = execFileSync }) {
+  run('powershell', ['-NoProfile', '-NonInteractive', '-Command', EXPORT_PUBLIC_CERTIFICATE], {
+    stdio: 'inherit',
+    env: { ...process.env, GEMI_PFX: pfx, GEMI_PFX_PASSWORD: password, GEMI_CER: out },
+  });
+  return out;
+}
+
+/** Signs the package with the resolved profile. Returns the public certificate's path for self-signed packages. */
+function signPackage({ msixPath, signing, outDir, appName, env, run, signtool, exportCertificate }) {
+  if (signing.profile === 'none') return null;
+
+  const pfx = join(outDir, 'signing-certificate.pfx');
+  writeFileSync(pfx, Buffer.from(signing.pfxBase64, 'base64'), { mode: 0o600 });
   try {
-    run(signtool, ['sign', '/fd', 'SHA256', '/f', pfx, '/p', env.WINDOWS_CERT_PASSWORD ?? '', '/td', 'SHA256', '/tr', TIMESTAMP_URL, msixPath], {
+    run(signtool, ['sign', '/fd', 'SHA256', '/f', pfx, '/p', signing.password, '/td', 'SHA256', '/tr', TIMESTAMP_URL, msixPath], {
       stdio: 'inherit',
       env,
     });
-    run(signtool, ['verify', '/pa', '/v', msixPath], { stdio: 'inherit', env });
+    // A self-signed certificate is not trusted on the build machine, so only trusted packages can be verified here.
+    if (signing.profile === 'trusted') {
+      run(signtool, ['verify', '/pa', '/v', msixPath], { stdio: 'inherit', env });
+      return null;
+    }
+    const certificatePath = join(outDir, `${appName}-self-signed.cer`);
+    exportCertificate({ pfx, password: signing.password, out: certificatePath, run });
+    return certificatePath;
   } finally {
     rmSync(pfx, { force: true });
   }
-  return true;
 }
 
 export function packageWindows({
@@ -114,9 +132,17 @@ export function packageWindows({
   run = execFileSync,
   makeappx = findWindowsSdkTool('makeappx', { env }),
   signtool = findWindowsSdkTool('signtool', { env }),
+  exportCertificate = ({ pfx, password, out, run: runCommand }) => exportPublicCertificate({ pfx, password, out, run: runCommand }),
 } = {}) {
   const channel = env.CHANNEL;
   if (!channel) throw new Error('Set CHANNEL to stable, canary or unstable.');
+
+  const signing = resolveSigning({
+    channel,
+    profile: env.WINDOWS_SIGNING || 'none',
+    requireSigning: env.REQUIRE_SIGNING === '1',
+    env,
+  });
 
   const { version } = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
   const commitSha = env.GITHUB_SHA || tryGit(root, 'HEAD');
@@ -139,13 +165,12 @@ export function packageWindows({
   const executable = ensureLauncher(payload, root);
   copyAssets(join(root, 'assets', 'windows', channel), join(payload, 'Assets'));
 
-  const publisher = env.WINDOWS_PUBLISHER || DEFAULT_PUBLISHER;
   const packageVersion = msixVersion(channel, info.version);
   writeFileSync(
     join(payload, 'AppxManifest.xml'),
     buildAppxManifest({
       identityName: info.identifier,
-      publisher,
+      publisher: signing.publisher,
       version: packageVersion,
       displayName: info.productName,
       publisherDisplayName: 'Gemiredmine',
@@ -156,7 +181,7 @@ export function packageWindows({
 
   const versionedPath = join(outDir, packageFileName(info.appName, info.version));
   run(makeappx, ['pack', '/d', payload, '/p', versionedPath, '/o'], { stdio: 'inherit', env });
-  const signed = signPackage({ msixPath: versionedPath, env, run, signtool });
+  const certificatePath = signPackage({ msixPath: versionedPath, signing, outDir, appName: info.appName, env, run, signtool, exportCertificate });
 
   // The fixed names are what the App Installer feed points at, so the feed URLs never change.
   const feed = feedUrls({ channel, owner: REPOSITORY.owner, repo: REPOSITORY.name, appName: info.appName });
@@ -167,7 +192,7 @@ export function packageWindows({
     installerPath,
     buildAppInstaller({
       identityName: info.identifier,
-      publisher,
+      publisher: signing.publisher,
       version: packageVersion,
       packageUrl: feed.packageUrl,
       appInstallerUrl: feed.appInstallerUrl,
@@ -180,6 +205,10 @@ export function packageWindows({
     { name: fixedPackageFileName(info.appName), path: fixedPath, pointer: pointerTag !== null },
     { name: appInstallerFileName(info.appName), path: installerPath, pointer: pointerTag !== null },
   ];
+  if (certificatePath) {
+    // Testers need the certificate before the package can be installed, so it ships with each release.
+    assets.push({ name: `${info.appName}-self-signed.cer`, path: certificatePath, pointer: pointerTag !== null });
+  }
 
   const checksums = assets.map(asset => `${sha256(asset.path)}  ${asset.name}`).join('\n');
   writeFileSync(join(outDir, 'SHA256SUMS-windows.txt'), `${checksums}\n`);
@@ -195,10 +224,13 @@ export function packageWindows({
     pointerTag,
     assets: assets.map(({ name, pointer }) => ({ name, pointer })),
   });
-  writeFileSync(join(outDir, 'release.json'), `${JSON.stringify({ ...metadata, signed, publisher }, null, 2)}\n`);
+  writeFileSync(
+    join(outDir, 'release.json'),
+    `${JSON.stringify({ ...metadata, signing: signing.profile, publisher: signing.publisher }, null, 2)}\n`
+  );
 
   rmSync(payload, { recursive: true, force: true });
-  return { outDir, metadata, signed };
+  return { outDir, metadata, signing: signing.profile };
 }
 
 function tryGit(root, ref, short = false) {
@@ -214,7 +246,7 @@ function tryGit(root, ref, short = false) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const { outDir, metadata, signed } = packageWindows();
-  console.log(`packaged ${metadata.version} for ${metadata.channel} (windows, ${signed ? 'signed' : 'UNSIGNED'}) into ${outDir}`);
+  const { outDir, metadata, signing } = packageWindows();
+  console.log(`packaged ${metadata.version} for ${metadata.channel} (windows, signing: ${signing}) into ${outDir}`);
   for (const asset of metadata.assets) console.log(`  ${asset.name}${asset.pointer ? ' (pointer)' : ''}`);
 }

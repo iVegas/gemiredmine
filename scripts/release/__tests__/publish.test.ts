@@ -157,3 +157,57 @@ describe('publish CLI logic', () => {
     expect(() => publish({ dirs: [linux, windows], dryRun: true, log })).toThrow('more than one package');
   });
 });
+
+describe('publish Windows signing', () => {
+  let dir: string;
+  const logs: string[] = [];
+  const log = (line: string) => logs.push(line);
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'gemi-sign-'));
+    logs.length = 0;
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const windowsFolder = (name: string, channel: string, signing: string, extra: string[], pointer: boolean) => {
+    const folder = join(dir, name);
+    mkdirSync(folder);
+    const files = ['Gemiredmine-Unstable-1.0.0-unstable.7-x64.msix', ...extra];
+    for (const file of files) writeFileSync(join(folder, file), file);
+    writeFileSync(
+      join(folder, 'release.json'),
+      JSON.stringify({
+        channel,
+        platform: 'windows',
+        signing,
+        version: channel === 'stable' ? '1.0.0' : '1.0.0-unstable.7',
+        commit: 'abc1234',
+        commitSha: 'abc1234567890abcdef1234567890abcdef12345',
+        tag: channel === 'stable' ? 'v1.0.0' : 'unstable-v1.0.0-unstable.7',
+        pointerTag: pointer ? 'unstable-latest' : null,
+        assets: files.map(file => ({ name: file, pointer: file.endsWith('.cer') || pointer })),
+      })
+    );
+    return folder;
+  };
+
+  it('refuses to publish a stable Windows package signed with the self-signed certificate', () => {
+    const folder = windowsFolder('stable', 'stable', 'self-signed', [], false);
+    expect(() => publish({ dirs: [folder], dryRun: true, log })).toThrow('must be signed with trusted signing');
+  });
+
+  it('tells testers how to trust a self-signed release', () => {
+    const cerName = 'Gemiredmine-Unstable-self-signed.cer';
+    const folder = windowsFolder('unstable', 'unstable', 'self-signed', [cerName], true);
+
+    publish({ dirs: [folder], dryRun: true, log });
+
+    const create = logs.find(line => line.includes('release create unstable-v1.0.0-unstable.7'));
+    expect(create).toContain('self-signed certificate');
+    expect(create).toContain(`Import-Certificate -FilePath ${cerName}`);
+    expect(create).not.toContain('FilePath null');
+  });
+});

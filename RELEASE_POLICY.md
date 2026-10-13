@@ -57,11 +57,17 @@ MSIX versions have four numbers, so each build maps onto them in order: stable `
 `1.2.0.0`, canary `1.2.0-rc.3` becomes `1.2.0.3`, and unstable `1.2.0-unstable.42` becomes `1.2.0.42`.
 Within a channel the version always increases, so every upgrade is accepted.
 
-Packages are signed with a code-signing certificate. Release builds refuse to publish an unsigned package,
-because Windows will not install one. The publisher in the manifest must match the certificate subject, which
-is why it is set from a secret (see the contributor guide). Windows must trust the certificate: use a
-publicly trusted code-signing certificate for releases. A self-signed certificate only works on machines that
-trust it.
+Windows packages are signed with one of two profiles, chosen by channel:
+
+- **Canary and unstable: self-signed.** One certificate, created once and kept as a secret, so every
+  build has the same publisher and upgrades work. Each release attaches the public certificate
+  (`<app>-self-signed.cer`). Before installing, import it as an administrator into the Trusted People store:
+  `Import-Certificate -FilePath <file>.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople`.
+- **Stable: trusted.** A publicly trusted code-signing certificate, so Windows installs the package without
+  any manual step. Stable releases are refused unless they are signed this way.
+
+Local builds are unsigned and cannot be installed. Set `REQUIRE_SIGNING=1` for release builds, which refuses
+an unsigned package.
 
 ## Installing and updating on Linux
 
@@ -105,11 +111,20 @@ version. That migration is a separate decision.
 
 ## Signing secrets (Windows)
 
-The Windows release workflows read these repository secrets:
+Each profile has its own secrets, so the self-signed certificate can never reach a stable release.
 
-- `WINDOWS_CERT_PFX_BASE64`: the code-signing certificate, as a base64-encoded `.pfx` file
-- `WINDOWS_CERT_PASSWORD`: the password of that `.pfx`
-- `WINDOWS_PUBLISHER`: the certificate subject exactly as written in the manifest, for example `CN=Gemiredmine, O=...`
+| Secret | Used by | Contents |
+|---|---|---|
+| `WINDOWS_SELF_SIGNED_PFX_BASE64` | canary, unstable | base64 of the self-signed `.pfx` |
+| `WINDOWS_SELF_SIGNED_PASSWORD` | canary, unstable | password of that `.pfx` |
+| `WINDOWS_SELF_SIGNED_PUBLISHER` | canary, unstable | certificate subject, for example `CN=Gemiredmine` |
+| `WINDOWS_TRUSTED_PFX_BASE64` | stable | base64 of the trusted code-signing `.pfx` |
+| `WINDOWS_TRUSTED_PASSWORD` | stable | password of that `.pfx` |
+| `WINDOWS_TRUSTED_PUBLISHER` | stable | certificate subject exactly as in the certificate |
+
+Create the self-signed certificate with `scripts/release/New-SelfSignedCodeSigningCertificate.ps1`, which can
+store its three secrets with `gh` (`-SetGitHubSecrets`). Until the trusted secrets exist, the Stable workflow
+fails at the packaging step with a message naming the missing secret.
 
 ## Running a release
 
@@ -138,7 +153,7 @@ sudo apt install libwebkit2gtk-4.1-0 libsoup-3.0-0 libjavascriptcoregtk-4.1-0 li
 ## Not covered yet
 
 - Android builds are not part of this pipeline.
-- AppImages are not code-signed. Windows packages are signed only when the signing secrets are set.
+- AppImages are not code-signed. Windows packages need signing secrets for their channel (see above).
 - The Linux update path has not been tested with a published release yet, and the Windows packages have not been
   installed on a Windows machine by the pipeline (see the verification notes in the pull request).
 - Windows on ARM and the Microsoft Store are not covered. winget is a possible next step.
