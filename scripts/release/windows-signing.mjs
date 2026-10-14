@@ -48,7 +48,7 @@ export function resolveSigning({ channel, profile = 'none', requireSigning = fal
   const pfxBase64 = env[names.pfx];
   if (!pfxBase64) {
     const howTo = profile === 'self-signed'
-      ? 'Create it once on Windows with scripts/release/New-SelfSignedCodeSigningCertificate.ps1 -SetGitHubSecrets.'
+      ? 'Create it once with scripts/release/New-SelfSignedCodeSigningCertificate.ps1 (Windows) or new-self-signed-code-signing-certificate.sh (Linux).'
       : 'Add the publicly trusted certificate as a repository secret.';
     throw new Error(`Windows ${profile} signing needs the ${names.pfx} secret. ${howTo} See RELEASE_POLICY.md, "Signing secrets (Windows)".`);
   }

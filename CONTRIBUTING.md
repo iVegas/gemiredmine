@@ -44,11 +44,20 @@ local tag. Push the commit only, and let the Stable workflow create the tag.
 set `CHANNEL` and optionally `MAKEAPPX` and `SIGNTOOL` to the tool paths. Without `WINDOWS_SIGNING` the package
 is unsigned and cannot be installed.
 
-To create the self-signed certificate used by canary and unstable, run this once on Windows:
+To create the self-signed certificate used by canary and unstable, run one of these once. On Windows:
 
 ```powershell
 .\scripts\release\New-SelfSignedCodeSigningCertificate.ps1 -SetGitHubSecrets
 ```
+
+On Linux (Ubuntu and Kubuntu have the OpenSSL it needs; `--set-github-secrets` also needs `gh`, logged in):
+
+```sh
+./scripts/release/new-self-signed-code-signing-certificate.sh --set-github-secrets
+```
+
+Without `--set-github-secrets` the Linux script writes each secret's value to a file in
+`~/gemiredmine-signing/secrets`, to paste into the repository's Actions secrets.
 
 The release workflows read the secrets listed in [`RELEASE_POLICY.md`](./RELEASE_POLICY.md#signing-secrets-windows).
 
