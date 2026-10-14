@@ -2,8 +2,10 @@
   import { addServer, type ServerUser } from './lib/store';
   import { redmineApi } from './lib/api';
 
-  export let onCancel: () => void;
   export let onSuccess: () => void;
+  /** Without it there is nothing to go back to, so no Cancel button is shown. */
+  export let onCancel: (() => void) | undefined = undefined;
+  export let title = 'Add New Server';
 
   let name = '';
   let url = '';
@@ -47,7 +49,7 @@
 </script>
 
 <div class="max-w-md mx-auto mt-10 p-6 bg-white rounded-lg shadow-md">
-  <h2 class="text-2xl font-bold mb-6 text-gray-800">Add New Server</h2>
+  <h2 class="text-2xl font-bold mb-6 text-gray-800">{title}</h2>
 
   <form on:submit={handleSubmit} class="space-y-4">
     <div>
@@ -90,9 +92,11 @@
     {/if}
 
     <div class="flex justify-end space-x-3 pt-4">
-      <button type="button" class="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" on:click={onCancel}>
-        Cancel
-      </button>
+      {#if onCancel}
+        <button type="button" class="py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500" on:click={onCancel}>
+          Cancel
+        </button>
+      {/if}
       <button type="submit" disabled={busy} class="py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
         Add Server
       </button>

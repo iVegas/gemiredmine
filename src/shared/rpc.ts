@@ -41,6 +41,7 @@ export type GemiRPCSchema = {
         params: ServerAccess & { dueFrom: string; dueTo: string };
         response: RedmineIssue[];
       };
+      listAssignedTasks: { params: ServerAccess; response: RedmineIssue[] };
       getDevPreviewStatus: { params: void; response: DevPreviewStatus };
       setDevPreviewEnabled: { params: { enabled: boolean }; response: DevPreviewStatus };
       recordDiagnostic: { params: { level: LogLevel; scope: string; message: string }; response: void };
