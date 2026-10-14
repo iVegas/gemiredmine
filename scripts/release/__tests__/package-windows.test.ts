@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { packageWindows } from '../package-windows.mjs';
+import { errorAnnotation, packageWindows } from '../package-windows.mjs';
 
 // Stand-ins for makeappx.exe and signtool.exe. They run on Linux, so the packaging flow can be
 // tested here. The real tools run on the Windows CI runner.
@@ -161,6 +161,12 @@ describe('packageWindows', () => {
     expect(() =>
       packageWindows({ env: env({ WINDOWS_SIGNING: 'self-signed', WINDOWS_SELF_SIGNED_PFX_BASE64: undefined }), root, exportCertificate: fakeExport })
     ).toThrow('WINDOWS_SELF_SIGNED_PFX_BASE64');
+  });
+
+  it('reports a failure as a single-line GitHub Actions error annotation', () => {
+    expect(errorAnnotation('needs the WINDOWS_SELF_SIGNED_PFX_BASE64 secret.\n100% sure')).toBe(
+      '::error title=Windows packaging failed::needs the WINDOWS_SELF_SIGNED_PFX_BASE64 secret.%0A100%25 sure'
+    );
   });
 
   it('uses the genuine launcher from the Electrobun Windows core when the build only has the extensionless launcher', () => {

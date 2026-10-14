@@ -233,6 +233,12 @@ export function packageWindows({
   return { outDir, metadata, signing: signing.profile };
 }
 
+/** A GitHub Actions error annotation, so the run summary names the cause instead of only an exit code. */
+export function errorAnnotation(message) {
+  const escaped = String(message).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+  return `::error title=Windows packaging failed::${escaped}`;
+}
+
 function tryGit(root, ref, short = false) {
   try {
     return execFileSync('git', ['rev-parse', ...(short ? ['--short'] : []), ref], {
@@ -246,7 +252,12 @@ function tryGit(root, ref, short = false) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const { outDir, metadata, signing } = packageWindows();
-  console.log(`packaged ${metadata.version} for ${metadata.channel} (windows, signing: ${signing}) into ${outDir}`);
-  for (const asset of metadata.assets) console.log(`  ${asset.name}${asset.pointer ? ' (pointer)' : ''}`);
+  try {
+    const { outDir, metadata, signing } = packageWindows();
+    console.log(`packaged ${metadata.version} for ${metadata.channel} (windows, signing: ${signing}) into ${outDir}`);
+    for (const asset of metadata.assets) console.log(`  ${asset.name}${asset.pointer ? ' (pointer)' : ''}`);
+  } catch (error) {
+    if (process.env.GITHUB_ACTIONS === 'true') console.log(errorAnnotation(error.message));
+    throw error;
+  }
 }
