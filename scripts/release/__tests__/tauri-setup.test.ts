@@ -159,3 +159,54 @@ describe('the crate', () => {
     expect(cargo).toContain('crate-type = ["staticlib", "cdylib", "rlib"]');
   });
 });
+
+describe('the build workflows', () => {
+  const workflows = { linux: read('.github', 'workflows', 'build-linux.yml'), windows: read('.github', 'workflows', 'build-windows.yml') };
+
+  it.each(Object.entries(workflows))('%s installs the Rust version that rust-toolchain.toml pins', (_name, workflow) => {
+    const pinned = /channel = "([\d.]+)"/.exec(read('rust-toolchain.toml'))?.[1];
+
+    expect(pinned).toBeDefined();
+    expect([...workflow.matchAll(/rustup toolchain install (\S+)/g)].map((match) => match[1])).toEqual([pinned]);
+  });
+
+  it.each(Object.entries(workflows))('%s builds with the desktop build script and checks the executable', (name, workflow) => {
+    expect(workflow).toContain('run: npm run build:desktop');
+    expect(workflow).toContain(`scripts/release/check-${name}-binary.mjs`);
+    expect(workflow.toLowerCase()).not.toContain('electrobun');
+  });
+
+  it.each(Object.entries(workflows))('%s keeps each channel in its own Rust cache', (_name, workflow) => {
+    expect(workflow).toContain('key: rust-${{ runner.os }}-${{ inputs.channel }}-${{ hashFiles(\'rust-toolchain.toml\', \'src-tauri/Cargo.lock\') }}');
+    expect(workflow).toContain('rust-${{ runner.os }}-${{ inputs.channel }}-\n');
+  });
+
+  it('only runs npm scripts that package.json defines', () => {
+    const scripts = Object.keys(readJson('package.json').scripts);
+    const checks = read('.github', 'workflows', 'checks.yml');
+
+    for (const [name, workflow] of [...Object.entries(workflows), ['checks', checks]]) {
+      const used = [...workflow.matchAll(/npm run ([\w:-]+)/g)].map((match) => match[1]);
+      expect(used.length, name).toBeGreaterThan(0);
+      for (const script of used) expect(scripts, `${name} runs npm run ${script}`).toContain(script);
+    }
+    expect(scripts).toEqual(expect.arrayContaining(['tauri', 'build:desktop']));
+  });
+
+  it('checks pull requests with the same Rust version', () => {
+    const pinned = /channel = "([\d.]+)"/.exec(read('rust-toolchain.toml'))?.[1];
+    const checks = read('.github', 'workflows', 'checks.yml');
+
+    expect([...checks.matchAll(/rustup toolchain install (\S+)/g)].map((match) => match[1])).toEqual([pinned]);
+    expect(checks).toContain('cargo test --manifest-path src-tauri/Cargo.toml --locked --lib');
+  });
+
+  it('builds Linux on the oldest supported system, which sets the glibc floor', () => {
+    expect(workflows.linux).toContain('runs-on: ubuntu-22.04');
+    expect(read('scripts', 'release', 'check-linux-binary.mjs')).toContain("MAX_GLIBC = '2.35'");
+  });
+
+  it('never negates a command with a leading "!", which bash -e does not treat as a failure', () => {
+    for (const workflow of Object.values(workflows)) expect(workflow).not.toMatch(/^\s+(?:run: |- )?!\s/m);
+  });
+});

@@ -1,4 +1,4 @@
-# Reusable build: Electrobun Windows build and signed MSIX for one release channel.
+# Reusable build: Tauri Windows build and signed MSIX for one release channel.
 # Called by the unstable, canary and stable workflows. Nothing is published from here.
 # Release packages must be signed, so the signing secrets are required.
 name: Build Windows package
@@ -57,11 +57,44 @@ jobs:
           HUSKY: '0'
         run: npm ci
 
-      - name: Build webview
-        run: npm run build
+      - name: Install Rust
+        # The same version as rust-toolchain.toml, which tauri-setup.test.ts checks.
+        run: rustup toolchain install 1.99.0 --profile minimal --no-self-update
 
-      - name: Build Electrobun app
-        run: npm run build:electrobun
+      - name: Cache Rust build
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-tauri/target
+          # Per channel: the channels build different feature sets (developer tools), so they share no objects.
+          key: rust-${{ runner.os }}-${{ inputs.channel }}-${{ hashFiles('rust-toolchain.toml', 'src-tauri/Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-${{ inputs.channel }}-
+
+      # Builds the web assets first (the Tauri config's beforeBuildCommand), then the executable.
+      - name: Build desktop app
+        run: npm run build:desktop
+
+      - name: Check the executable
+        run: node scripts/release/check-windows-binary.mjs
+
+      - name: Smoke test the executable
+        env:
+          GEMIREDMINE_DATA_DIR: ${{ runner.temp }}\smoke-data
+        run: |
+          # Starts the app with nothing installed next to it. It has to still be running after 20 seconds.
+          $name = node --input-type=module -e "import { CHANNELS } from './scripts/release/channels.mjs'; console.log(CHANNELS[process.env.CHANNEL].appName)"
+          $process = Start-Process -FilePath "src-tauri\target\release\$name.exe" -PassThru
+          Start-Sleep -Seconds 20
+          $process.Refresh()
+          if ($process.HasExited) {
+            Write-Output "::error title=Smoke test::The app exited with code $($process.ExitCode) within 20 seconds."
+            exit 1
+          }
+          Stop-Process -Id $process.Id -Force
 
       - name: Package and sign MSIX
         env:
