@@ -14,8 +14,8 @@ const desktop = vi.hoisted(() => ({
 }));
 
 vi.mock('../lib/bridge', () => ({
-  hasDesktopBackend: () => desktop.available,
-  backend: () => desktop.requests,
+  hasWindowLayer: () => desktop.available,
+  windowBackend: () => desktop.requests,
   onBackendMessage: () => {},
 }));
 

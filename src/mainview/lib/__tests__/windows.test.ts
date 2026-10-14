@@ -18,8 +18,8 @@ const desktop = vi.hoisted(() => ({
 }));
 
 vi.mock('../bridge', () => ({
-  hasDesktopBackend: () => desktop.available,
-  backend: () => desktop.requests,
+  hasWindowLayer: () => desktop.available,
+  windowBackend: () => desktop.requests,
   onBackendMessage: (name: string, listener: ((payload: never) => void) | undefined) => {
     desktop.listeners[name] = listener;
   },

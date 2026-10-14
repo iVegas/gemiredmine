@@ -1,7 +1,7 @@
 import { get, writable } from 'svelte/store';
 import type { SessionSnapshot, TabStripLayout, ViewPlacement, WindowMessages } from '../../shared/rpc';
 import { viewFromHash } from '../../shared/windows';
-import { backend, hasDesktopBackend, onBackendMessage } from './bridge';
+import { hasWindowLayer, onBackendMessage, windowBackend } from './bridge';
 import { activeServerId, servers } from './store';
 import {
   VIEW_TITLES,
@@ -32,9 +32,9 @@ export function viewWindowFromLocation(hash = typeof location === 'undefined' ? 
   return view && view in VIEW_TITLES && isClosable(view as ViewId) ? (view as ViewId) : null;
 }
 
-/** Tabs open in windows of their own only in the desktop app. */
+/** Tabs open in windows of their own only where the app has a window layer. */
 export function canDetachViews(): boolean {
-  return hasDesktopBackend();
+  return hasWindowLayer();
 }
 
 let lastShared = '';
@@ -63,7 +63,7 @@ function shareSessionChanges(active: () => boolean): () => void {
       const json = JSON.stringify(session);
       if (json === lastShared) return;
       lastShared = json;
-      void backend().shareSession(session);
+      void windowBackend().shareSession(session);
     });
   };
   const unsubscribers = [servers.subscribe(queue), activeServerId.subscribe(queue)];
@@ -85,7 +85,7 @@ function forget(view: ViewId) {
 
 /** Brings forward the window that shows a view. If that window is gone, the view opens in a tab. */
 function focusViewWindow(view: ViewId) {
-  void backend()
+  void windowBackend()
     .focusViewWindow({ view })
     .then(found => {
       if (found) return;
@@ -96,7 +96,7 @@ function focusViewWindow(view: ViewId) {
 
 /** Sets up the main window. Returns a function that undoes it. */
 export function startMainWindow(): () => void {
-  if (!hasDesktopBackend()) return () => {};
+  if (!hasWindowLayer()) return () => {};
 
   const stopListening = listen({
     sessionChanged: applySession,
@@ -129,23 +129,23 @@ export function startMainWindow(): () => void {
 export function startViewWindow(view: ViewId): () => void {
   openViews.set([view]);
   activeView.set(view);
-  if (!hasDesktopBackend()) return () => {};
+  if (!hasWindowLayer()) return () => {};
 
   // Other views open in the main window.
   routeViews(other => {
-    if (other !== view) void backend().openInMainWindow({ view: other });
+    if (other !== view) void windowBackend().openInMainWindow({ view: other });
     return true;
   });
   // The window closes with its view.
   const stopClosing = openViews.subscribe(views => {
-    if (views.length === 0) void backend().closeViewWindow();
+    if (views.length === 0) void windowBackend().closeViewWindow();
   });
 
   sessionReady.set(false);
   const stopListening = listen({ sessionChanged: applySession });
   let stopSharing = () => {};
   let stopped = false;
-  void backend()
+  void windowBackend()
     .getSession()
     .then(session => {
       if (stopped) return;
@@ -168,7 +168,7 @@ export function startViewWindow(view: ViewId): () => void {
 export async function detachView(view: ViewId): Promise<boolean> {
   if (!canDetachViews() || !isClosable(view) || !get(openViews).includes(view)) return false;
   const session = snapshot();
-  await backend().detachView({ view, title: VIEW_TITLES[view], session });
+  await windowBackend().detachView({ view, title: VIEW_TITLES[view], session });
   lastShared = JSON.stringify(session);
   detachedViews.update(views => [...views, view]);
   closeView(view);
@@ -177,16 +177,16 @@ export async function detachView(view: ViewId): Promise<boolean> {
 
 /** View window: puts the view back in the main window's tabs. */
 export function attachToMainWindow() {
-  void backend().attachView();
+  void windowBackend().attachView();
 }
 
 let lastLayout = '';
 
 /** Main window: tells the backend where the tab strip is, while views have windows of their own. */
 export function reportTabStrip(layout: TabStripLayout) {
-  if (!hasDesktopBackend() || get(detachedViews).length === 0) return;
+  if (!hasWindowLayer() || get(detachedViews).length === 0) return;
   const json = JSON.stringify(layout);
   if (json === lastLayout) return;
   lastLayout = json;
-  void backend().reportTabStrip(layout);
+  void windowBackend().reportTabStrip(layout);
 }
