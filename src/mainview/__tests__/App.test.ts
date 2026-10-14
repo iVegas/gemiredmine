@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
 import App from '../App.svelte';
 import { servers, activeServerId } from '../lib/store';
@@ -29,6 +29,10 @@ describe('App', () => {
     servers.set([]);
     activeServerId.set(null);
     resetViews();
+  });
+
+  afterEach(() => {
+    window.location.hash = '';
   });
 
   it('welcomes a new user and asks for the first server', () => {
@@ -160,5 +164,27 @@ describe('App', () => {
     await fireEvent.click(view.getByRole('button', { name: 'Back' }));
 
     expect(view.queryByRole('tab', { name: 'About' })).not.toBeInTheDocument();
+  });
+
+  it('shows only one view, without the user menu, in a view window', () => {
+    window.location.hash = '#view=calendar';
+    servers.set([signedIn]);
+    activeServerId.set('1');
+
+    const view = render(App);
+
+    expect(view.getAllByRole('tab').map(tab => tab.textContent?.replace('✕', '').trim())).toEqual(['Calendar']);
+    expect(view.getByRole('tabpanel', { name: 'Calendar' })).toBeVisible();
+    expect(view.getByRole('button', { name: 'Move to main window' })).toBeInTheDocument();
+    expect(view.queryByRole('button', { name: 'Ana K on Dev' })).not.toBeInTheDocument();
+  });
+
+  it('does not welcome a new user in a view window', () => {
+    window.location.hash = '#view=settings';
+
+    const view = render(App);
+
+    expect(view.queryByRole('heading', { name: 'Welcome to Gemiredmine' })).not.toBeInTheDocument();
+    expect(view.getByRole('heading', { name: 'Settings' })).toBeInTheDocument();
   });
 });
