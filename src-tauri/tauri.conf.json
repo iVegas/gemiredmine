@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Gemiredmine Dev",
+  "mainBinaryName": "Gemiredmine-Dev",
+  "version": "../package.json",
+  "identifier": "com.gemiredmine.app.dev",
+  "build": {
+    "frontendDist": "../views/mainview",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Gemiredmine Dev",
+        "width": 1024,
+        "height": 768
+      }
+    ],
+    "security": {
+      "capabilities": ["main", "dev-preview-dev"],
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'",
+      "devCsp": null
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["../assets/icons/dev.png", "../assets/icons/dev.ico"]
+  }
+}
