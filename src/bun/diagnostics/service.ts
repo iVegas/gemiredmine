@@ -1,12 +1,14 @@
-import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { LogAggregator, type LogEvent } from './aggregator';
 import { buildIssueLink, buildReport, type FeedbackEnvironment, type FeedbackInput } from './feedback';
+import type { DataFs } from './fs';
+import { createSerialQueue } from './serial';
 import { DiagnosticsStore } from './store';
 
 export interface DevPreviewOptions {
   /** Per-channel data directory: settings, logs and feedback reports live here */
   dataDir: string;
+  /** How the files in the data directory are read and written */
+  fs: DataFs;
   /** Whether this build offers the developer preview at all */
   available: boolean;
   repositoryUrl: string;
@@ -37,9 +39,9 @@ const FEEDBACK_REPORTS_KEPT = 10;
 /** How much recent history a feedback report includes */
 const FEEDBACK_LOG_BYTES = 200 * 1024;
 
-function readEnabledSetting(settingsPath: string): boolean {
+async function readEnabledSetting(fs: DataFs, settingsPath: string): Promise<boolean> {
   try {
-    return JSON.parse(readFileSync(settingsPath, 'utf8')).devPreviewEnabled === true;
+    return JSON.parse(await fs.readText(settingsPath)).devPreviewEnabled === true;
   } catch {
     return false;
   }
@@ -57,43 +59,59 @@ export class DevPreview {
   private readonly flushIntervalMs: number;
   private enabled: boolean;
   private timer?: ReturnType<typeof setInterval>;
+  private readonly serial = createSerialQueue();
 
-  constructor(private readonly options: DevPreviewOptions) {
+  /** Reads the saved opt-in. The preview starts collecting at once when it was left on. */
+  static async open(options: DevPreviewOptions): Promise<DevPreview> {
+    const settingsPath = options.fs.join(options.dataDir, SETTINGS_FILE);
+    const enabled = options.available && (await readEnabledSetting(options.fs, settingsPath));
+    return new DevPreview(options, enabled);
+  }
+
+  private constructor(
+    private readonly options: DevPreviewOptions,
+    enabled: boolean
+  ) {
     this.aggregator = new LogAggregator(200, options.now);
-    this.store = new DiagnosticsStore(join(options.dataDir, LOGS_DIR));
-    this.settingsPath = join(options.dataDir, SETTINGS_FILE);
+    this.store = new DiagnosticsStore(options.fs, options.fs.join(options.dataDir, LOGS_DIR));
+    this.settingsPath = options.fs.join(options.dataDir, SETTINGS_FILE);
     this.flushIntervalMs = options.flushIntervalMs ?? 60_000;
-    this.enabled = options.available && readEnabledSetting(this.settingsPath);
+    this.enabled = enabled;
     if (this.enabled) this.startTimer();
   }
 
-  status(): DevPreviewStatus {
+  async status(): Promise<DevPreviewStatus> {
+    const logBytes = await this.store.totalBytes();
     return {
       available: this.options.available,
       enabled: this.enabled,
       dataDir: this.options.dataDir,
-      logBytes: this.store.totalBytes,
+      logBytes,
       pendingEntries: this.aggregator.pending,
     };
   }
 
-  setEnabled(enabled: boolean): DevPreviewStatus {
+  async setEnabled(enabled: boolean): Promise<DevPreviewStatus> {
     if (!this.options.available) {
       throw new Error('The developer preview is not available in this build.');
     }
-    if (enabled === this.enabled) return this.status();
 
-    this.enabled = enabled;
-    mkdirSync(this.options.dataDir, { recursive: true, mode: 0o700 });
-    writeFileSync(this.settingsPath, JSON.stringify({ devPreviewEnabled: enabled }, null, 2), { mode: 0o600 });
+    // One change at a time, so the saved setting always matches the last request.
+    return this.serial(async () => {
+      if (enabled === this.enabled) return this.status();
 
-    if (enabled) {
-      this.startTimer();
-    } else {
-      this.flush();
-      this.stopTimer();
-    }
-    return this.status();
+      this.enabled = enabled;
+      await this.options.fs.mkdirp(this.options.dataDir);
+      await this.options.fs.writeText(this.settingsPath, JSON.stringify({ devPreviewEnabled: enabled }, null, 2));
+
+      if (enabled) {
+        this.startTimer();
+      } else {
+        await this.flush();
+        this.stopTimer();
+      }
+      return this.status();
+    });
   }
 
   record(event: LogEvent): void {
@@ -101,7 +119,7 @@ export class DevPreview {
   }
 
   /** Writes the current aggregation window to the log files. */
-  flush(): void {
+  async flush(): Promise<void> {
     const { entries, dropped } = this.aggregator.drain();
     const lines = entries.map(entry =>
       JSON.stringify({
@@ -116,18 +134,18 @@ export class DevPreview {
     if (dropped > 0) {
       lines.push(JSON.stringify({ level: 'warn', scope: 'diagnostics', message: 'Window limit reached', count: dropped }));
     }
-    this.store.append(lines);
+    await this.store.append(lines);
   }
 
-  createFeedback(input: FeedbackInput): FeedbackResult {
+  async createFeedback(input: FeedbackInput): Promise<FeedbackResult> {
     if (!this.enabled) {
       throw new Error('Turn on the developer preview before sending feedback.');
     }
-    this.flush();
+    await this.flush();
 
-    const logs = input.includeLogs ? this.store.readRecent(FEEDBACK_LOG_BYTES) : '';
+    const logs = input.includeLogs ? await this.store.readRecent(FEEDBACK_LOG_BYTES) : '';
     const report = (text: string) => buildReport(input, this.options.environment, text);
-    const reportPath = this.saveReport(report(logs));
+    const reportPath = await this.saveReport(report(logs));
 
     const link = buildIssueLink({
       repositoryUrl: this.options.repositoryUrl,
@@ -143,21 +161,22 @@ export class DevPreview {
     };
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
     this.stopTimer();
-    if (this.enabled) this.flush();
+    if (this.enabled) await this.flush();
   }
 
-  private saveReport(markdown: string): string {
-    const directory = join(this.options.dataDir, FEEDBACK_DIR);
-    mkdirSync(directory, { recursive: true, mode: 0o700 });
+  private async saveReport(markdown: string): Promise<string> {
+    const { fs } = this.options;
+    const directory = fs.join(this.options.dataDir, FEEDBACK_DIR);
+    await fs.mkdirp(directory);
     const stamp = new Date(this.now()).toISOString().replace(/[:.]/g, '-');
-    const path = join(directory, `feedback-${stamp}.md`);
-    writeFileSync(path, markdown, { mode: 0o600 });
+    const path = fs.join(directory, `feedback-${stamp}.md`);
+    await fs.writeText(path, markdown);
 
-    const reports = readdirSync(directory).filter(name => name.startsWith('feedback-')).sort();
+    const reports = (await fs.list(directory)).filter(name => name.startsWith('feedback-')).sort();
     for (const old of reports.slice(0, Math.max(0, reports.length - FEEDBACK_REPORTS_KEPT))) {
-      rmSync(join(directory, old), { force: true });
+      await fs.remove(fs.join(directory, old));
     }
     return path;
   }
@@ -168,7 +187,8 @@ export class DevPreview {
 
   private startTimer(): void {
     if (this.flushIntervalMs > 0 && !this.timer) {
-      this.timer = setInterval(() => this.flush(), this.flushIntervalMs);
+      // A failed write is not worth stopping the app for, and there is nobody to tell.
+      this.timer = setInterval(() => void this.flush().catch(() => {}), this.flushIntervalMs);
       this.timer.unref?.();
     }
   }

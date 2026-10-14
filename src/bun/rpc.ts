@@ -5,6 +5,7 @@ import { DEV_PREVIEW_AVAILABLE, buildInfo } from '../shared/build-info.generated
 import { RedmineClient, assertHttpUrl } from './redmine/client';
 import { signInWithPassword } from './redmine/auth';
 import { dataDirFor } from './paths';
+import { nodeDataFs } from './node-data-fs';
 import { DevPreview } from './dev-preview.generated';
 
 // Redmine calls run here, not in the webview, because Redmine servers do not send CORS headers.
@@ -12,7 +13,7 @@ function clientFor({ baseUrl, apiKey }: ServerAccess): RedmineClient {
   return new RedmineClient({ baseUrl: assertHttpUrl(baseUrl), apiKey });
 }
 
-let devPreviewInstance: DevPreview | undefined;
+let devPreviewInstance: Promise<DevPreview> | undefined;
 
 /** The developer preview. Throws in builds that do not offer it, where DevPreview is a stub. */
 async function devPreview(): Promise<DevPreview> {
@@ -20,8 +21,9 @@ async function devPreview(): Promise<DevPreview> {
     throw new Error('The developer preview is not available in this build.');
   }
   if (!devPreviewInstance) {
-    devPreviewInstance = new DevPreview({
+    devPreviewInstance = DevPreview.open({
       dataDir: dataDirFor(buildInfo.dataDirName),
+      fs: nodeDataFs,
       available: true,
       repositoryUrl: buildInfo.repositoryUrl,
       environment: {

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
+import { nodeDataFs } from '../../node-data-fs';
 import { DevPreview } from '../service';
 
 // Golden snapshot of the per-channel data folder. Users keep this folder across updates,
@@ -46,11 +47,12 @@ function walk(root: string, directory = root): Entry[] {
 describe('developer preview data folder', () => {
   let dataDir: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     dataDir = join(mkdtempSync(join(tmpdir(), 'gemi-golden-')), 'data');
     const clock = Date.parse('2026-10-12T10:00:00.000Z');
-    const preview = new DevPreview({
+    const preview = await DevPreview.open({
       dataDir,
+      fs: nodeDataFs,
       available: true,
       repositoryUrl: 'https://github.com/iVegas/gemiredmine',
       environment,
@@ -58,12 +60,12 @@ describe('developer preview data folder', () => {
       now: () => clock,
     });
 
-    preview.setEnabled(true);
+    await preview.setEnabled(true);
     preview.record({ level: 'error', scope: 'rpc.listTimeEntries', message: 'Redmine API request failed: 503 Service Unavailable' });
     preview.record({ level: 'error', scope: 'rpc.listTimeEntries', message: 'Redmine API request failed: 503 Service Unavailable' });
     preview.record({ level: 'warn', scope: 'ui', message: 'token=s3cr3t-value leaked?' });
-    preview.flush();
-    preview.createFeedback({ title: 'Calendar is empty', description: 'After switching months', includeLogs: true });
+    await preview.flush();
+    await preview.createFeedback({ title: 'Calendar is empty', description: 'After switching months', includeLogs: true });
   });
 
   afterEach(() => {
