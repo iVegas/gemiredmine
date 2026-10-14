@@ -7,7 +7,7 @@ import {
   type AppWindow,
   type ViewWindowsHost,
 } from '../view-windows';
-import type { SessionSnapshot, TabStripLayout, WindowRequestHandlers } from '../../../shared/rpc';
+import type { SessionSnapshot, TabStripLayout, WindowRequestHandlers } from '../../../shared/window-contract';
 import type { Point, Rect } from '../../../shared/windows';
 import type { ViewId } from '../../../mainview/lib/views';
 

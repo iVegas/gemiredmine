@@ -15,8 +15,6 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "build:desktop": "node scripts/release/build-desktop.mjs",
-    "build:electrobun": "node scripts/release/build-electrobun.mjs",
-    "prebuild:electrobun": "node scripts/release/write-build-info.mjs && npm run build",
     "typecheck": "tsc --noEmit -p .",
     "pretypecheck": "node scripts/release/write-build-info.mjs"
   },
@@ -50,7 +48,6 @@
     "@types/node": "^24.19.2",
     "autoprefixer": "^10.6.1",
     "commit-and-tag-version": "^13.2.2",
-    "electrobun": "^1.18.1",
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
     "postcss": "^8.5.30",

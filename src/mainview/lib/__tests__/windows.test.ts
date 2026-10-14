@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { get } from 'svelte/store';
-import type { TabStripLayout, WindowMessages } from '../../../shared/rpc';
+import type { TabStripLayout, WindowMessages } from '../../../shared/window-contract';
 
 const desktop = vi.hoisted(() => ({
   available: true,

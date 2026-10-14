@@ -1,7 +1,7 @@
 import { isTauri } from '@tauri-apps/api/core';
 import { createBackend } from '../../bun/backend';
 import type { GemiBackend } from '../../shared/backend';
-import type { WindowMessages, WindowRequests } from '../../shared/rpc';
+import type { WindowMessages, WindowRequests } from '../../shared/window-contract';
 import { tauriPlatform } from './tauri-platform';
 
 /** Whether the webview runs in the desktop app, where the backend runs inside the webview. */

@@ -3,7 +3,7 @@ import type {
   TabStripLayout,
   WindowMessages,
   WindowRequestHandlers,
-} from '../../shared/rpc';
+} from '../../shared/window-contract';
 import type { ViewId } from '../../mainview/lib/views';
 import { containsPoint, dropGap, type Point, type Rect } from '../../shared/windows';
 
@@ -28,7 +28,7 @@ export interface AppWindow {
   readonly send: { [K in keyof WindowMessages]: (payload: WindowMessages[K]) => void };
 }
 
-/** What the window manager needs from the platform. Electrobun provides it in the app. */
+/** What the window manager needs from the platform. The desktop shell provides it. */
 export interface ViewWindowsHost {
   /** Opens a window. `view` is the one view it shows, or null for the main window. */
   openWindow(options: { title: string; view: ViewId | null; frame: Rect; requests: WindowRequestHandlers }): AppWindow;

@@ -1,5 +1,5 @@
 import { get, writable } from 'svelte/store';
-import type { SessionSnapshot, TabStripLayout, ViewPlacement, WindowMessages } from '../../shared/rpc';
+import type { SessionSnapshot, TabStripLayout, ViewPlacement, WindowMessages } from '../../shared/window-contract';
 import { viewFromHash } from '../../shared/windows';
 import { hasWindowLayer, onBackendMessage, windowBackend } from './bridge';
 import { activeServerId, servers } from './store';

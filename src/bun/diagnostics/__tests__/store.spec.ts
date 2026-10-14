@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { nodeDataFs } from '../../node-data-fs';
+import { nodeDataFs } from './support/node-data-fs';
 import { DiagnosticsStore } from '../store';
 
 describe('DiagnosticsStore', () => {

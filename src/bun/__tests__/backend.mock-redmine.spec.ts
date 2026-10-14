@@ -9,7 +9,7 @@ import { API_KEY, ISSUE_COUNT, PASSWORD, USERNAME, createMockRedmine } from '../
 import type { BuildInfo } from '../../shared/build-info';
 import { createBackend, type BackendPlatform } from '../backend';
 import { DevPreview } from '../diagnostics/service';
-import { nodeDataFs } from '../node-data-fs';
+import { nodeDataFs } from '../diagnostics/__tests__/support/node-data-fs';
 
 // The backend the desktop shell runs, with a real HTTP client, real files and a Redmine to talk to.
 // It stands in for the window and the RPC transport, which are all that a manual smoke test adds.

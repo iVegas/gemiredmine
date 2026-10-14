@@ -1,7 +1,7 @@
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { nodeDataFs } from '../../node-data-fs';
+import { nodeDataFs } from './support/node-data-fs';
 import { describeDataFsContract } from './data-fs.contract';
 
 describeDataFsContract('nodeDataFs', async () => {

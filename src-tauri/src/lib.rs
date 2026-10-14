@@ -12,9 +12,8 @@ use tauri_plugin_fs::FsExt;
 
 /// The folder named by `GEMIREDMINE_DATA_DIR`, made absolute. Empty means unset.
 ///
-/// A relative value is resolved against the working directory the app was started from, which is
-/// what the Electrobun build did too. `std::path::absolute` does not touch the disk, so the folder
-/// does not have to exist yet.
+/// A relative value is resolved against the working directory the app was started from.
+/// `std::path::absolute` does not touch the disk, so the folder does not have to exist yet.
 fn data_dir_from(value: Option<OsString>) -> Option<PathBuf> {
     let value = value.filter(|value| !value.is_empty())?;
     std::path::absolute(PathBuf::from(value)).ok()
