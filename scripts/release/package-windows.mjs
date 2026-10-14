@@ -33,10 +33,12 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const TIMESTAMP_URL = 'http://timestamp.digicert.com';
 
 // Reads the certificate's public part from the PFX. The password is passed through the environment, not the command line.
+// Only .NET calls, no cmdlets: Windows PowerShell started from pwsh 7 (the runner's shell) inherits pwsh's module path
+// and cannot load modules such as Microsoft.PowerShell.Security, which holds ConvertTo-SecureString.
 const EXPORT_PUBLIC_CERTIFICATE = [
-  '$password = ConvertTo-SecureString $env:GEMI_PFX_PASSWORD -AsPlainText -Force',
-  '$certificate = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($env:GEMI_PFX, $password)',
-  '[System.IO.File]::WriteAllBytes($env:GEMI_CER, $certificate.Export("Cert"))',
+  "$ErrorActionPreference = 'Stop'",
+  '$certificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($env:GEMI_PFX, $env:GEMI_PFX_PASSWORD)',
+  "[System.IO.File]::WriteAllBytes($env:GEMI_CER, $certificate.Export('Cert'))",
 ].join('; ');
 
 export function sha256(path) {

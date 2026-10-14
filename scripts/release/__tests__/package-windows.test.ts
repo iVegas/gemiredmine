@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync, existsSync, chmodSync } from 'node:fs';
+import type { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { errorAnnotation, packageWindows } from '../package-windows.mjs';
+import { errorAnnotation, exportPublicCertificate, packageWindows } from '../package-windows.mjs';
 
 // Stand-ins for makeappx.exe and signtool.exe. They run on Linux, so the packaging flow can be
 // tested here. The real tools run on the Windows CI runner.
@@ -161,6 +162,24 @@ describe('packageWindows', () => {
     expect(() =>
       packageWindows({ env: env({ WINDOWS_SIGNING: 'self-signed', WINDOWS_SELF_SIGNED_PFX_BASE64: undefined }), root, exportCertificate: fakeExport })
     ).toThrow('WINDOWS_SELF_SIGNED_PFX_BASE64');
+  });
+
+  it('exports the public certificate without cmdlets and keeps the password off the command line', () => {
+    const calls: { file: string; args: string[]; options: { env: Record<string, string> } }[] = [];
+    const run = (file: string, args: string[], options: { env: Record<string, string> }) => {
+      calls.push({ file, args, options });
+    };
+
+    expect(exportPublicCertificate({ pfx: 'C:\\cert.pfx', password: 's3cret', out: 'C:\\cert.cer', run: run as unknown as typeof execFileSync })).toBe('C:\\cert.cer');
+
+    const [{ file, args, options }] = calls;
+    expect(file).toBe('powershell');
+    const command = args[args.length - 1];
+    // Windows PowerShell started from pwsh 7 cannot load Microsoft.PowerShell.Security, so ConvertTo-SecureString fails there.
+    expect(command).not.toContain('ConvertTo-SecureString');
+    expect(command).toContain("$ErrorActionPreference = 'Stop'");
+    expect(args.join(' ')).not.toContain('s3cret');
+    expect(options.env).toMatchObject({ GEMI_PFX: 'C:\\cert.pfx', GEMI_PFX_PASSWORD: 's3cret', GEMI_CER: 'C:\\cert.cer' });
   });
 
   it('reports a failure as a single-line GitHub Actions error annotation', () => {
