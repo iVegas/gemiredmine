@@ -358,7 +358,7 @@ from the Electrobun canary, then stable. Do not run Stable from a Tauri `main` b
 | Wayland and NVIDIA rendering, `WM_CLASS` | `GDK_BACKEND=x11` by default (parity), G4 | Adjust `desktopEntry`, or `enableGTKAppId` |
 | `tauri.localhost` as a secure context (`randomUUID`) on Windows | Checklist 2 on Windows | `useHttpsScheme: true` on the window |
 | A larger webview attack surface (http to any host) | CSP in PR 2, no `{@html}` or `innerHTML` today, TypeScript guards, a per-channel file scope | none |
-| Rust build time against the job timeouts | A per-channel cache; record the times (locally: 4m23s for a cold release build of the crate and its dependencies, 1m42s for one more channel) | Raise the timeout |
+| Rust build time against the job timeouts | A per-channel cache; record the times (locally: 4m23s for a cold release build of the crate and its dependencies, 1m42s for one more channel; on the runners, cold: 7m32s on Linux and 12m01s on Windows) | Raise the timeout |
 | Dragging view windows needs global pointer position and button state (no mouse-button API in Tauri; unavailable on native Wayland) | A small Rust command, `GDK_BACKEND=x11`, G4 on Wayland | Disable `canDetachViews()` on Tauri; the "Move to main window" button remains |
 | Several windows each own a backend, so several developer previews | One owner for the preview, in the main window | Move the preview to Rust |
 | Tauri 3 | Exact pins, no `text-file` permissions | A planned migration |

@@ -16,7 +16,7 @@ that changes in `plan.md`, with the reason.
 | PR 0: safety net | **done** | `de4a781` `61c9456` `20d1c9e` `32f90df` | Golden tests, mock Redmine, a PR check workflow |
 | PR 1: runtime-neutral backend | **done** | `d3cb9bd` `73539b7` `7422bf2` `9a93f87` | Still ships on Electrobun; no change for users except the timeout message |
 | Merge of `main` | **done** | `7340021` | `main` gained `e9f36d1` (view tabs in their own windows) while the PR was open; see "Merge with main" |
-| PR 2: Tauri shell | **implemented, draft** | `27f8129` `d4be6ac` `7b7e677` `2681143` `63ee18b` and a docs commit | Branch `claude/tauri-2-shell`. One window only. Open: CI gates G2 and G3, and the hardware gates G4 to G6. SHAs are as first pushed |
+| PR 2: Tauri shell | **implemented, draft** | `27f8129` `d4be6ac` `7b7e677` `2681143` `63ee18b` and a docs commit | Branch `claude/tauri-2-shell`, pull request #21. One window only. CI gates G1 to G3 passed on the first run. Open: the hardware gates G4 to G6. SHAs are as first pushed |
 | PR 2b: window layer on Tauri | not started | | Follows PR 2. Port `ViewWindows` with a `TauriHost`; see `plan.md`, "Window layer" |
 | PR 3: end-to-end tests, rename `src/bun` to `src/core` | optional | | Best at the start of the Android phase |
 | Android on Tauri, retire Capacitor | not started | | Outline in `plan.md` |
@@ -190,11 +190,28 @@ AppImage 5.0 MB) and driven with `xdotool`:
   HTTP scope and the workflow Rust version each turn a test red.
 
 **Not verified**
-- Anything on Windows: the build, the `dumpbin` check, the MSIX, the in-place upgrade from the Electrobun build.
-- The glibc floor (this machine has glibc 2.39, so `check-linux-binary.mjs` rightly fails here; the `ubuntu-22.04` runner decides).
+- On Windows: installing the MSIX, the in-place upgrade from the Electrobun build, and a working window (CI only shows the process lives).
 - Wayland, NVIDIA, other distributions, and whether the content security policy logs violations (nothing looked broken, but
   the console was not read).
-- The first run of the new workflows. Nothing is published from a workflow-dispatch run.
+
+### PR 2, first CI run (pull request #21, head `9acc3c5`)
+
+All green on the first attempt:
+
+- **Checks** (the pull request run): the original job and the new `rust` job (rustfmt, clippy, `cargo test --lib`; the lint
+  step took 2.5 minutes and the tests 3 minutes on a cold cache).
+- **Build Linux AppImage**, unstable, dispatched on the branch (gate G2): tests, type check, `check-linux-binary.mjs` (so the
+  executable needs no glibc newer than 2.35 on the `ubuntu-22.04` runner, finds all its libraries and links no tray library),
+  packaging, and the `xvfb` smoke test (the AppImage was still running at 20 s). Cold build step 7m32s, whole job 10m08s;
+  the cache saved is 503 MB for one channel.
+- **Build Windows package**, unstable, self-signed, dispatched on the branch (gate G3): `npm ci` installed the Windows CLI
+  package, `check-windows-binary.mjs` found `dumpbin` and no VC runtime or WebView2 loader DLL among the dependencies,
+  the executable was still running after 20 s on the runner, and the MSIX was built and signed. Cold build step 12m01s, and
+  the whole job 14m36s. Both are far below the 60 and 75 minute limits.
+- The **Unstable run #8** that the merge of pull request #20 triggered (`648fe5b`, the first Windows build of PR 0 and PR 1) succeeded.
+
+This does **not** show that the MSIX installs, upgrades in place from the Electrobun build, or opens a window that works on a
+clean Windows 11. That is gate G5. A runner has WebView2 and a desktop session, and it shows only that the process lives.
 
 **Things noticed, not changed**
 - Developer preview events wait up to 60 s for the flush timer, and nothing flushes on exit (`dispose()` has no caller),
@@ -203,15 +220,13 @@ AppImage 5.0 MB) and driven with `xdotool`:
 
 ## Next: land PR 2, then PR 2b
 
-1. **Check the Unstable run** that the merge of PR 0 and PR 1 triggered (Actions, "Unstable"): it is the first Windows
-   build and MSIX packaging of that code.
-2. Push `claude/tauri-2-shell` and open the draft pull request. Dispatch **Build Linux AppImage** and **Build Windows
-   package** (unstable) on the branch: those are gates G2 and G3, and the first run of the new workflows. Expect to
-   fix things there. The likely ones: the `ubuntu-22.04` glibc check, `dumpbin` not on the path, the Windows smoke test.
+1. ~~Check the Unstable run that the merge of PR 0 and PR 1 triggered.~~ It succeeded (run #8).
+2. ~~Open the draft pull request and dispatch the two build workflows.~~ Done: pull request #21; gates G1 to G3 passed.
 3. Hardware gates G4 (Linux checklist, Wayland and NVIDIA), G5 (Windows 11 on a clean VM, upgrade in place from the
    Electrobun build) and G6 (data continuity) need a person; see `plan.md`. Record the SHA of the last Electrobun commit
    (`648fe5b`) in the pull request.
-4. After the merge: soak unstable, then one canary, then stable (`plan.md`, "After merge").
+4. Take the pull request out of draft once G4 to G6 have been run, and merge it with a merge commit, because this file
+   names commits by SHA. After the merge: soak unstable, then one canary, then stable (`plan.md`, "After merge").
 5. Then PR 2b, the window layer (`plan.md`, "Window layer"). Replace `hasWindowLayer()` in `bridge.ts`, port
    `ViewWindows` with a `TauriHost`, and replace the two `electrobun-webkit-app-region-*` classes.
 
@@ -225,7 +240,7 @@ AppImage 5.0 MB) and driven with `xdotool`:
 - Keep the X11 default on Linux? PR 2 does: `AppRun` sets `GDK_BACKEND=x11` unless the user set it, as Electrobun did.
   Dragging a window back into the tab strip (PR 2b) needs the global pointer, which native Wayland does not give
   applications. A Wayland-only system without XWayland cannot start the app until this changes.
-- Who runs gates G4 and G5, and when? They block the merge of PR 2. G4 now also covers dragging view windows on X11 and
+- Who runs gates G4 to G6, and when? They block taking pull request #21 out of draft. G4 now also covers dragging view windows on X11 and
   on a Wayland session.
 - How long should the unstable and canary soak last before stable? The plan says five or more unstable builds or one week.
 
