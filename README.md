@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/github/license/iVegas/gemiredmine)](https://github.com/iVegas/gemiredmine)
 [![Tests](https://github.com/iVegas/gemiredmine/actions/workflows/weekly-tests.yml/badge.svg)](https://github.com/iVegas/gemiredmine/actions/workflows/weekly-tests.yml)
 
-**gemiredmine** is a cross-platform (Ubuntu & Android) client for Redmine, built with Svelte, Tailwind CSS v4, and Electrobun. It features a modern, accessibility-first design and integrates seamlessly with Google's Gemini AI to enhance your workflow.
+**gemiredmine** is a cross-platform (Ubuntu & Android) client for Redmine, built with Svelte, Tailwind CSS v4, and Tauri 2. It features a modern, accessibility-first design and integrates seamlessly with Google's Gemini AI to enhance your workflow.
 
 ## 🚀 Download
 
@@ -32,7 +32,7 @@ Android builds are not part of the current release pipeline.
 
 ## ✨ Features
 
-- **Cross-Platform Support:** Native-feeling applications for Ubuntu (via Electrobun) and Android (via Capacitor).
+- **Cross-Platform Support:** Native-feeling applications for Ubuntu and Windows (via Tauri 2) and Android (via Capacitor).
 - **Multi-Server Management:** Easily connect to and switch between multiple independent Redmine backend servers.
 - **Dashboard and View Tabs:** The dashboard is pinned as the first tab and previews your calendar and to-do list. Select a preview to open the full view in its own tab; every tab except the dashboard can be closed.
 - **Movable Tabs and View Windows:** Drag a tab to put it in another place, or press Ctrl+Shift+Page Up or Ctrl+Shift+Page Down. In the desktop app, drag a tab out of the window to open the view in a window of its own. To put it back, drag that window by its title bar or its tab over the main window's tabs and release it where the tab should go, or select **Move to main window**. If your desktop does not report window positions (some Wayland sessions), use the button.
@@ -57,7 +57,8 @@ Once you have downloaded and installed **gemiredmine**, follow these steps to ge
 ## 🏗️ Architecture
 
 - **Frontend:** Svelte (built with Vite) and Tailwind CSS v4. Source code is located in `src/mainview/` and builds to `views/mainview/`.
-- **Backend/Desktop wrapper:** Electrobun via Bun. Source code is located in `src/bun/`.
+- **Backend:** TypeScript that talks to Redmine. Source code is located in `src/bun/` (the folder name is historical). It runs inside the webview.
+- **Desktop wrapper:** Tauri 2. The Rust crate in `src-tauri/` only wires up Tauri's HTTP, file and opener plugins; the app is not written in Rust.
 - **Mobile wrapper:** Capacitor for Android synchronization.
 - **Testing:** Vitest and `@testing-library/svelte` for unit tests, Playwright for UI/E2E testing.
 
@@ -70,13 +71,20 @@ We welcome contributions! Please review our [`CONTRIBUTING.md`](./CONTRIBUTING.m
 1. **Install Node.js 24** and run `npm ci` to install dependencies. `package-lock.json` is the lockfile.
 2. **Run tests:** `npm test`. It regenerates the build metadata first.
 3. **Type check:** `npm run typecheck`.
-4. **Run the webview in a browser:** `npm run dev` (Vite).
-5. **Build:**
+4. **Run the webview in a browser:** `npm run dev` (Vite). Redmine calls need the desktop app, so use the next step for real data.
+5. **Install what the desktop app needs:**
+   - Rust: install [rustup](https://rustup.rs). It installs the version pinned in `rust-toolchain.toml` by itself.
+   - Ubuntu or Debian: `sudo apt install libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev`.
+   - Windows 11: the Visual Studio C++ build tools. WebView2 ships with Windows.
+6. **Run the desktop app:** `npm run tauri dev`. It starts Vite and the app, which reloads with the page. To try it without a Redmine server, run `node scripts/dev/mock-redmine.mjs` and sign in as `alice` with the password `secret`.
+7. **Build:**
    - Webview: `npm run build`
-   - Desktop app (Electrobun): `npm run build:electrobun`. Set `CHANNEL=stable|canary|unstable|dev` to build a channel. The default is `dev`.
-   - Linux AppImage: `CHANNEL=<channel> npm run build:electrobun && CHANNEL=<channel> node scripts/release/package-linux.mjs`. Packaging needs `zsync` installed and downloads a pinned `appimagetool`.
-   - Windows 11 MSIX (on Windows): `set TARGET_PLATFORM=windows` (PowerShell: `$env:TARGET_PLATFORM='windows'`), then `CHANNEL=<channel>` with `npm run build:electrobun` and `node scripts/release/package-windows.mjs`. It needs the Windows SDK tools; without `WINDOWS_SIGNING` the package is unsigned.
+   - Desktop app: `npm run build:desktop`. Set `CHANNEL=stable|canary|unstable|dev` to build a channel. The default is `dev`. The executable is `src-tauri/target/release/<app name>`.
+   - Linux AppImage: `CHANNEL=<channel> npm run build:desktop && CHANNEL=<channel> node scripts/release/package-linux.mjs`. Packaging needs `zsync` installed and downloads a pinned `appimagetool`.
+   - Windows 11 MSIX (on Windows): `set TARGET_PLATFORM=windows` (PowerShell: `$env:TARGET_PLATFORM='windows'`), then `CHANNEL=<channel>` with `npm run build:desktop` and `node scripts/release/package-windows.mjs`. It needs the Windows SDK tools; without `WINDOWS_SIGNING` the package is unsigned.
    - Android (Capacitor): `npx cap sync android`
+
+Tabs cannot be dragged out into windows of their own in the Tauri shell yet; see [`docs/tauri-migration/`](./docs/tauri-migration/progress.md).
 
 The version is set only in `version` in `package.json`. The app's name, identifier, settings folder and
 version are derived from it at build time (see `scripts/release/channels.mjs`).

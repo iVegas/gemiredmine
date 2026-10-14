@@ -31,7 +31,7 @@ process. Android runs on **Capacitor 8**.
 | Stay on Electrobun 1.18.1 | No 1.x maintenance line or long-term support statement | Unmaintained; rejected |
 | Electrobun 2.x | 7 weeks old, betas almost daily. The SDK comes from a downloaded devkit, so `tsc` and `vitest` need network setup first. Hutch ignores `package-lock.json` by default. One maintainer. Desktop only. *In its favour:* the smallest code diff, and it keeps `views://` and `bin/launcher`. | Rejected |
 | Electron 44 | A new major roughly every 8 weeks (41 to 44 between 03-11 and 08-25), bundled Chromium (100 MB and more), no Android | Rejected |
-| **Tauri 2** | Stable since 2024-10-02. cli 2.12.2, api 2.12.3, plugin-http 2.8.2, plugin-fs 2.7.0, plugin-opener 2.7.1 (all 2026-10-10). Rust MSRV 1.90. The same system webviews as today (WebKitGTK 4.1, WebView2) plus Android. Risk: 3.0 is in alpha. | **Chosen.** Pin exact 2.12.x. Plan a Tauri 3 move within about a year of 3.0 going stable. |
+| **Tauri 2** | Stable since 2024-10-02. cli 2.12.3, api 2.12.4, plugin-http 2.8.3, plugin-fs 2.7.1, plugin-opener 2.7.2 (crates tauri 2.12.4, tauri-build 2.7.3; the patch levels PR 2 pinned, one patch above the first assessment of 2026-10-10). Rust MSRV 1.90. The same system webviews as today (WebKitGTK 4.1, WebView2) plus Android. Risk: 3.0 is in alpha. | **Chosen.** Pin exact 2.12.x. Plan a Tauri 3 move within about a year of 3.0 going stable. |
 
 ### Electrobun coupling (complete list)
 
@@ -94,6 +94,9 @@ The rest of this file is what is still ahead.
 Open it as a draft. Each commit keeps `npm test` green, because the husky pre-commit hook runs it.
 Start from `main` once PR 0 and PR 1 are merged.
 
+**Status:** implemented as six commits on `claude/tauri-2-shell`, open as a draft. `progress.md` says what was built, where it
+differs from the text below (marked *As built* where it matters), what was verified, and which gates are still open.
+
 ### Window layer (new on `main`: `e9f36d1`, "drag view tabs ... into windows of their own")
 
 This landed after the plan was first written and is the largest piece of Electrobun-specific behaviour besides the
@@ -151,9 +154,9 @@ described above. The feature is already on `main`, so Unstable users lose draggi
 ### Commit 1: `build(tauri): add the Tauri 2 shell`
 
 - **`package.json`, exact pins:**
-  - dependencies `@tauri-apps/api 2.12.3`, `@tauri-apps/plugin-http 2.8.2`, `@tauri-apps/plugin-fs 2.7.0`,
-    `@tauri-apps/plugin-opener 2.7.1`
-  - dev dependency `@tauri-apps/cli 2.12.2`
+  - `@tauri-apps/api 2.12.4`, `@tauri-apps/plugin-http 2.8.3`, `@tauri-apps/plugin-fs 2.7.1`,
+    `@tauri-apps/plugin-opener 2.7.2`, `@tauri-apps/cli 2.12.3`. *As built:* all five are `devDependencies`, like the
+    other build-time packages: Vite bundles them into the webview.
   - scripts `"tauri": "tauri"` and `"build:desktop": "node scripts/release/build-desktop.mjs"`
   - never install the `next` tag (3.0 alphas)
 - **Lockfile:** regenerate from a clean `node_modules`, so that both `@tauri-apps/cli-linux-x64-gnu` and
@@ -163,8 +166,8 @@ described above. The feature is already on `main`, so Unstable users lose draggi
 - **`src-tauri/Cargo.toml`:**
   - `edition = "2024"`, `rust-version = "1.90"`, `publish = false`
   - library `crate-type = ["staticlib", "cdylib", "rlib"]`, which Android needs later
-  - `tauri ~2.12.3`, `tauri-build ~2.7.2`, `tauri-plugin-fs ~2.7.0`, `tauri-plugin-opener ~2.7.1`
-  - `tauri-plugin-http = { version = "~2.8.2", default-features = false, features = ["rustls-tls-native-roots", "http2", "charset", "system-proxy", "gzip"] }`:
+  - `tauri ~2.12.4`, `tauri-build ~2.7.3`, `tauri-plugin-fs ~2.7.1`, `tauri-plugin-opener ~2.7.2`
+  - `tauri-plugin-http = { version = "~2.8.3", default-features = false, features = ["rustls-tls-native-roots", "http2", "charset", "system-proxy", "gzip"] }`:
     no cookie jar, the OS trust store (so servers behind an internal CA work), and gzip. Each feature exists in the
     crate's `[features]`.
   - `[features] devtools = ["tauri/devtools"]`
@@ -190,9 +193,12 @@ described above. The feature is already on `main`, so Unstable users lose draggi
 - **`src-tauri/capabilities/main.json`**, used by every channel:
   - `core:default`
   - `{"identifier": "http:default", "allow": [{"url": "http://*:*"}, {"url": "https://*:*"}]}`. A URL pattern with a
-    host but no port gets an *empty* port, so `http://*` alone would refuse a Redmine on a custom port (*read, not run*).
+    host but no port gets an *empty* port, so `http://*` alone would refuse a Redmine on a custom port. *Verified in PR 2:*
+    the mock on port 18123 signs in.
   - `{"identifier": "opener:allow-open-url", "allow": [{"url": "http://*"}, {"url": "https://*"}]}`. The user's own
-    server is linked from `UserMenu.svelte`. The "issues/new only" rule stays in TypeScript.
+    server is linked from `UserMenu.svelte`. The "issues/new only" rule stays in TypeScript. *Correction found in PR 2:*
+    the opener's scope is a glob (`glob::Pattern`), not a URL pattern like the HTTP plugin's, so `*` already covers any
+    port, path and query. Verified: a server link with a port and the prefilled issue link both opened.
 - **`src-tauri/capabilities/dev-preview-{canary,unstable,dev}.json`**, one file per channel so channels stay isolated:
   - `fs:allow-exists`, `-stat`, `-mkdir`, `-read-file`, `-write-file`, `-read-dir`, `-rename`, `-remove`
   - `fs:scope` limited to `$LOCALDATA/<that channel's dataDirName>` and `/**`. Use explicit names, not globs, so Tauri
@@ -267,14 +273,17 @@ described above. The feature is already on `main`, so Unstable users lose draggi
   - `runs-on: ubuntu-22.04`, which sets the glibc floor.
   - `apt-get install libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev zsync xvfb`.
   - `rustup toolchain install 1.99.0 --profile minimal` (the version in `rust-toolchain.toml`).
-  - `Swatinem/rust-cache`, pinned to a full commit SHA, `workspaces: ./src-tauri -> target`.
-  - `npm run build:desktop`, then a check of the runtime libraries and the glibc floor:
-    `if grep -E 'not found|appindicator' ldd.txt; then exit 1; fi` (not `! grep`, which `bash -e` ignores), and
-    GLIBC no newer than 2.35.
+  - *As built:* `actions/cache@v6` on the cargo registry and `src-tauri/target`, one cache per channel (the channels
+    build different feature sets). The plan said `Swatinem/rust-cache` pinned to a commit SHA, but a third-party SHA
+    could not be looked up from the sandbox, and a first-party action needs no pin. Switch if cache size becomes a problem.
+  - `npm run build:desktop`, then a check of the runtime libraries and the glibc floor. *As built:*
+    `scripts/release/check-linux-binary.mjs` (unit tested) instead of inline `grep`: it fails on `not found`, on an
+    AppIndicator library, and on a GLIBC symbol newer than 2.35.
   - The existing package step, then a smoke test: `timeout 20 xvfb-run -a <AppImage> --appimage-extract-and-run`
     must still be running after 20 s.
 - **`build-windows.yml`:** the same `rustup` and cache steps, then `npm run build:desktop`; `dumpbin /DEPENDENTS`
-  must show no `VCRUNTIME*.dll` and no `WebView2Loader.dll`; launch the exe with
+  (through `scripts/release/check-windows-binary.mjs`) must show no `VCRUNTIME*.dll` and no `WebView2Loader.dll`.
+  Tauri's `build.windows.staticVCRuntime` defaults to true, so no `.cargo/config.toml` is needed; launch the exe with
   `GEMIREDMINE_DATA_DIR=$RUNNER_TEMP\smoke` and require it to be alive after 20 s. Keep `windows-latest` and `TARGET_PLATFORM`.
 - **Unchanged:** `unstable.yml`, `canary.yml`, `stable.yml`, `weekly-tests.yml`, `publish.mjs`. Record clean and cached
   build times against the 60 and 75 minute timeouts.
@@ -342,14 +351,14 @@ from the Electrobun canary, then stable. Do not run Stable from a Tauri `main` b
 
 | Risk | Mitigation | Fallback |
 |---|---|---|
-| The `*:*` URL-pattern scope was *read, not run* | Checklist 2 and 4 (G4, G5) | Add origins at run time from Rust when a server is added |
+| The `*:*` URL-pattern scope. *Verified on Linux in PR 2* (custom port); not yet on Windows | Checklist 2 and 4 (G5) | Add origins at run time from Rust when a server is added |
 | MSIX file virtualization against the file plugin's real-path scope check | G5 records the real path | Canonicalize in Rust, then `allow_directory` |
 | A hand-made AppImage around the raw binary is not a layout Tauri documents | xvfb smoke test, distro matrix | `WEBKIT_DISABLE_DMABUF_RENDERER=1` in AppRun |
 | WebKitGTK at least 2.40, and the glibc floor | `ubuntu-22.04` runner, CI glibc check, policy text | A container base image when that runner retires |
 | Wayland and NVIDIA rendering, `WM_CLASS` | `GDK_BACKEND=x11` by default (parity), G4 | Adjust `desktopEntry`, or `enableGTKAppId` |
 | `tauri.localhost` as a secure context (`randomUUID`) on Windows | Checklist 2 on Windows | `useHttpsScheme: true` on the window |
 | A larger webview attack surface (http to any host) | CSP in PR 2, no `{@html}` or `innerHTML` today, TypeScript guards, a per-channel file scope | none |
-| Rust build time against the job timeouts | `rust-cache`; record the times | Raise the timeout |
+| Rust build time against the job timeouts | A per-channel cache; record the times (locally: 4m23s for a cold release build of the crate and its dependencies, 1m42s for one more channel) | Raise the timeout |
 | Dragging view windows needs global pointer position and button state (no mouse-button API in Tauri; unavailable on native Wayland) | A small Rust command, `GDK_BACKEND=x11`, G4 on Wayland | Disable `canDetachViews()` on Tauri; the "Move to main window" button remains |
 | Several windows each own a backend, so several developer previews | One owner for the preview, in the main window | Move the preview to Rust |
 | Tauri 3 | Exact pins, no `text-file` permissions | A planned migration |

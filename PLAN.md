@@ -5,7 +5,7 @@ This document outlines the time-based plan for implementing the `gemiredmine` cl
 ## Milestone 1: Proof of Concept (POC)
 **Goal:** Validate core technical assumptions and establish the foundational architecture.
 
-*   **Setup:** Initialize the Electrobun project for both Ubuntu (Debian) and Android targets.
+*   **Setup:** Initialize the Tauri 2 project for Ubuntu (Debian) and Windows, with Android to follow.
 *   **Framework Selection:** Evaluate and select the cross-platform JS framework, set up Tailwind CSS.
 *   **Basic UI & Navigation:** Create a skeleton UI demonstrating routing and basic accessibility (a11y) principles.
 *   **Authentication POC:** Implement simple login to a single test server, retrieving and storing an API token in memory.

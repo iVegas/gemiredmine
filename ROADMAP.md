@@ -1,7 +1,7 @@
 # gemiredmine Roadmap
 
 ## Platforms
-- **Client Builds:** Target platforms are Ubuntu (Debian) and Android, utilizing Electrobun for native builds.
+- **Client Builds:** Target platforms are Ubuntu (Debian) and Android, utilizing Tauri 2 for the desktop builds.
 - **Frontend Framework:** Evaluate and select a suitable cross-platform JS framework to ensure seamless performance across devices.
 
 ## Architecture
