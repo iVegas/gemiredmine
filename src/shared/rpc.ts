@@ -1,38 +1,20 @@
 // Typed contract between the Bun backend (src/bun) and the webview (src/mainview).
 // Type-only imports keep this file free of runtime code on either side.
 import type { RPCSchema } from 'electrobun/view';
-import type { RedmineIssue, RedmineTimeEntry, RedmineUser } from '../bun/redmine/types';
+import type { RedmineIssue, RedmineTimeEntry } from '../bun/redmine/types';
 import type { DevPreviewStatus, FeedbackResult } from '../bun/diagnostics/service';
 import type { LogLevel } from '../bun/diagnostics/aggregator';
 import type { ServerConnection } from '../mainview/lib/store';
 import type { ViewId } from '../mainview/lib/views';
+import type {
+  CurrentUserSummary,
+  DateRange,
+  DueRange,
+  ServerAccess,
+  SignInParams,
+  SignInResponse,
+} from './backend';
 import type { Point, Rect, TabEdges } from './windows';
-
-/** Identifies a Redmine server and the API key the webview holds for it. */
-export interface ServerAccess {
-  baseUrl: string;
-  apiKey: string;
-}
-
-export interface DateRange {
-  /** YYYY-MM-DD, inclusive */
-  from: string;
-  /** YYYY-MM-DD, inclusive */
-  to: string;
-}
-
-export interface SignInParams {
-  baseUrl: string;
-  username: string;
-  password: string;
-}
-
-export interface SignInResponse {
-  apiKey: string;
-  user: { id: number; login: string; firstname: string; lastname: string };
-}
-
-export type CurrentUserSummary = Pick<RedmineUser, 'id' | 'login' | 'firstname' | 'lastname'>;
 
 /**
  * The servers and the server in use. Every window of the app shows the same ones, so the
@@ -111,10 +93,7 @@ export type GemiRPCSchema = {
       signIn: { params: SignInParams; response: SignInResponse };
       getCurrentUser: { params: ServerAccess; response: CurrentUserSummary };
       listTimeEntries: { params: ServerAccess & DateRange; response: RedmineTimeEntry[] };
-      listOpenTasks: {
-        params: ServerAccess & { dueFrom: string; dueTo: string };
-        response: RedmineIssue[];
-      };
+      listOpenTasks: { params: ServerAccess & DueRange; response: RedmineIssue[] };
       listAssignedTasks: { params: ServerAccess; response: RedmineIssue[] };
       getDevPreviewStatus: { params: void; response: DevPreviewStatus };
       setDevPreviewEnabled: { params: { enabled: boolean }; response: DevPreviewStatus };

@@ -1,8 +1,15 @@
+/** The shape of `fetch` the client needs, so a runtime can supply its own HTTP client. */
+export type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
+
 export interface RedmineClientConfig {
   baseUrl: string;
   apiKey?: string;
   username?: string;
   password?: string;
+  /** Replaces the global `fetch`, for runtimes that must send requests through a native HTTP client. */
+  fetch?: FetchLike;
+  /** Aborts the requests, for example when a timeout expires. */
+  signal?: AbortSignal;
 }
 
 import type {
@@ -24,11 +31,86 @@ const PAGE_SIZE = 100;
 const MAX_PAGES = 10;
 
 export class RedmineApiError extends Error {
-  constructor(readonly status: number, statusText: string) {
-    super(`Redmine API request failed: ${status} ${statusText}`);
+  constructor(
+    readonly status: number,
+    statusText: string,
+    message = `Redmine API request failed: ${status} ${statusText}`
+  ) {
+    super(message);
     this.name = 'RedmineApiError';
   }
 }
+
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
+
+/**
+ * The server answered with a redirect instead of data. Runtimes whose `fetch` follows redirects never
+ * see this. The desktop HTTP client does not follow them, because it would resend the API key to the
+ * new host, so the user is told where the server went instead.
+ */
+export class RedmineMovedError extends RedmineApiError {
+  constructor(
+    status: number,
+    statusText: string,
+    /** Absolute URL from the `Location` header, or null when there was none */
+    readonly location: string | null,
+    /** The server URL to use instead, when it can be told from the redirect */
+    readonly suggestedBaseUrl: string | null,
+    message: string
+  ) {
+    super(status, statusText, message);
+    this.name = 'RedmineMovedError';
+  }
+}
+
+/**
+ * Explains a redirect. When the new address ends with the path that was requested, the rest of it is the
+ * server's new base URL (sub-paths such as /redmine survive). Anything else, such as a login page of a
+ * proxy or single sign-on gateway, is not an address the user can enter as the server.
+ */
+function redirectError(response: Response, requestUrl: string, endpointPath: string): RedmineMovedError {
+  let target: URL | null = null;
+  const header = response.headers?.get('Location');
+  if (header) {
+    try {
+      target = new URL(header, requestUrl);
+    } catch {
+      target = null;
+    }
+  }
+
+  if (!target) {
+    return new RedmineMovedError(
+      response.status,
+      response.statusText,
+      null,
+      null,
+      'The server redirected the request without saying where. Check the server URL.'
+    );
+  }
+
+  if (target.pathname.endsWith(endpointPath)) {
+    const base = `${target.origin}${target.pathname.slice(0, target.pathname.length - endpointPath.length)}`;
+    return new RedmineMovedError(
+      response.status,
+      response.statusText,
+      target.href,
+      base,
+      `The server moved to ${base}. Use that address as the server URL.`
+    );
+  }
+
+  return new RedmineMovedError(
+    response.status,
+    response.statusText,
+    target.href,
+    null,
+    `The server redirected to ${target.origin} instead of answering. Check the server URL, and any proxy or login gateway in front of it.`
+  );
+}
+
+// Looked up on every call, so a test that replaces the global fetch is honoured.
+const globalFetch: FetchLike = (url, init) => fetch(url, init);
 
 /**
  * Throws unless the value is an http(s) URL. Guards values that arrive from the webview.
@@ -81,12 +163,18 @@ export class RedmineClient {
       headers.set('Authorization', basicAuthHeader(this.config.username, this.config.password));
     }
 
-    const response = await fetch(url, {
-      ...options,
-      headers
-    });
+    // A fresh init for every call: some HTTP clients modify the object they are given.
+    const init: RequestInit = { ...options, headers };
+    if (this.config.signal) init.signal = this.config.signal;
+
+    const response = await (this.config.fetch ?? globalFetch)(url, init);
 
     if (!response.ok) {
+      // Nothing reads this body. Release it, so a native HTTP client does not keep the connection open.
+      await response.body?.cancel().catch(() => {});
+      if (REDIRECT_STATUSES.has(response.status)) {
+        throw redirectError(response, url, endpoint.split('?')[0].replace(/^(?!\/)/, '/'));
+      }
       throw new RedmineApiError(response.status, response.statusText);
     }
 

@@ -31,6 +31,11 @@ and the steps to publish each channel.
 `npm run release` (commit-and-tag-version) updates `CHANGELOG.md` and the version, but it also creates a
 local tag. Push the commit only, and let the Stable workflow create the tag.
 
+## Ongoing work
+
+The desktop shell is moving from Electrobun to Tauri 2. The plan, the progress so far and what comes next are in
+[`docs/tauri-migration/`](./docs/tauri-migration/progress.md).
+
 ## Testing and checks
 
 - `npm test` runs the unit tests. It regenerates `src/shared/build-info.generated.ts` first.
@@ -66,3 +71,19 @@ The release workflows read the secrets listed in [`RELEASE_POLICY.md`](./RELEASE
 Canary, unstable and dev builds offer an opt-in developer preview in the About screen (off by
 default). Stable builds do not include it. The implementation lives in `src/bun/diagnostics/`, and
 the webview panel in `src/mainview/components/DeveloperPreview.svelte`.
+
+## The backend
+
+`src/bun/` holds the code that talks to Redmine and writes the developer preview's files. Its
+requests and responses are described by `GemiBackend` in `src/shared/backend.ts`, and
+`createBackend` in `src/bun/backend.ts` implements it.
+
+`createBackend` uses no Node or Bun API, so that it can also run inside a webview. It gets what
+it needs from the platform it is given: an HTTP client, the file operations of `DataFs`, a way to
+open a link, and the machine's description. Today the desktop shell supplies them from Bun
+(`src/bun/rpc.ts`, `src/bun/node-data-fs.ts`, `src/bun/paths.ts`). A test
+(`src/bun/__tests__/webview-safe.spec.ts`) fails when `node:` imports, `Buffer`, `process` or `Bun`
+appear in the files that have to stay portable. Put code that needs them next to `rpc.ts`.
+
+To try the app without a Redmine server, run `node scripts/dev/mock-redmine.mjs` and sign in as
+`alice` with the password `secret`.
