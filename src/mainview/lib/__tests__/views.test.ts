@@ -1,10 +1,23 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { get } from 'svelte/store';
-import { openViews, activeView, openView, closeView, resetViews, isClosable, needsServer } from '../views';
+import {
+  openViews,
+  activeView,
+  openView,
+  closeView,
+  resetViews,
+  isClosable,
+  needsServer,
+  moveView,
+  insertView,
+  routeViews,
+  firstMovableIndex,
+} from '../views';
 
 describe('view tabs', () => {
   beforeEach(() => {
     resetViews();
+    routeViews(null);
   });
 
   it('starts with only the pinned dashboard open and active', () => {
@@ -85,5 +98,67 @@ describe('view tabs', () => {
     expect(needsServer('todo')).toBe(true);
     expect(needsServer('settings')).toBe(false);
     expect(needsServer('about')).toBe(false);
+  });
+
+  it('moves a tab to a new position', () => {
+    openView('calendar');
+    openView('todo');
+    openView('settings');
+
+    moveView('settings', 1);
+    expect(get(openViews)).toEqual(['dashboard', 'settings', 'calendar', 'todo']);
+
+    moveView('calendar', 3);
+    expect(get(openViews)).toEqual(['dashboard', 'settings', 'todo', 'calendar']);
+    expect(get(activeView)).toBe('settings');
+  });
+
+  it('keeps the pinned dashboard first when tabs move', () => {
+    openView('calendar');
+    openView('todo');
+
+    moveView('todo', 0);
+    expect(get(openViews)).toEqual(['dashboard', 'todo', 'calendar']);
+
+    moveView('dashboard', 2);
+    expect(get(openViews)).toEqual(['dashboard', 'todo', 'calendar']);
+    expect(firstMovableIndex(get(openViews))).toBe(1);
+  });
+
+  it('ignores moving a view that is not open', () => {
+    openView('calendar');
+
+    moveView('todo', 1);
+
+    expect(get(openViews)).toEqual(['dashboard', 'calendar']);
+  });
+
+  it('inserts a view at a position, or at the end, and switches to it', () => {
+    openView('calendar');
+    activeView.set('dashboard');
+
+    insertView('todo', 1);
+    expect(get(openViews)).toEqual(['dashboard', 'todo', 'calendar']);
+    expect(get(activeView)).toBe('todo');
+
+    insertView('settings');
+    expect(get(openViews)).toEqual(['dashboard', 'todo', 'calendar', 'settings']);
+
+    insertView('about', 0);
+    expect(get(openViews)).toEqual(['dashboard', 'about', 'todo', 'calendar', 'settings']);
+  });
+
+  it('lets a router open views elsewhere', () => {
+    const routed: string[] = [];
+    routeViews(view => {
+      routed.push(view);
+      return view === 'calendar';
+    });
+
+    openView('calendar');
+    openView('todo');
+
+    expect(routed).toEqual(['calendar', 'todo']);
+    expect(get(openViews)).toEqual(['dashboard', 'todo']);
   });
 });

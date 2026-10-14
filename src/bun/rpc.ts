@@ -1,5 +1,5 @@
 import { BrowserView, Utils } from 'electrobun';
-import type { GemiRPCSchema, ServerAccess } from '../shared/rpc';
+import type { GemiRPCSchema, ServerAccess, WindowRequestHandlers } from '../shared/rpc';
 import { DEV_PREVIEW_AVAILABLE, buildInfo } from '../shared/build-info.generated';
 import { RedmineClient, assertHttpUrl } from './redmine/client';
 import { signInWithPassword } from './redmine/auth';
@@ -61,51 +61,56 @@ function traced<P, R>(scope: string, handler: (params: P) => Promise<R>) {
 
 export type AppRPC = ReturnType<typeof BrowserView.defineRPC<GemiRPCSchema>>;
 
-export const rpc: AppRPC = BrowserView.defineRPC<GemiRPCSchema>({
-  handlers: {
-    requests: {
-      signIn: traced('signIn', ({ baseUrl, username, password }) => signInWithPassword(baseUrl, username, password)),
+/** The RPC for one window's webview. `windowRequests` answer that window's requests about windows. */
+export function createRpc(windowRequests: WindowRequestHandlers): AppRPC {
+  return BrowserView.defineRPC<GemiRPCSchema>({
+    handlers: {
+      requests: {
+        signIn: traced('signIn', ({ baseUrl, username, password }) => signInWithPassword(baseUrl, username, password)),
 
-      getCurrentUser: traced('getCurrentUser', async (access) => {
-        const { user } = await clientFor(access).getCurrentUser();
-        return { id: user.id, login: user.login, firstname: user.firstname, lastname: user.lastname };
-      }),
+        getCurrentUser: traced('getCurrentUser', async (access) => {
+          const { user } = await clientFor(access).getCurrentUser();
+          return { id: user.id, login: user.login, firstname: user.firstname, lastname: user.lastname };
+        }),
 
-      listTimeEntries: traced('listTimeEntries', ({ baseUrl, apiKey, from, to }) =>
-        clientFor({ baseUrl, apiKey }).getTimeEntries({ from, to })
-      ),
+        listTimeEntries: traced('listTimeEntries', ({ baseUrl, apiKey, from, to }) =>
+          clientFor({ baseUrl, apiKey }).getTimeEntries({ from, to })
+        ),
 
-      listOpenTasks: traced('listOpenTasks', ({ baseUrl, apiKey, dueFrom, dueTo }) =>
-        clientFor({ baseUrl, apiKey }).getAssignedOpenIssues({ dueFrom, dueTo })
-      ),
+        listOpenTasks: traced('listOpenTasks', ({ baseUrl, apiKey, dueFrom, dueTo }) =>
+          clientFor({ baseUrl, apiKey }).getAssignedOpenIssues({ dueFrom, dueTo })
+        ),
 
-      listAssignedTasks: traced('listAssignedTasks', (access) => clientFor(access).getAssignedTasks()),
+        listAssignedTasks: traced('listAssignedTasks', (access) => clientFor(access).getAssignedTasks()),
 
-      getDevPreviewStatus: async () => {
-        if (!DEV_PREVIEW_AVAILABLE) {
-          return { available: false, enabled: false, dataDir: '', logBytes: 0, pendingEntries: 0 };
-        }
-        return (await devPreview()).status();
-      },
+        getDevPreviewStatus: async () => {
+          if (!DEV_PREVIEW_AVAILABLE) {
+            return { available: false, enabled: false, dataDir: '', logBytes: 0, pendingEntries: 0 };
+          }
+          return (await devPreview()).status();
+        },
 
-      setDevPreviewEnabled: async ({ enabled }) => (await devPreview()).setEnabled(enabled),
+        setDevPreviewEnabled: async ({ enabled }) => (await devPreview()).setEnabled(enabled),
 
-      recordDiagnostic: async ({ level, scope, message }) => {
-        if (!DEV_PREVIEW_AVAILABLE) return;
-        (await devPreview()).record({ level, scope: String(scope), message: String(message) });
-      },
+        recordDiagnostic: async ({ level, scope, message }) => {
+          if (!DEV_PREVIEW_AVAILABLE) return;
+          (await devPreview()).record({ level, scope: String(scope), message: String(message) });
+        },
 
-      createFeedback: async ({ title, description, includeLogs }) =>
-        (await devPreview()).createFeedback({ title, description, includeLogs }),
+        createFeedback: async ({ title, description, includeLogs }) =>
+          (await devPreview()).createFeedback({ title, description, includeLogs }),
 
-      openIssueLink: async ({ url }) => {
-        if (!DEV_PREVIEW_AVAILABLE) throw new Error('The developer preview is not available in this build.');
-        // Only the project's own "new issue" page may be opened from the app.
-        if (!url.startsWith(`${buildInfo.repositoryUrl}/issues/new?`)) {
-          throw new Error('Refusing to open a link outside the project issue tracker.');
-        }
-        Utils.openExternal(url);
+        openIssueLink: async ({ url }) => {
+          if (!DEV_PREVIEW_AVAILABLE) throw new Error('The developer preview is not available in this build.');
+          // Only the project's own "new issue" page may be opened from the app.
+          if (!url.startsWith(`${buildInfo.repositoryUrl}/issues/new?`)) {
+            throw new Error('Refusing to open a link outside the project issue tracker.');
+          }
+          Utils.openExternal(url);
+        },
+
+        ...windowRequests,
       },
     },
-  },
-});
+  });
+}

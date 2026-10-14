@@ -25,6 +25,11 @@ export function isClosable(view: ViewId): boolean {
   return view !== PINNED_VIEW;
 }
 
+/** The first position a tab can be moved to: the pinned view keeps the first one. */
+export function firstMovableIndex(views: readonly ViewId[]): number {
+  return views[0] === PINNED_VIEW ? 1 : 0;
+}
+
 export function needsServer(view: ViewId): boolean {
   return SERVER_VIEWS.has(view);
 }
@@ -33,8 +38,20 @@ export function needsServer(view: ViewId): boolean {
 export const viewTabId = (view: ViewId) => `view-tab-${view}`;
 export const viewPanelId = (view: ViewId) => `view-panel-${view}`;
 
+/**
+ * Decides where a view opens when it is not this window's to show, such as a view that has a
+ * window of its own (see lib/windows.ts). Returns true when it took care of the view.
+ */
+type ViewRouter = (view: ViewId) => boolean;
+let router: ViewRouter | null = null;
+
+export function routeViews(next: ViewRouter | null) {
+  router = next;
+}
+
 /** Opens a view in a new tab, or switches to its tab when it is already open. */
 export function openView(view: ViewId) {
+  if (router?.(view)) return;
   openViews.update(views => (views.includes(view) ? views : [...views, view]));
   activeView.set(view);
 }
@@ -53,6 +70,28 @@ export function closeView(view: ViewId) {
   if (get(activeView) === view) {
     activeView.set(remaining[index] ?? remaining[index - 1]);
   }
+}
+
+function placeAt(views: ViewId[], view: ViewId, index: number): ViewId[] {
+  const at = Math.min(Math.max(index, firstMovableIndex(views)), views.length);
+  return [...views.slice(0, at), view, ...views.slice(at)];
+}
+
+/** Moves an open tab to `index` in the tab order. The pinned view stays first. */
+export function moveView(view: ViewId, index: number) {
+  if (!isClosable(view)) return;
+  openViews.update(views =>
+    views.includes(view) ? placeAt(views.filter(open => open !== view), view, index) : views
+  );
+}
+
+/** Shows a view in a tab at `index`, or after the last tab, and switches to it. */
+export function insertView(view: ViewId, index?: number) {
+  openViews.update(views => {
+    const others = views.filter(open => open !== view);
+    return placeAt(others, view, index ?? others.length);
+  });
+  activeView.set(view);
 }
 
 /** Back to the pinned view alone, as on a fresh start. */
