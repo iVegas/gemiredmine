@@ -1,8 +1,14 @@
-import { RedmineApiError, RedmineClient, assertHttpUrl } from './client';
+import { RedmineApiError, RedmineClient, assertHttpUrl, type FetchLike } from './client';
 
 export interface SignInResult {
   apiKey: string;
   user: { id: number; login: string; firstname: string; lastname: string };
+}
+
+/** How the request is sent, when the runtime supplies its own HTTP client or a timeout. */
+export interface SignInTransport {
+  fetch?: FetchLike;
+  signal?: AbortSignal;
 }
 
 /**
@@ -12,9 +18,10 @@ export interface SignInResult {
 export async function signInWithPassword(
   baseUrl: string,
   username: string,
-  password: string
+  password: string,
+  transport: SignInTransport = {}
 ): Promise<SignInResult> {
-  const client = new RedmineClient({ baseUrl: assertHttpUrl(baseUrl), username, password });
+  const client = new RedmineClient({ baseUrl: assertHttpUrl(baseUrl), username, password, ...transport });
 
   let user;
   try {

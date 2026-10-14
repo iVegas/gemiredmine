@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
 import { API_KEY, ISSUE_COUNT, PASSWORD, USERNAME, createMockRedmine } from '../mock-redmine.mjs';
-import { RedmineApiError, RedmineClient } from '../../../src/bun/redmine/client';
+import { RedmineApiError, RedmineClient, RedmineMovedError, type FetchLike } from '../../../src/bun/redmine/client';
 import { signInWithPassword } from '../../../src/bun/redmine/auth';
 
 // The real Redmine client and sign-in, talking to the mock over real HTTP.
@@ -82,6 +82,43 @@ describe('lists', () => {
       '2026-10-08',
       '2026-10-09',
     ]);
+  });
+});
+
+describe('redirects', () => {
+  // Node follows redirects by default. The desktop HTTP client does not, so this is what the client sees there.
+  const manualRedirects: FetchLike = (url, init) => fetch(url, { ...init, redirect: 'manual' });
+  const clientFor = (path: string) => new RedmineClient({ baseUrl: `${baseUrl}${path}`, apiKey: API_KEY, fetch: manualRedirects });
+
+  it('names the new address of a server that moved', async () => {
+    const error = await clientFor('/moved').getCurrentUser().catch((e) => e);
+
+    expect(error).toBeInstanceOf(RedmineMovedError);
+    expect(error.status).toBe(301);
+    expect(error.suggestedBaseUrl).toBe('https://elsewhere.example');
+    expect(error.message).toBe('The server moved to https://elsewhere.example. Use that address as the server URL.');
+  });
+
+  it('recognises a list request that moved, query included', async () => {
+    const error = await clientFor('/moved').getAssignedTasks().catch((e) => e);
+
+    expect(error).toBeInstanceOf(RedmineMovedError);
+    expect(error.suggestedBaseUrl).toBe('https://elsewhere.example');
+  });
+
+  it('does not offer the login page of a gateway as the server', async () => {
+    const error = await clientFor('/sso').getCurrentUser().catch((e) => e);
+
+    expect(error).toBeInstanceOf(RedmineMovedError);
+    expect(error.status).toBe(302);
+    expect(error.suggestedBaseUrl).toBeNull();
+    expect(error.message).toContain('https://sso.example');
+  });
+
+  it('tells a moved server from wrong credentials when signing in', async () => {
+    await expect(signInWithPassword(`${baseUrl}/moved`, USERNAME, PASSWORD, { fetch: manualRedirects })).rejects.toThrow(
+      'The server moved to https://elsewhere.example.'
+    );
   });
 });
 

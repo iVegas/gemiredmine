@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { RedmineClient, RedmineApiError, assertHttpUrl } from '../client';
+import { RedmineClient, RedmineApiError, RedmineMovedError, assertHttpUrl, type FetchLike } from '../client';
 
 const jsonResponse = (body: unknown) =>
   ({ ok: true, text: async () => JSON.stringify(body) }) as Response;
@@ -189,6 +189,162 @@ describe('RedmineClient', () => {
     expect(requestedUrl(0).searchParams.get('status_id')).toBe('open');
     expect(requestedUrl(0).searchParams.get('sort')).toBe('priority:desc');
     expect(requestedUrl(0).searchParams.has('due_date')).toBe(false);
+  });
+});
+
+describe('RedmineClient transport', () => {
+  const baseUrl = 'https://redmine.example.com';
+
+  const failure = (status: number, statusText: string, location?: string, cancel = vi.fn<() => Promise<void>>().mockResolvedValue(undefined)) =>
+    ({
+      ok: false,
+      status,
+      statusText,
+      headers: new Headers(location === undefined ? {} : { Location: location }),
+      body: { cancel }
+    }) as unknown as Response;
+
+  const clientWith = (fetchImpl: FetchLike, config: { baseUrl?: string } = {}) =>
+    new RedmineClient({ baseUrl, apiKey: 'test-key', ...config, fetch: fetchImpl });
+
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  it('sends requests through the supplied fetch instead of the global one', async () => {
+    const supplied = vi.fn<FetchLike>().mockResolvedValue(jsonResponse({ trackers: [] }));
+
+    await clientWith(supplied).getTrackers();
+
+    expect(supplied).toHaveBeenCalledWith(
+      'https://redmine.example.com/trackers.json',
+      expect.objectContaining({ headers: expect.any(Headers) })
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('forwards the abort signal, and sends none when there is none', async () => {
+    const supplied = vi.fn<FetchLike>().mockResolvedValue(jsonResponse({}));
+    const controller = new AbortController();
+
+    await new RedmineClient({ baseUrl, apiKey: 'k', fetch: supplied, signal: controller.signal }).getTrackers();
+    await clientWith(supplied).getTrackers();
+
+    expect(supplied.mock.calls[0][1].signal).toBe(controller.signal);
+    expect('signal' in supplied.mock.calls[1][1]).toBe(false);
+  });
+
+  it('gives every request its own init, because some HTTP clients modify it', async () => {
+    const seen: string[][] = [];
+    const supplied = vi.fn(async (_url: string, init: RequestInit) => {
+      seen.push(Object.keys(init).sort());
+      delete (init as Record<string, unknown>).headers;
+      return jsonResponse({});
+    });
+    const client = clientWith(supplied);
+
+    await client.getTrackers();
+    await client.getTrackers();
+
+    expect(seen).toEqual([['headers'], ['headers']]);
+    expect(supplied.mock.calls[0][1]).not.toBe(supplied.mock.calls[1][1]);
+  });
+
+  describe('redirects', () => {
+    const redirectedWith = async (response: Response, config: { baseUrl?: string } = {}) => {
+      const supplied = vi.fn<FetchLike>().mockResolvedValue(response);
+      return clientWith(supplied, config).getCurrentUser().catch((error) => error);
+    };
+
+    it('suggests the new server URL when the server moved to another address', async () => {
+      const error = await redirectedWith(failure(301, 'Moved Permanently', 'https://new.example.com/users/current.json'));
+
+      expect(error).toBeInstanceOf(RedmineMovedError);
+      expect(error).toBeInstanceOf(RedmineApiError);
+      expect(error.status).toBe(301);
+      expect(error.suggestedBaseUrl).toBe('https://new.example.com');
+      expect(error.location).toBe('https://new.example.com/users/current.json');
+      expect(error.message).toBe('The server moved to https://new.example.com. Use that address as the server URL.');
+    });
+
+    it('moves from http to https and keeps a sub-path', async () => {
+      const error = await redirectedWith(
+        failure(308, 'Permanent Redirect', 'https://redmine.example.com/redmine/users/current.json'),
+        { baseUrl: 'http://redmine.example.com/redmine' }
+      );
+
+      expect(error.suggestedBaseUrl).toBe('https://redmine.example.com/redmine');
+    });
+
+    it('resolves a relative Location against the request', async () => {
+      const error = await redirectedWith(failure(302, 'Found', '/tracker/users/current.json'));
+
+      expect(error.suggestedBaseUrl).toBe('https://redmine.example.com/tracker');
+    });
+
+    it('recognises the path of a list request that has a query', async () => {
+      const supplied = vi
+        .fn<FetchLike>()
+        .mockResolvedValue(failure(301, 'Moved Permanently', 'https://new.example.com/issues.json?assigned_to_id=me'));
+
+      const error = await clientWith(supplied).getAssignedTasks().catch((e) => e);
+
+      expect(error.suggestedBaseUrl).toBe('https://new.example.com');
+    });
+
+    it('does not suggest a login page of a proxy or single sign-on gateway as the server', async () => {
+      const error = await redirectedWith(failure(302, 'Found', 'https://sso.example.com/auth?next=%2F'));
+
+      expect(error).toBeInstanceOf(RedmineMovedError);
+      expect(error.suggestedBaseUrl).toBeNull();
+      expect(error.location).toBe('https://sso.example.com/auth?next=%2F');
+      expect(error.message).toBe(
+        'The server redirected to https://sso.example.com instead of answering. Check the server URL, and any proxy or login gateway in front of it.'
+      );
+      // The query of the login page is not repeated: it may carry tokens.
+      expect(error.message).not.toContain('next=');
+    });
+
+    it.each([
+      ['has no Location', undefined],
+      ['has a Location that is not a URL', 'http://']
+    ])('says so when the redirect %s', async (_name, location) => {
+      const error = await redirectedWith(failure(301, 'Moved Permanently', location));
+
+      expect(error).toBeInstanceOf(RedmineMovedError);
+      expect(error.location).toBeNull();
+      expect(error.suggestedBaseUrl).toBeNull();
+      expect(error.message).toBe('The server redirected the request without saying where. Check the server URL.');
+    });
+
+    it('treats a 3xx that is not a redirect like any other failure', async () => {
+      const error = await redirectedWith(failure(304, 'Not Modified', 'https://new.example.com/users/current.json'));
+
+      expect(error).toBeInstanceOf(RedmineApiError);
+      expect(error).not.toBeInstanceOf(RedmineMovedError);
+      expect(error.message).toBe('Redmine API request failed: 304 Not Modified');
+    });
+  });
+
+  describe('failed responses', () => {
+    it.each([
+      ['an error', 401, 'Unauthorized', undefined],
+      ['a redirect', 301, 'Moved Permanently', 'https://new.example.com/trackers.json']
+    ])('release the unread body after %s', async (_name, status, statusText, location) => {
+      const cancel = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+      const supplied = vi.fn<FetchLike>().mockResolvedValue(failure(status, statusText, location, cancel));
+
+      await expect(clientWith(supplied).getTrackers()).rejects.toBeInstanceOf(RedmineApiError);
+
+      expect(cancel).toHaveBeenCalledTimes(1);
+    });
+
+    it('still report the failure when the body cannot be released', async () => {
+      const cancel = vi.fn().mockRejectedValue(new Error('stream is locked'));
+      const supplied = vi.fn<FetchLike>().mockResolvedValue(failure(500, 'Internal Server Error', undefined, cancel));
+
+      await expect(clientWith(supplied).getTrackers()).rejects.toThrow('Redmine API request failed: 500');
+    });
   });
 });
 

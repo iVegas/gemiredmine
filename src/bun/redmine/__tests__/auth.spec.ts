@@ -64,4 +64,35 @@ describe('signInWithPassword', () => {
     await expect(signInWithPassword('javascript:alert(1)', 'ana', 'secret')).rejects.toThrow();
     expect(global.fetch).not.toHaveBeenCalled();
   });
+
+  it('sends the request through the supplied transport', async () => {
+    const supplied = vi.fn().mockResolvedValue(
+      jsonResponse({ user: { id: 7, login: 'ana', firstname: 'Ana', lastname: 'K', api_key: 'key-123' } })
+    );
+    const controller = new AbortController();
+
+    await signInWithPassword('https://redmine.example.com', 'ana', 'secret', {
+      fetch: supplied,
+      signal: controller.signal
+    });
+
+    expect(supplied).toHaveBeenCalledWith(
+      'https://redmine.example.com/users/current.json',
+      expect.objectContaining({ signal: controller.signal })
+    );
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('reports a moved server instead of invalid credentials', async () => {
+    const supplied = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 301,
+      statusText: 'Moved Permanently',
+      headers: new Headers({ Location: 'https://new.example.com/users/current.json' })
+    } as Response);
+
+    await expect(
+      signInWithPassword('http://redmine.example.com', 'ana', 'secret', { fetch: supplied })
+    ).rejects.toThrow('The server moved to https://new.example.com.');
+  });
 });
