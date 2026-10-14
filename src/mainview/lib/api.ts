@@ -1,30 +1,6 @@
-import { Electroview } from 'electrobun/view';
-import type { GemiRPCSchema, ServerAccess, DateRange, SignInParams } from '../../shared/rpc';
+import type { ServerAccess, DateRange, SignInParams } from '../../shared/rpc';
 import type { LogLevel } from '../../bun/diagnostics/aggregator';
-
-const defineRpc = () =>
-  Electroview.defineRPC<GemiRPCSchema>({
-    // Redmine lists can be slow on large instances, so allow more than the default before timing out.
-    maxRequestTime: 30_000,
-    handlers: {},
-  });
-
-let rpc: ReturnType<typeof defineRpc> | null = null;
-
-/**
- * The Electrobun bridge only exists inside the desktop webview. It is created on first use
- * so that importing this module is safe elsewhere (tests, or the Capacitor Android build).
- */
-function backend() {
-  if (!rpc) {
-    if (typeof window === 'undefined' || !('__electrobun' in window)) {
-      throw new Error('The desktop backend is not available in this environment.');
-    }
-    rpc = defineRpc();
-    new Electroview({ rpc });
-  }
-  return rpc.request;
-}
+import { backend } from './bridge';
 
 export const redmineApi = {
   signIn: (params: SignInParams) => backend().signIn(params),

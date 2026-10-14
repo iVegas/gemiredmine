@@ -1,17 +1,7 @@
-import { BrowserWindow } from 'electrobun';
 import { buildInfo } from '../shared/build-info.generated';
-import { rpc } from './rpc';
+import { ViewWindows } from './windows/view-windows';
+import { electrobunHost } from './windows/electrobun-host';
 
-// The window is initialised by its constructor; no separate init call is needed.
-const win = new BrowserWindow({
-    title: buildInfo.productName,
-    url: 'views://mainview/index.html',
-    frame: {
-        x: 0,
-        y: 0,
-        width: 1024,
-        height: 768,
-    },
-    rpc,
-});
-
+// The main window, and the windows that view tabs are dragged out into.
+const windows = new ViewWindows(electrobunHost, buildInfo.productName);
+windows.openMain({ x: 0, y: 0, width: 1024, height: 768 });

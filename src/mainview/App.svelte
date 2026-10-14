@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import WelcomeScreen from './WelcomeScreen.svelte';
   import ViewTabs from './ViewTabs.svelte';
   import UserMenu from './UserMenu.svelte';
@@ -10,18 +11,37 @@
   import AboutView from './AboutView.svelte';
   import { servers, activeServer } from './lib/store';
   import { activeView, closeView, needsServer, openViews, viewPanelId, viewTabId } from './lib/views';
+  import { attachToMainWindow, sessionReady, startMainWindow, startViewWindow, viewWindowFromLocation } from './lib/windows';
   import { buildInfo } from '../shared/build-info.generated';
+
+  // A tab dragged out of the main window opens in a window of its own, which shows only that view.
+  const windowView = viewWindowFromLocation();
+  onDestroy(windowView ? startViewWindow(windowView) : startMainWindow());
 </script>
 
-{#if $servers.length === 0}
+{#if windowView && !$sessionReady}
+  <p role="status" class="p-6 text-gray-600">Loading…</p>
+{:else if !windowView && $servers.length === 0}
   <WelcomeScreen />
 {:else}
   <div class="flex h-screen w-full flex-col bg-gray-50 font-sans">
-    <header class="flex items-end justify-between gap-4 border-b border-gray-200 bg-white px-4 pt-2">
+    <!-- A view window can be dragged by its header too, back onto the main window's tabs. -->
+    <header class="flex items-end justify-between gap-4 border-b border-gray-200 bg-white px-4 pt-2 {windowView ? 'electrobun-webkit-app-region-drag' : ''}">
       <h1 class="sr-only">{buildInfo.productName}</h1>
-      <ViewTabs />
+      <ViewTabs movable={!windowView} />
       <div class="pb-1.5">
-        <UserMenu />
+        {#if windowView}
+          <button
+            type="button"
+            title="Puts this view back in the main window's tabs. You can also drag this window onto them."
+            class="electrobun-webkit-app-region-no-drag rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            on:click={attachToMainWindow}
+          >
+            Move to main window
+          </button>
+        {:else}
+          <UserMenu />
+        {/if}
       </div>
     </header>
 

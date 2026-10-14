@@ -1,0 +1,192 @@
+import { get, writable } from 'svelte/store';
+import type { SessionSnapshot, TabStripLayout, ViewPlacement, WindowMessages } from '../../shared/rpc';
+import { viewFromHash } from '../../shared/windows';
+import { backend, hasDesktopBackend, onBackendMessage } from './bridge';
+import { activeServerId, servers } from './store';
+import {
+  VIEW_TITLES,
+  activeView,
+  closeView,
+  insertView,
+  isClosable,
+  openView,
+  openViews,
+  routeViews,
+  type ViewId,
+} from './views';
+
+// A view tab dragged out of the main window opens in a window of its own, which shows only that
+// view. Dragging that window back over the main window's tab strip puts the view back in a tab.
+// The Bun side (src/bun/windows) follows the window drag; this module is the webview's side.
+
+/** Main window: views that have moved into windows of their own. */
+export const detachedViews = writable<ViewId[]>([]);
+/** Main window: where a view window dragged over the tab strip would join the tabs. */
+export const windowDropTarget = writable<Required<ViewPlacement> | null>(null);
+/** View window: false until it has the servers from the main window. */
+export const sessionReady = writable(true);
+
+/** The view this window is dedicated to, from its URL, or null in the main window. */
+export function viewWindowFromLocation(hash = typeof location === 'undefined' ? '' : location.hash): ViewId | null {
+  const view = viewFromHash(hash);
+  return view && view in VIEW_TITLES && isClosable(view as ViewId) ? (view as ViewId) : null;
+}
+
+/** Tabs open in windows of their own only in the desktop app. */
+export function canDetachViews(): boolean {
+  return hasDesktopBackend();
+}
+
+let lastShared = '';
+
+function snapshot(): SessionSnapshot {
+  return { servers: get(servers), activeServerId: get(activeServerId) };
+}
+
+function applySession(session: SessionSnapshot) {
+  lastShared = JSON.stringify(session);
+  servers.set(session.servers);
+  activeServerId.set(session.activeServerId);
+}
+
+/** Sends changes to the servers to the other windows, while `active` says there are any. */
+function shareSessionChanges(active: () => boolean): () => void {
+  let queued = false;
+  const queue = () => {
+    if (queued) return;
+    queued = true;
+    // A change can touch several stores; wait for all of them and share the result once.
+    queueMicrotask(() => {
+      queued = false;
+      if (!active()) return;
+      const session = snapshot();
+      const json = JSON.stringify(session);
+      if (json === lastShared) return;
+      lastShared = json;
+      void backend().shareSession(session);
+    });
+  };
+  const unsubscribers = [servers.subscribe(queue), activeServerId.subscribe(queue)];
+  return () => unsubscribers.forEach(unsubscribe => unsubscribe());
+}
+
+type MessageHandlers = { [K in keyof WindowMessages]?: (payload: WindowMessages[K]) => void };
+
+/** Handles messages from the backend. Returns a function that stops handling them. */
+function listen(handlers: MessageHandlers): () => void {
+  const names = Object.keys(handlers) as (keyof WindowMessages)[];
+  for (const name of names) onBackendMessage(name, handlers[name] as never);
+  return () => names.forEach(name => onBackendMessage(name, undefined));
+}
+
+function forget(view: ViewId) {
+  detachedViews.update(views => views.filter(detached => detached !== view));
+}
+
+/** Brings forward the window that shows a view. If that window is gone, the view opens in a tab. */
+function focusViewWindow(view: ViewId) {
+  void backend()
+    .focusViewWindow({ view })
+    .then(found => {
+      if (found) return;
+      forget(view);
+      openView(view);
+    });
+}
+
+/** Sets up the main window. Returns a function that undoes it. */
+export function startMainWindow(): () => void {
+  if (!hasDesktopBackend()) return () => {};
+
+  const stopListening = listen({
+    sessionChanged: applySession,
+    viewDropTarget: ({ target }) => windowDropTarget.set(target),
+    viewAttached: ({ view, index }) => {
+      forget(view);
+      windowDropTarget.set(null);
+      insertView(view, index);
+    },
+    viewWindowClosed: ({ view }) => forget(view),
+    openView: ({ view }) => openView(view),
+  });
+
+  // A view with a window of its own is shown there, not opened a second time in a tab.
+  routeViews(view => {
+    if (!get(detachedViews).includes(view)) return false;
+    focusViewWindow(view);
+    return true;
+  });
+  const stopSharing = shareSessionChanges(() => get(detachedViews).length > 0);
+
+  return () => {
+    stopListening();
+    stopSharing();
+    routeViews(null);
+  };
+}
+
+/** Sets up a window that shows only `view`. Returns a function that undoes it. */
+export function startViewWindow(view: ViewId): () => void {
+  openViews.set([view]);
+  activeView.set(view);
+  if (!hasDesktopBackend()) return () => {};
+
+  // Other views open in the main window.
+  routeViews(other => {
+    if (other !== view) void backend().openInMainWindow({ view: other });
+    return true;
+  });
+  // The window closes with its view.
+  const stopClosing = openViews.subscribe(views => {
+    if (views.length === 0) void backend().closeViewWindow();
+  });
+
+  sessionReady.set(false);
+  const stopListening = listen({ sessionChanged: applySession });
+  let stopSharing = () => {};
+  let stopped = false;
+  void backend()
+    .getSession()
+    .then(session => {
+      if (stopped) return;
+      if (session) applySession(session);
+      sessionReady.set(true);
+      stopSharing = shareSessionChanges(() => true);
+    });
+
+  return () => {
+    stopped = true;
+    stopListening();
+    stopSharing();
+    stopClosing();
+    routeViews(null);
+    sessionReady.set(true);
+  };
+}
+
+/** Main window: moves a tab's view into a window of its own. Returns false when it cannot. */
+export async function detachView(view: ViewId): Promise<boolean> {
+  if (!canDetachViews() || !isClosable(view) || !get(openViews).includes(view)) return false;
+  const session = snapshot();
+  await backend().detachView({ view, title: VIEW_TITLES[view], session });
+  lastShared = JSON.stringify(session);
+  detachedViews.update(views => [...views, view]);
+  closeView(view);
+  return true;
+}
+
+/** View window: puts the view back in the main window's tabs. */
+export function attachToMainWindow() {
+  void backend().attachView();
+}
+
+let lastLayout = '';
+
+/** Main window: tells the backend where the tab strip is, while views have windows of their own. */
+export function reportTabStrip(layout: TabStripLayout) {
+  if (!hasDesktopBackend() || get(detachedViews).length === 0) return;
+  const json = JSON.stringify(layout);
+  if (json === lastLayout) return;
+  lastLayout = json;
+  void backend().reportTabStrip(layout);
+}
