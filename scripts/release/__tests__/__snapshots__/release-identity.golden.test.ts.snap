@@ -96,7 +96,7 @@ exports[`canary channel > names and describes the Windows package and its feed 1
   </Resources>
 
   <Applications>
-    <Application Id="App" Executable="bin\\launcher.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="App" Executable="Gemiredmine-Canary.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="Gemiredmine Canary"
         Description="Redmine client, Canary channel"
@@ -215,7 +215,7 @@ exports[`dev channel > names and describes the Windows package and its feed 1`] 
   </Resources>
 
   <Applications>
-    <Application Id="App" Executable="bin\\launcher.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="App" Executable="Gemiredmine-Dev.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="Gemiredmine Dev"
         Description="Redmine client, Dev channel"
@@ -342,7 +342,7 @@ exports[`stable channel > names and describes the Windows package and its feed 1
   </Resources>
 
   <Applications>
-    <Application Id="App" Executable="bin\\launcher.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="App" Executable="Gemiredmine.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="Gemiredmine"
         Description="Redmine client, Stable channel"
@@ -467,7 +467,7 @@ exports[`unstable channel > names and describes the Windows package and its feed
   </Resources>
 
   <Applications>
-    <Application Id="App" Executable="bin\\launcher.exe" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="App" Executable="Gemiredmine-Unstable.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="Gemiredmine Unstable"
         Description="Redmine client, Unstable channel"

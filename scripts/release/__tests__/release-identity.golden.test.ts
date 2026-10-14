@@ -10,7 +10,6 @@ import {
   fixedPackageFileName,
   msixVersion,
   packageFileName,
-  windowsPath,
 } from '../windows-metadata.mjs';
 
 // Golden snapshots of everything that identifies a release to users and to their update paths.
@@ -111,8 +110,8 @@ describe.each(channels)('%s channel', (channel) => {
               displayName: windows.productName,
               publisherDisplayName: 'Gemiredmine',
               description: `Redmine client, ${windows.label} channel`,
-              // The launcher path is the one thing a change of desktop shell is allowed to move.
-              executable: windowsPath('bin', 'launcher.exe'),
+              // The executable is the one thing a change of desktop shell is allowed to move.
+              executable: `${windows.appName}.exe`,
             })
           : null,
       appInstaller: installerInput ? buildAppInstaller(installerInput) : null,

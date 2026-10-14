@@ -49,11 +49,19 @@ describe('desktopEntry', () => {
 });
 
 describe('appRunScript', () => {
-  it('starts the launcher inside the bundled install directory', () => {
-    const script = appRunScript('usr/lib/Gemiredmine');
+  const script = appRunScript('usr/bin/Gemiredmine');
+
+  it('starts the bundled executable from the AppImage mount point', () => {
     expect(script.startsWith('#!/bin/sh')).toBe(true);
-    expect(script).toContain('cd "$HERE/usr/lib/Gemiredmine"');
-    expect(script).toContain('exec "./bin/launcher" "$@"');
+    expect(script).toContain('HERE="$(dirname "$(readlink -f "$0")")"');
+    expect(script).toContain('exec "$HERE/usr/bin/Gemiredmine" "$@"');
+    // The app finds everything it needs inside its executable, so it has no reason to change directory.
+    expect(script).not.toContain('cd ');
+  });
+
+  it('runs on X11 unless the user chose a backend', () => {
+    expect(script).toContain('export GDK_BACKEND="${GDK_BACKEND:-x11}"');
+    expect(script.indexOf('GDK_BACKEND')).toBeLessThan(script.indexOf('exec '));
   });
 });
 

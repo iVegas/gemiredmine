@@ -10,6 +10,8 @@ import { errorAnnotation, exportPublicCertificate, packageWindows } from '../pac
 const FAKE_MAKEAPPX = `#!/bin/sh
 [ "$1" = pack ] || exit 2
 cp "$3/AppxManifest.xml" "$5"
+# What goes into the package, for the tests to look at.
+(cd "$3" && find . -type f | sort) > "$5.files"
 `;
 const FAKE_SIGNTOOL = `#!/bin/sh
 echo "$@" >> "$SIGNTOOL_LOG"
@@ -69,13 +71,10 @@ describe('packageWindows', () => {
     chmodSync(join(tools, 'signtool'), 0o755);
 
     writeFileSync(join(root, 'package.json'), JSON.stringify({ version: '1.0.0' }));
-    // Electrobun names the folder <app>-<env>; the stable app has its own folder name.
-    for (const name of ['Gemiredmine-Unstable-dev', 'Gemiredmine-dev']) {
-      const app = join(root, 'build', 'dev-win-x64', name);
-      mkdirSync(join(app, 'bin'), { recursive: true });
-      mkdirSync(join(app, 'Resources'), { recursive: true });
-      writeFileSync(join(app, 'bin', 'launcher.exe'), 'MZ');
-      writeFileSync(join(app, 'Resources', 'main.js'), '// app');
+    // `tauri build` leaves one executable per channel, named after the app.
+    mkdirSync(join(root, 'src-tauri', 'target', 'release'), { recursive: true });
+    for (const name of ['Gemiredmine-Unstable.exe', 'Gemiredmine.exe']) {
+      writeFileSync(join(root, 'src-tauri', 'target', 'release', name), `MZ ${name}`);
     }
 
     for (const channel of ['unstable', 'stable']) {
@@ -103,7 +102,35 @@ describe('packageWindows', () => {
     expect(manifest).toContain('Name="com.gemiredmine.app.unstable"');
     expect(manifest).toContain('Version="1.0.0.7"');
     expect(manifest).toContain('Publisher="CN=Gemiredmine"');
-    expect(manifest).toContain('Executable="bin\\launcher.exe"');
+    expect(manifest).toContain('Executable="Gemiredmine-Unstable.exe"');
+  });
+
+  it('packages the channel executable, the manifest and the tile images, and nothing else', () => {
+    const { outDir } = packageWindows({ env: env(), root, exportCertificate: fakeExport });
+
+    const files = readFileSync(join(outDir, 'Gemiredmine-Unstable-1.0.0-unstable.7-x64.msix.files'), 'utf8').trim().split('\n');
+    expect(files).toEqual([
+      './Assets/Square150x150Logo.png',
+      './Assets/Square44x44Logo.png',
+      './Assets/StoreLogo.png',
+      './Assets/Wide310x150Logo.png',
+      './AppxManifest.xml',
+      './Gemiredmine-Unstable.exe',
+    ].sort());
+  });
+
+  it('starts the stable executable in the stable package, not the unstable one', () => {
+    const { outDir } = packageWindows({ env: env({ CHANNEL: 'stable' }), root, exportCertificate: fakeExport });
+
+    const manifest = readFileSync(join(outDir, 'Gemiredmine-1.0.0-x64.msix'), 'utf8');
+    expect(manifest).toContain('Executable="Gemiredmine.exe"');
+    expect(manifest).not.toContain('Gemiredmine-Unstable');
+  });
+
+  it('refuses to package when the channel has not been built', () => {
+    rmSync(join(root, 'src-tauri', 'target', 'release', 'Gemiredmine-Unstable.exe'));
+
+    expect(() => packageWindows({ env: env(), root, exportCertificate: fakeExport })).toThrow('No Gemiredmine-Unstable executable');
   });
 
   it('signs canary and unstable with the self-signed certificate, skips the trust check, and ships the public certificate', () => {
@@ -186,18 +213,5 @@ describe('packageWindows', () => {
     expect(errorAnnotation('needs the WINDOWS_SELF_SIGNED_PFX_BASE64 secret.\n100% sure')).toBe(
       '::error title=Windows packaging failed::needs the WINDOWS_SELF_SIGNED_PFX_BASE64 secret.%0A100%25 sure'
     );
-  });
-
-  it('uses the genuine launcher from the Electrobun Windows core when the build only has the extensionless launcher', () => {
-    const app = join(root, 'build', 'dev-win-x64', 'Gemiredmine-Unstable-dev');
-    rmSync(join(app, 'bin', 'launcher.exe'));
-    writeFileSync(join(app, 'bin', 'launcher'), '#!/bin/sh');
-    const core = join(root, 'node_modules', 'electrobun', 'dist-win-x64');
-    mkdirSync(core, { recursive: true });
-    writeFileSync(join(core, 'launcher.exe'), 'GENUINE');
-
-    const { outDir } = packageWindows({ env: env(), root, exportCertificate: fakeExport });
-
-    expect(readFileSync(join(outDir, 'Gemiredmine-Unstable-1.0.0-unstable.7-x64.msix'), 'utf8')).toContain('Executable="bin\\launcher.exe"');
   });
 });

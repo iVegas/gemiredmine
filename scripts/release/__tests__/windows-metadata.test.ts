@@ -7,7 +7,6 @@ import {
   fixedPackageFileName,
   msixVersion,
   packageFileName,
-  windowsPath,
   xmlEscape,
 } from '../windows-metadata.mjs';
 
@@ -57,7 +56,7 @@ describe('manifests', () => {
     displayName: 'Gemiredmine Canary',
     publisherDisplayName: 'Gemiredmine',
     description: 'Redmine client <canary>',
-    executable: windowsPath('bin', 'launcher.exe'),
+    executable: 'Gemiredmine-Canary.exe',
   });
 
   it('declares the channel identity, Windows 11 target and the desktop full-trust entry point', () => {
@@ -65,7 +64,7 @@ describe('manifests', () => {
     expect(manifest).toContain('Version="1.0.0.3"');
     expect(manifest).toContain('ProcessorArchitecture="x64"');
     expect(manifest).toContain('Name="Windows.Desktop" MinVersion="10.0.22000.0"');
-    expect(manifest).toContain('Executable="bin\\launcher.exe" EntryPoint="Windows.FullTrustApplication"');
+    expect(manifest).toContain('Executable="Gemiredmine-Canary.exe" EntryPoint="Windows.FullTrustApplication"');
     expect(manifest).toContain('<rescap:Capability Name="runFullTrust" />');
   });
 

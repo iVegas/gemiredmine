@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Packages the Electrobun Linux build of one channel as an AppImage.
+// Packages the Tauri Linux executable of one channel as an AppImage.
 //
 // Inputs:  CHANNEL, GITHUB_RUN_NUMBER (unstable build number), COMMIT (optional)
 // Outputs: dist/linux/<channel>/ containing the AppImage, its zsync file(s), SHA256SUMS
@@ -11,7 +11,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REPOSITORY, deriveBuildInfo } from './channels.mjs';
 import { POINTER_TAGS, tagFor } from './policy.mjs';
-import { findAppBuild } from './build-output.mjs';
+import { findAppBinary } from './build-output.mjs';
 import {
   appImageFileName,
   appRunScript,
@@ -58,7 +58,12 @@ function gitCommit(root, ref = 'HEAD', short = false) {
   }
 }
 
-export function packageLinux({ env = process.env, root = ROOT, run = execFileSync } = {}) {
+/**
+ * `appimagetool` is the path of a ready-to-run tool. By default the pinned one is downloaded and verified.
+ *
+ * @param {{ env?: NodeJS.ProcessEnv, root?: string, run?: typeof execFileSync, appimagetool?: string }} [options]
+ */
+export function packageLinux({ env = process.env, root = ROOT, run = execFileSync, appimagetool } = {}) {
   const channel = env.CHANNEL;
   if (!channel) throw new Error('Set CHANNEL to stable, canary or unstable.');
 
@@ -72,23 +77,24 @@ export function packageLinux({ env = process.env, root = ROOT, run = execFileSyn
     buildDate: env.BUILD_DATE || new Date().toISOString(),
   });
 
-  const source = findAppBuild(join(root, 'build'), info.appName);
+  const binary = findAppBinary(root, info.appName, 'linux', env);
   const outDir = join(root, 'dist', 'linux', channel);
   const appDir = join(outDir, 'AppDir');
-  const installDir = join('usr', 'lib', info.appName);
+  const installedBinary = `usr/bin/${info.appName}`;
 
   rmSync(outDir, { recursive: true, force: true });
-  mkdirSync(join(appDir, installDir), { recursive: true });
+  mkdirSync(join(appDir, 'usr', 'bin'), { recursive: true });
 
-  // Copy the whole Electrobun output: the launcher locates its runtime relative to itself.
-  run('cp', ['-a', `${source}/.`, join(appDir, installDir)]);
+  // The Tauri executable is self-contained: the web assets are inside it, and it finds the system's WebKitGTK.
+  copyFileSync(binary, join(appDir, installedBinary));
+  chmodSync(join(appDir, installedBinary), 0o755);
 
-  writeFileSync(join(appDir, 'AppRun'), appRunScript(installDir), { mode: 0o755 });
+  writeFileSync(join(appDir, 'AppRun'), appRunScript(installedBinary), { mode: 0o755 });
   writeFileSync(join(appDir, `${info.identifier}.desktop`), desktopEntry({ ...info, appName: info.appName }));
   copyFileSync(join(root, 'assets', 'icons', `${channel}.png`), join(appDir, `${info.identifier}.png`));
   symlinkSync(`${info.identifier}.png`, join(appDir, '.DirIcon'));
 
-  const tool = ensureAppImageTool(join(root, 'dist', 'tools'), run);
+  const tool = appimagetool ?? ensureAppImageTool(join(root, 'dist', 'tools'), run);
   const appImageName = appImageFileName(info.appName, info.version);
   const appImagePath = join(outDir, appImageName);
   const updateInfo = updateInformation({ channel, owner: REPOSITORY.owner, repo: REPOSITORY.name, appName: info.appName });
