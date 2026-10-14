@@ -35,9 +35,13 @@ process. Android runs on **Capacitor 8**.
 
 ### Electrobun coupling (complete list)
 
-- **App code:** `src/bun/index.ts` (`BrowserWindow`, `views://`); `src/bun/rpc.ts` (`BrowserView.defineRPC`,
-  `Utils.openExternal`); `src/shared/rpc.ts` (`RPCSchema` type); `src/mainview/lib/api.ts` (`Electroview`, the
-  `__electrobun` guard).
+- **App code:** `src/bun/index.ts` (opens the main window through `ViewWindows`); `src/bun/rpc.ts`
+  (`BrowserView.defineRPC`, `Utils.openExternal`); `src/shared/rpc.ts` (`RPCSchema` type);
+  `src/mainview/lib/bridge.ts` (`Electroview`, the `__electrobun` guard, the message listener).
+- **Window layer (added to `main` by `e9f36d1`, after this plan was first written):**
+  `src/bun/windows/electrobun-host.ts` (`BrowserWindow`, `Screen`) under the portable `view-windows.ts`; one RPC per
+  window (`createRpc`); window requests and messages typed in `src/shared/rpc.ts`; `src/mainview/lib/windows.ts`.
+  See "Window layer" under PR 2.
 - **Config and stubs:** `electrobun.config.ts`; `src/types/shims.d.ts` (exists only for Electrobun).
 - **Scripts:** `scripts/release/build-electrobun.mjs` runs the CLI from `node_modules/electrobun`; `build-output.mjs`
   `findAppBuild` expects `build/<env>-<os>-x64/<App>/bin/launcher[.exe]`; `linux-metadata.mjs` AppRun runs
@@ -76,7 +80,7 @@ These must not change. PR 0's tests pin them.
 |---|---|---|
 | PR 0 | Safety net: golden tests and a mock Redmine | no |
 | PR 1 | A runtime-neutral backend, still on Electrobun | next unstable build |
-| **PR 2** | **The Tauri shell on Linux and Windows, Electrobun removed** (6 commits, draft until gates G1-G6 pass) | unstable on merge, then canary, then stable |
+| **PR 2** | **The Tauri shell on Linux and Windows, Electrobun removed** (6 commits, draft until gates G1-G6 pass). The window layer may be a second PR; see "Window layer" | unstable on merge, then canary, then stable |
 | PR 3 (optional) | `tauri-driver` end-to-end tests; `git mv src/bun src/core` | no |
 | Android phase | Tauri Android, retire Capacitor | later |
 
@@ -89,6 +93,60 @@ The rest of this file is what is still ahead.
 
 Open it as a draft. Each commit keeps `npm test` green, because the husky pre-commit hook runs it.
 Start from `main` once PR 0 and PR 1 are merged.
+
+### Window layer (new on `main`: `e9f36d1`, "drag view tabs ... into windows of their own")
+
+This landed after the plan was first written and is the largest piece of Electrobun-specific behaviour besides the
+backend. Read it before estimating PR 2.
+
+**What it is**
+- `src/bun/windows/view-windows.ts`: `ViewWindows`, the window manager. It is plain TypeScript and does not import
+  Electrobun. It needs a `ViewWindowsHost` (open a window, read the pointer, read the primary mouse button, find a
+  display's work area, run a repeating task) and works with `AppWindow`s (frame, minimized, activate, close, move and
+  close events, and `send` for messages to that window's webview). It follows a dragged view window by polling the
+  pointer and the mouse button every 40 ms, and puts the view back into a tab when the window is dropped on the main
+  window's tab strip. Its spec (`__tests__/view-windows.spec.ts`) runs against a fake host.
+- `src/bun/windows/electrobun-host.ts` is the only Electrobun part: `BrowserWindow`, `Screen.getCursorScreenPoint()`,
+  `Screen.getMouseButtons()`, `Screen.getAllDisplays()`.
+- `src/bun/rpc.ts` `createRpc(windowRequests)` builds one RPC per window, so a request is answered knowing which window
+  sent it. The requests and messages are typed in `src/shared/rpc.ts` (`WindowRequests`, `WindowMessages`).
+- `src/mainview/lib/bridge.ts` is the webview's side of the RPC, and `src/mainview/lib/windows.ts` the window feature.
+  `canDetachViews()` is true only where `hasDesktopBackend()` is, which today means Electrobun.
+- Servers and API keys are held in memory per window, so windows pass them to each other with `shareSession`.
+
+**What Tauri changes** (checked against `@tauri-apps/api` 2.12.3; the Wayland points are *not* verified)
+1. **There is no Bun process**, so `ViewWindows` has to run somewhere else: in the main window's webview (TypeScript,
+   in line with the decision to keep the backend in the webview) or in Rust. This plan assumes the webview.
+2. **A `TauriHost`** implements `ViewWindowsHost` with `WebviewWindow` (created with a label and a URL such as
+   `index.html#view=calendar`), `onMoved`, `onCloseRequested`, `isMinimized`, `outerPosition`, `setFocus`,
+   `monitorFromPoint` and `cursorPosition()`. All of these exist. Tauri reports **physical pixels**; the Electrobun
+   code works in whatever `Screen` reports, so convert with the scale factor.
+3. **Window requests and messages become Tauri events** (`emitTo`, `listen`) between windows, with a small
+   request and response layer (correlation ids) typed by `WindowRequests` and `WindowMessages`.
+4. **There is no Tauri API for the state of the mouse buttons** (only tray events), and `ViewWindows` needs
+   `primaryButtonDown()` to tell a drag by the user from a move by the window manager. That takes a small Rust
+   command: on Linux through GDK, which Tauri already links; on Windows `GetAsyncKeyState`. It is the one place this
+   plan needs more Rust than wiring.
+5. **Wayland.** Applications cannot read the global pointer position or set window positions on native Wayland. Today the
+   feature works there because Electrobun forces X11 (through XWayland), and the README already says some Wayland
+   sessions do not report window positions. So `GDK_BACKEND=x11` in AppRun is a requirement for dragging windows back
+   into the tab strip, not only parity. Verify on a Wayland session (gate G4).
+6. **Each webview has its own JavaScript context**, so each window would create its own `createBackend`. The developer
+   preview must have a single owner, because its aggregation lives in memory and its files are rotated. View windows
+   should hand their diagnostics to the main window's preview (an event), or the preview should move to Rust.
+7. **Permissions.** The main capability needs window creation, focus, position and size, and event permissions for the
+   label pattern of view windows (for example `view-*`), and the view windows need their own capability.
+8. **The seam is `bridge.ts`.** It exports `backend()`, `hasDesktopBackend()` and `onBackendMessage()`. On Tauri,
+   `redmineApi` becomes `createBackend(tauriPlatform())` directly, `hasDesktopBackend()` becomes `isTauri()`, and the
+   window parts move to a Tauri window bridge that `lib/windows.ts` calls. Add `view-windows.ts` and the new
+   host to `webview-safe.spec.ts` when `ViewWindows` moves into the webview.
+
+**Decision needed from the project owner** (also in `progress.md`):
+- **Split or hold?** The feature is already on `main`, so Unstable users have it. Either PR 2 swaps the shell with one
+  window and `canDetachViews()` false on Tauri, and a follow-up PR ports the window layer, or PR 2 waits until windows
+  work. Recommendation: split. Unstable users lose dragging windows between the two PRs; Canary and Stable must not
+  ship before the second one is in.
+- **X11 only on Linux** for as long as the feature depends on global pointer access.
 
 ### Commit 1: `build(tauri): add the Tauri 2 shell`
 
@@ -173,8 +231,10 @@ Start from `main` once PR 0 and PR 1 are merged.
     Linux and Windows.
   - `environment()`: maps `x86_64` to `x64` and `windows` to `win32`, and the runtime to
     `tauri X (WebKitGTK|WebView2 Y)`.
-- **`src/mainview/lib/api.ts`:** if `isTauri()` is false, throw today's message ("The desktop backend is not available
-  in this environment."), so Capacitor behaves as before. Otherwise build `createBackend(tauriPlatform())` lazily.
+- **`src/mainview/lib/bridge.ts` and `api.ts`:** if `isTauri()` is false, throw today's message ("The desktop backend
+  is not available in this environment."), so Capacitor behaves as before. Otherwise build
+  `createBackend(tauriPlatform())` lazily. See "Window layer" for what happens to the window requests and messages
+  that `bridge.ts` also carries.
 - **`vite.config.ts`:** `clearScreen: false`, `server: { port: 5173, strictPort: true }`; reword the `views://` comment.
 - **Tests:**
   - `tauri-platform.test.ts` with `vi.mock` of the `@tauri-apps/*` modules: the fetch options, the DataFs contract
@@ -289,6 +349,8 @@ from the Electrobun canary, then stable. Do not run Stable from a Tauri `main` b
 | `tauri.localhost` as a secure context (`randomUUID`) on Windows | Checklist 2 on Windows | `useHttpsScheme: true` on the window |
 | A larger webview attack surface (http to any host) | CSP in PR 2, no `{@html}` or `innerHTML` today, TypeScript guards, a per-channel file scope | none |
 | Rust build time against the job timeouts | `rust-cache`; record the times | Raise the timeout |
+| Dragging view windows needs global pointer position and button state (no mouse-button API in Tauri; unavailable on native Wayland) | A small Rust command, `GDK_BACKEND=x11`, G4 on Wayland | Disable `canDetachViews()` on Tauri; the "Move to main window" button remains |
+| Several windows each own a backend, so several developer previews | One owner for the preview, in the main window | Move the preview to Rust |
 | Tauri 3 | Exact pins, no `text-file` permissions | A planned migration |
 
 ## Rollback
@@ -314,7 +376,8 @@ from the Electrobun canary, then stable. Do not run Stable from a Tauri `main` b
 6. A new `build-android.yml`: Temurin JDK, the Android SDK and NDK, `rustup target add aarch64-linux-android`,
    `tauri android build --apk --config <overlay>`, keystore secrets handled like the Windows PFX secrets, and
    `publish.mjs` support.
-7. Retire Capacitor: delete `android/`, `capacitor.config.ts` and the `@capacitor/*` packages; update README and
+7. Keep `canDetachViews()` false on Android (no windows there).
+8. Retire Capacitor: delete `android/`, `capacitor.config.ts` and the `@capacitor/*` packages; update README and
    RELEASE_POLICY. Do the optional `src/bun` to `src/core` rename here.
 
 ## Verifying PR 2

@@ -3,7 +3,7 @@
 **Start here.** This file says what is done, what is next, and how to check it. The reasoning and the full
 specification of the remaining work are in [`plan.md`](./plan.md).
 
-*Last updated 2026-10-14, after PR 0 and PR 1.*
+*Last updated 2026-10-14, after PR 0 and PR 1 and the merge of `main` (`e9f36d1`).*
 
 **Keep this file current.** Whoever does a step updates this file in the same pull request: the status table, the
 commit SHAs, anything that went differently from the plan, and what you learned about the environment. Put a decision
@@ -15,12 +15,14 @@ that changes in `plan.md`, with the reason.
 |---|---|---|---|
 | PR 0: safety net | **done** | `de4a781` `61c9456` `20d1c9e` `32f90df` | Golden tests, mock Redmine, a PR check workflow |
 | PR 1: runtime-neutral backend | **done** | `d3cb9bd` `73539b7` `7422bf2` `9a93f87` | Still ships on Electrobun; no change for users except the timeout message |
-| PR 2: Tauri shell | not started | | Next. See `plan.md`, "PR 2" |
+| Merge of `main` | **done** | `7340021` | `main` gained `e9f36d1` (view tabs in their own windows) while the PR was open; see "Merge with main" |
+| PR 2: Tauri shell | not started | | Next. Its scope grew: see `plan.md`, "PR 2" and "Window layer" |
 | PR 3: end-to-end tests, rename `src/bun` to `src/core` | optional | | Best at the start of the Android phase |
 | Android on Tauri, retire Capacitor | not started | | Outline in `plan.md` |
 
-PR 0 and PR 1 were opened together as one pull request on `claude/elegant-fermi-u669ds`. Test suite: 35 files and 233
-tests before, 44 files and 356 tests (one skipped) after.
+PR 0 and PR 1 are one pull request on `claude/elegant-fermi-u669ds` (pull request #20). Test suite: 35 files and 233
+tests before, 44 files and 356 tests (one skipped) after PR 1 alone, and 47 files and 426 tests after the merge of
+`main`, which brought its own window tests.
 
 ## What was built
 
@@ -75,9 +77,26 @@ PR 2 can run it inside the Tauri webview and the Android phase can reuse it.
   `backend.ts` uses `import type`.
 - `CONTRIBUTING.md` got a short "The backend" section.
 
+### Merge with main
+
+While the pull request was open, `main` gained `e9f36d1`, "drag view tabs to reorder them or into windows of their own".
+It changed the same three files as PR 1 (`src/bun/rpc.ts`, `src/shared/rpc.ts`, `src/mainview/lib/api.ts`), so `main`
+was merged into the branch (`7340021`) and the conflicts were resolved by combining the two changes:
+
+- `src/bun/rpc.ts`: `createRpc(windowRequests)` (one RPC per window, from `main`) is built on the single shared
+  `createBackend` adapter, so every window uses the same developer preview and files.
+- `src/shared/rpc.ts`: `main`'s window requests and messages stay; the request and response types come from `./backend`.
+- `src/mainview/lib/api.ts` and `bridge.ts`: `redmineApi` is typed as `GemiBackend`; the 35 s request limit is applied
+  in `bridge.ts`, where `main` moved the Electroview.
+
+**This changes PR 2.** The window layer is more Electrobun-specific behaviour than the plan had counted (a second host
+API, a message channel in both directions, global pointer access). `plan.md` has a "Window layer" section with what
+carries over and what has to be built.
+
 ## How it was verified
 
-- All suites pass with the default channel and with `CHANNEL=stable`; `tsc` and the webview build are clean.
+- All suites pass with the default channel and with `CHANNEL=stable`; `tsc` and the webview build are clean. This was
+  re-run after the merge of `main`: 47 files, 426 tests.
 - PR 0's golden snapshots were not touched by PR 1: the data folder comes out byte-identical through the async port.
 - Every new guard test was checked by **mutation**: break the behaviour, see the test go red, restore. This found one
   test of mine with wrong arithmetic.
@@ -90,6 +109,9 @@ PR 2 can run it inside the Tauri webview and the Android phase can reuse it.
   - signing in to the `/slow` server showed the 30-second message, and the preview log recorded it under scope
     `signIn` exactly 30.0 s after the request began
   - no errors or unhandled rejections in the app log
+- **Again after the merge of `main`**, with the app built from `7340021`: the main window, now opened by `ViewWindows`,
+  rendered, and signing in over `createRpc` and the backend adapter showed the same dashboard (48 h, 117 tasks due, 130
+  assigned). Dragging a tab out into its own window was **not** exercised; `main`'s own tests cover it against a fake host.
 
 **Not verified**
 - Anything on Windows. The Windows build and MSIX packaging were not run in this sandbox.
@@ -101,19 +123,24 @@ Follow `plan.md`, "PR 2". Before the first commit:
 
 1. Branch from `main` once PR 0 and PR 1 have merged. Open PR 2 as a draft; it stays a draft until gates G1 to G6 pass.
 2. Re-check the pinned versions (`npm view @tauri-apps/cli dist-tags`, the crates index). The plan's pins date from 2026-10-14.
-3. Do a small throwaway spike on Linux first, to retire the claims that were *read, not run*:
+3. Settle the window layer first (see below), because it decides whether PR 2 is one PR or two.
+4. Do a small throwaway spike on Linux first, to retire the claims that were *read, not run*:
    - the `http://*:*` scope reaches a server on a custom port (the mock on 18123)
    - `rustls-tls-native-roots` finds the system certificates
    - the hand-made AppImage around the raw binary starts under `xvfb-run`
    A Rust toolchain can probably be installed in this sandbox (`static.rust-lang.org` and crates.io are reachable) and
    the WebKitGTK libraries come from apt, so Linux builds and `xvfb` smoke tests should be possible. Windows and
    Wayland are not.
-4. Things that need a person with hardware: gate G5 (Windows 11, on a clean VM) and the Wayland and NVIDIA part of G4.
+5. Things that need a person with hardware: gate G5 (Windows 11, on a clean VM) and the Wayland and NVIDIA part of G4.
 
 **Open questions for the project owner**
-- Keep Electrobun's X11-only behaviour on Linux for parity (the plan's default, through `GDK_BACKEND`), or accept
-  native Wayland as an intentional change?
-- Who runs gates G4 and G5, and when? They block the merge of PR 2.
+- **The window layer.** Should PR 2 swap the shell with one window (dragging tabs into windows turned off on Tauri) and
+  port the window layer in a follow-up, or wait until windows work? The feature is already on `main`, so Unstable users have
+  it. The plan recommends splitting, with Canary and Stable held until both are in. Details in `plan.md`, "Window layer".
+- Keep Electrobun's X11-only behaviour on Linux (the plan's default, through `GDK_BACKEND`)? Dragging a window back into
+  the tab strip needs the global pointer, which native Wayland does not give applications, so the feature depends on it.
+- Who runs gates G4 and G5, and when? They block the merge of PR 2. G4 now also covers dragging view windows on X11 and
+  on a Wayland session.
 - How long should the unstable and canary soak last before stable? The plan says five or more unstable builds or one week.
 
 ## Recipes
@@ -159,6 +186,8 @@ xdotool mousemove 512 362 click 1; xdotool type --delay 25 "text"
   `static.crates.io`, `static.rust-lang.org`, apt, and GitHub release downloads (Electrobun's core). Blocked: `github.com`
   pages, `api.github.com`, `codeload.github.com`, and documentation sites (`tauri.app`, `docs.rs`, `electrobun.dev`,
   `blackboard.sh`). There is no `gh` CLI; use the GitHub MCP tools (`mcp__github__*`) for pull requests.
+- **`main` moves while a PR is open.** Run `git fetch origin main` and `git log HEAD..origin/main` before starting a
+  step, and again before opening a pull request. The file lists in `plan.md` were checked on 2026-10-14 and can be out of date.
 - **Commits.** Conventional Commits are enforced by commitlint. The sandbox installs without husky
   (`HUSKY=0 npm ci`), so the hooks do not run: run `npm test` yourself and lint the message with
   `npx --no -- commitlint < message.txt`. Commit bodies are limited to 100 characters per line.
