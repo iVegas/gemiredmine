@@ -122,8 +122,9 @@ Each profile has its own secrets, so the self-signed certificate can never reach
 | `WINDOWS_TRUSTED_PASSWORD` | stable | password of that `.pfx` |
 | `WINDOWS_TRUSTED_PUBLISHER` | stable | certificate subject exactly as in the certificate |
 
-Create the self-signed certificate with `scripts/release/New-SelfSignedCodeSigningCertificate.ps1`, which can
-store its three secrets with `gh` (`-SetGitHubSecrets`). A workflow whose channel has no secrets fails at the
+Create the self-signed certificate once, with `scripts/release/New-SelfSignedCodeSigningCertificate.ps1` on
+Windows or `scripts/release/new-self-signed-code-signing-certificate.sh` on Linux. Both can store the three
+secrets with `gh` (`-SetGitHubSecrets`, `--set-github-secrets`). A workflow whose channel has no secrets fails at the
 Windows packaging step, and the run summary shows an error naming the missing secret: Unstable and Canary until
 the self-signed secrets exist, Stable until the trusted ones do. Nothing is published from a failed run, Linux
 included.
