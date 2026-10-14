@@ -3,7 +3,7 @@
 **Start here.** This file says what is done, what is next, and how to check it. The reasoning and the full
 specification of the remaining work are in [`plan.md`](./plan.md).
 
-*Last updated 2026-10-14, after PR 0 and PR 1 and the merge of `main` (`e9f36d1`).*
+*Last updated 2026-10-14, after PR 0 and PR 1, the merge of `main` (`e9f36d1`), and the owner's decision to split the window layer out of PR 2.*
 
 **Keep this file current.** Whoever does a step updates this file in the same pull request: the status table, the
 commit SHAs, anything that went differently from the plan, and what you learned about the environment. Put a decision
@@ -16,7 +16,8 @@ that changes in `plan.md`, with the reason.
 | PR 0: safety net | **done** | `de4a781` `61c9456` `20d1c9e` `32f90df` | Golden tests, mock Redmine, a PR check workflow |
 | PR 1: runtime-neutral backend | **done** | `d3cb9bd` `73539b7` `7422bf2` `9a93f87` | Still ships on Electrobun; no change for users except the timeout message |
 | Merge of `main` | **done** | `7340021` | `main` gained `e9f36d1` (view tabs in their own windows) while the PR was open; see "Merge with main" |
-| PR 2: Tauri shell | not started | | Next. Its scope grew: see `plan.md`, "PR 2" and "Window layer" |
+| PR 2: Tauri shell | not started | | **Next.** One window only: `canDetachViews()` is false on Tauri (decided). See `plan.md`, "PR 2" |
+| PR 2b: window layer on Tauri | not started | | Follows PR 2. Port `ViewWindows` with a `TauriHost`; see `plan.md`, "Window layer" |
 | PR 3: end-to-end tests, rename `src/bun` to `src/core` | optional | | Best at the start of the Android phase |
 | Android on Tauri, retire Capacitor | not started | | Outline in `plan.md` |
 
@@ -119,11 +120,13 @@ carries over and what has to be built.
 
 ## Next: PR 2
 
-Follow `plan.md`, "PR 2". Before the first commit:
+Follow `plan.md`, "PR 2". First check that the **Unstable** run triggered by the merge of PR 0 and PR 1 into `main`
+succeeded (Actions, "Unstable"): it is the first Windows build and MSIX packaging of this code, and nothing is
+published unless both the Linux and the Windows build pass. Then, before the first commit:
 
 1. Branch from `main` once PR 0 and PR 1 have merged. Open PR 2 as a draft; it stays a draft until gates G1 to G6 pass.
 2. Re-check the pinned versions (`npm view @tauri-apps/cli dist-tags`, the crates index). The plan's pins date from 2026-10-14.
-3. Settle the window layer first (see below), because it decides whether PR 2 is one PR or two.
+3. The window layer is decided (see below): PR 2 is one window, with tab windows off on Tauri; PR 2b ports them.
 4. Do a small throwaway spike on Linux first, to retire the claims that were *read, not run*:
    - the `http://*:*` scope reaches a server on a custom port (the mock on 18123)
    - `rustls-tls-native-roots` finds the system certificates
@@ -133,10 +136,13 @@ Follow `plan.md`, "PR 2". Before the first commit:
    Wayland are not.
 5. Things that need a person with hardware: gate G5 (Windows 11, on a clean VM) and the Wayland and NVIDIA part of G4.
 
+**Decided by the project owner**
+- **2026-10-14, the window layer: split.** "I allow a regression, the goal is to migrate." PR 2 swaps the shell with one
+  window and turns dragging tabs into windows off on Tauri; PR 2b ports it. Unstable users lose the feature between the two.
+
 **Open questions for the project owner**
-- **The window layer.** Should PR 2 swap the shell with one window (dragging tabs into windows turned off on Tauri) and
-  port the window layer in a follow-up, or wait until windows work? The feature is already on `main`, so Unstable users have
-  it. The plan recommends splitting, with Canary and Stable held until both are in. Details in `plan.md`, "Window layer".
+- May Canary and Stable ship between PR 2 and PR 2b? The owner accepted the regression, but did not say for which
+  channels. Until they do, the plan holds both back.
 - Keep Electrobun's X11-only behaviour on Linux (the plan's default, through `GDK_BACKEND`)? Dragging a window back into
   the tab strip needs the global pointer, which native Wayland does not give applications, so the feature depends on it.
 - Who runs gates G4 and G5, and when? They block the merge of PR 2. G4 now also covers dragging view windows on X11 and

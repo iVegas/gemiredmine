@@ -80,7 +80,7 @@ These must not change. PR 0's tests pin them.
 |---|---|---|
 | PR 0 | Safety net: golden tests and a mock Redmine | no |
 | PR 1 | A runtime-neutral backend, still on Electrobun | next unstable build |
-| **PR 2** | **The Tauri shell on Linux and Windows, Electrobun removed** (6 commits, draft until gates G1-G6 pass). The window layer may be a second PR; see "Window layer" | unstable on merge, then canary, then stable |
+| **PR 2** | **The Tauri shell on Linux and Windows, Electrobun removed** (6 commits, draft until gates G1-G6 pass). The window layer is a second PR (PR 2b), decided 2026-10-14; see "Window layer" | unstable on merge, then canary, then stable |
 | PR 3 (optional) | `tauri-driver` end-to-end tests; `git mv src/bun src/core` | no |
 | Android phase | Tauri Android, retire Capacitor | later |
 
@@ -141,12 +141,12 @@ backend. Read it before estimating PR 2.
    window parts move to a Tauri window bridge that `lib/windows.ts` calls. Add `view-windows.ts` and the new
    host to `webview-safe.spec.ts` when `ViewWindows` moves into the webview.
 
-**Decision needed from the project owner** (also in `progress.md`):
-- **Split or hold?** The feature is already on `main`, so Unstable users have it. Either PR 2 swaps the shell with one
-  window and `canDetachViews()` false on Tauri, and a follow-up PR ports the window layer, or PR 2 waits until windows
-  work. Recommendation: split. Unstable users lose dragging windows between the two PRs; Canary and Stable must not
-  ship before the second one is in.
-- **X11 only on Linux** for as long as the feature depends on global pointer access.
+**Decided by the project owner, 2026-10-14: split** ("I allow a regression, the goal is to migrate"). PR 2 swaps the
+shell with one window, and `canDetachViews()` is false on Tauri. A follow-up, **PR 2b**, ports the window layer as
+described above. The feature is already on `main`, so Unstable users lose dragging tabs into windows between the two.
+- **Still open:** whether Canary and Stable may ship between PR 2 and PR 2b. Until the owner says so, they wait.
+- **X11 only on Linux** for as long as the feature depends on global pointer access. PR 2 keeps `GDK_BACKEND=x11` for
+  parity; PR 2b needs it.
 
 ### Commit 1: `build(tauri): add the Tauri 2 shell`
 
@@ -233,8 +233,9 @@ backend. Read it before estimating PR 2.
     `tauri X (WebKitGTK|WebView2 Y)`.
 - **`src/mainview/lib/bridge.ts` and `api.ts`:** if `isTauri()` is false, throw today's message ("The desktop backend
   is not available in this environment."), so Capacitor behaves as before. Otherwise build
-  `createBackend(tauriPlatform())` lazily. See "Window layer" for what happens to the window requests and messages
-  that `bridge.ts` also carries.
+  `createBackend(tauriPlatform())` lazily. In PR 2, `canDetachViews()` returns false on Tauri and the window requests
+  and messages that `bridge.ts` also carries are not wired; PR 2b does that (see "Window layer"). Keep the window
+  tests (`view-windows.spec.ts`, `windows.test.ts`) green: they do not depend on Electrobun.
 - **`vite.config.ts`:** `clearScreen: false`, `server: { port: 5173, strictPort: true }`; reword the `views://` comment.
 - **Tests:**
   - `tauri-platform.test.ts` with `vi.mock` of the `@tauri-apps/*` modules: the fetch options, the DataFs contract
