@@ -5,8 +5,9 @@ import type { LogLevel } from '../../bun/diagnostics/aggregator';
 
 const defineRpc = () =>
   Electroview.defineRPC<GemiRPCSchema>({
-    // Redmine lists can be slow on large instances, so allow more than the default before timing out.
-    maxRequestTime: 30_000,
+    // Redmine lists can be slow on large instances. The backend gives up on a silent server after 30 s
+    // with a message saying so, so this limit sits just above it and only catches a lost backend.
+    maxRequestTime: 35_000,
     handlers: {},
   });
 
