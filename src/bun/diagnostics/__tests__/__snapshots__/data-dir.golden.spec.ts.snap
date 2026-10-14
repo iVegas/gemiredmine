@@ -1,0 +1,53 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`developer preview data folder > keeps its layout and file contents 1`] = `
+[
+  {
+    "kind": "dir",
+    "path": "feedback",
+  },
+  {
+    "content": "## Description
+
+After switching months
+
+## Environment
+
+- Product: Gemiredmine Unstable
+- Version: 1.0.0-unstable.7 (unstable channel)
+- Build: commit abc1234, built 2026-10-12T00:00:00.000Z
+- Platform: linux x64
+- Runtime: bun 1.0.0
+
+## Aggregated diagnostics
+
+Each line is one aggregated entry: repeated events collapse into a count. Credentials are redacted.
+
+\`\`\`jsonl
+{"level":"error","scope":"rpc.listTimeEntries","message":"Redmine API request failed: 503 Service Unavailable","count":2,"first":"2026-10-12T10:00:00.000Z","last":"2026-10-12T10:00:00.000Z"}
+{"level":"warn","scope":"ui","message":"token=[REDACTED] leaked?","count":1,"first":"2026-10-12T10:00:00.000Z","last":"2026-10-12T10:00:00.000Z"}
+\`\`\`
+",
+    "kind": "file",
+    "path": "feedback/feedback-2026-10-12T10-00-00-000Z.md",
+  },
+  {
+    "kind": "dir",
+    "path": "logs",
+  },
+  {
+    "content": "{"level":"error","scope":"rpc.listTimeEntries","message":"Redmine API request failed: 503 Service Unavailable","count":2,"first":"2026-10-12T10:00:00.000Z","last":"2026-10-12T10:00:00.000Z"}
+{"level":"warn","scope":"ui","message":"token=[REDACTED] leaked?","count":1,"first":"2026-10-12T10:00:00.000Z","last":"2026-10-12T10:00:00.000Z"}
+",
+    "kind": "file",
+    "path": "logs/diagnostics.jsonl",
+  },
+  {
+    "content": "{
+  "devPreviewEnabled": true
+}",
+    "kind": "file",
+    "path": "settings.json",
+  },
+]
+`;
