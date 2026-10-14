@@ -31,6 +31,11 @@ and the steps to publish each channel.
 `npm run release` (commit-and-tag-version) updates `CHANGELOG.md` and the version, but it also creates a
 local tag. Push the commit only, and let the Stable workflow create the tag.
 
+## Ongoing work
+
+The desktop shell is moving from Electrobun to Tauri 2. The plan, the progress so far and what comes next are in
+[`docs/tauri-migration/`](./docs/tauri-migration/progress.md).
+
 ## Testing and checks
 
 - `npm test` runs the unit tests. It regenerates `src/shared/build-info.generated.ts` first.

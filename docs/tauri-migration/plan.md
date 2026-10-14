@@ -1,0 +1,325 @@
+# Moving the desktop shell from Electrobun to Tauri 2: plan
+
+This is the plan. What is done and what comes next is in [`progress.md`](./progress.md); read that first.
+Change this file only when a decision changes, and say why in the commit.
+
+Facts are dated **2026-10-14**. Versions move quickly: before starting a step, re-check them
+(`npm view @tauri-apps/cli dist-tags`, `npm view electrobun dist-tags`, the crates index).
+Claims marked *read, not run* come from reading source code and were not exercised.
+
+## Context
+
+gemiredmine is a Svelte 5 + Vite webview in an **Electrobun ^1.18.1** desktop shell with a Bun main
+process. Android runs on **Capacitor 8**.
+
+**Why the shell has to change**
+- The Electrobun 1.x line is frozen (last release 1.18.4-beta.25, 2026-08-10).
+- Electrobun 2.x (2.0.1 on 2026-08-22, 2.0.2 on 09-29, 2.0.3-beta.24 on 10-14) replaces the whole toolchain:
+  the Hutch CLI downloads the SDK into `.hutch/devkit`, the npm `electrobun` package is a 46 KB bootstrap whose
+  exports throw, the default runtime flipped from Cottontail to Bun between 2.0.2 and the betas, and it is
+  desktop-only. Staying would also mean rewriting the build scripts.
+
+**Decisions (made with the project owner)**
+1. Move to **Tauri 2**.
+2. The backend stays **TypeScript and runs inside the webview**, using the Tauri HTTP and file plugins. Rust stays minimal.
+3. **Desktop first** (Linux and Windows reach parity with today). Android on Tauri, retiring Capacitor, is the next phase.
+
+### Decision record
+
+| Option | Evidence | Verdict |
+|---|---|---|
+| Stay on Electrobun 1.18.1 | No 1.x maintenance line or long-term support statement | Unmaintained; rejected |
+| Electrobun 2.x | 7 weeks old, betas almost daily. The SDK comes from a downloaded devkit, so `tsc` and `vitest` need network setup first. Hutch ignores `package-lock.json` by default. One maintainer. Desktop only. *In its favour:* the smallest code diff, and it keeps `views://` and `bin/launcher`. | Rejected |
+| Electron 44 | A new major roughly every 8 weeks (41 to 44 between 03-11 and 08-25), bundled Chromium (100 MB and more), no Android | Rejected |
+| **Tauri 2** | Stable since 2024-10-02. cli 2.12.2, api 2.12.3, plugin-http 2.8.2, plugin-fs 2.7.0, plugin-opener 2.7.1 (all 2026-10-10). Rust MSRV 1.90. The same system webviews as today (WebKitGTK 4.1, WebView2) plus Android. Risk: 3.0 is in alpha. | **Chosen.** Pin exact 2.12.x. Plan a Tauri 3 move within about a year of 3.0 going stable. |
+
+### Electrobun coupling (complete list)
+
+- **App code:** `src/bun/index.ts` (`BrowserWindow`, `views://`); `src/bun/rpc.ts` (`BrowserView.defineRPC`,
+  `Utils.openExternal`); `src/shared/rpc.ts` (`RPCSchema` type); `src/mainview/lib/api.ts` (`Electroview`, the
+  `__electrobun` guard).
+- **Config and stubs:** `electrobun.config.ts`; `src/types/shims.d.ts` (exists only for Electrobun).
+- **Scripts:** `scripts/release/build-electrobun.mjs` runs the CLI from `node_modules/electrobun`; `build-output.mjs`
+  `findAppBuild` expects `build/<env>-<os>-x64/<App>/bin/launcher[.exe]`; `linux-metadata.mjs` AppRun runs
+  `./bin/launcher`; `package-windows.mjs` `ensureLauncher` falls back to `node_modules/electrobun/dist-win-x64`.
+- **Workflows:** the build steps in `build-linux.yml` and `build-windows.yml`.
+- **Docs:** README (mentions at lines 7, 35, 59, 75-77), RELEASE_POLICY (108-110, 145-158), PLAN.md:8, ROADMAP.md:4.
+- **Lockfiles:** `bun.lock` is unused.
+- **Android today:** every `redmineApi` call throws outside Electrobun, so the Android app cannot reach Redmine.
+  Servers and API keys are held in memory only (`src/mainview/lib/store.ts`), so a new webview origin loses no user data.
+
+## Invariants
+
+These must not change. PR 0's tests pin them.
+
+- **Data folders:** `$XDG_DATA_HOME` or `~/.local/share/<dataDirName>`, and `%LOCALAPPDATA%\<dataDirName>`, plus the
+  `GEMIREDMINE_DATA_DIR` override (`src/bun/paths.ts`).
+- **Data formats:** `settings.json`, `logs/diagnostics[.N].jsonl`, `feedback/feedback-*.md`. Files 0600, folders 0700.
+- **Identifiers:** `com.gemiredmine.app[.canary|.unstable|.dev]`. tauri-cli 2.12.2 only *warns* about an identifier
+  ending in `.app` (`build.rs:190`), so the stable MSIX identity stays.
+- **MSIX:** Name, Publisher, `msixVersion()` (`scripts/release/windows-metadata.mjs`), `Application Id="App"`,
+  runFullTrust, and the `.appinstaller` feed URLs.
+- **AppImage:** file and pointer names, the `.desktop` entry, the embedded `gh-releases-zsync` update information,
+  release tags and `release.json`.
+
+**Intentional changes** (list them in PR 2):
+- AppRun and the MSIX `Executable` start one self-contained binary.
+- The webview profile lives in `<LocalData>/<identifier>`.
+- Redmine sees `Origin: tauri://localhost` (Linux) or `http://tauri.localhost` (Windows), and a plugin User-Agent.
+- The feedback "Runtime" line names the Tauri and webview versions.
+- Devtools are on for non-stable channels only.
+- (Already shipped in PR 1: a 3xx answer is an explicit error; a request gives up after 30 s with a clear message.)
+
+## Sequence
+
+| Step | What | Ships to users |
+|---|---|---|
+| PR 0 | Safety net: golden tests and a mock Redmine | no |
+| PR 1 | A runtime-neutral backend, still on Electrobun | next unstable build |
+| **PR 2** | **The Tauri shell on Linux and Windows, Electrobun removed** (6 commits, draft until gates G1-G6 pass) | unstable on merge, then canary, then stable |
+| PR 3 (optional) | `tauri-driver` end-to-end tests; `git mv src/bun src/core` | no |
+| Android phase | Tauri Android, retire Capacitor | later |
+
+PR 0 and PR 1 are described in [`progress.md`](./progress.md), including what changed against the first plan.
+The rest of this file is what is still ahead.
+
+---
+
+## PR 2: Tauri 2 shell, Electrobun removed
+
+Open it as a draft. Each commit keeps `npm test` green, because the husky pre-commit hook runs it.
+Start from `main` once PR 0 and PR 1 are merged.
+
+### Commit 1: `build(tauri): add the Tauri 2 shell`
+
+- **`package.json`, exact pins:**
+  - dependencies `@tauri-apps/api 2.12.3`, `@tauri-apps/plugin-http 2.8.2`, `@tauri-apps/plugin-fs 2.7.0`,
+    `@tauri-apps/plugin-opener 2.7.1`
+  - dev dependency `@tauri-apps/cli 2.12.2`
+  - scripts `"tauri": "tauri"` and `"build:desktop": "node scripts/release/build-desktop.mjs"`
+  - never install the `next` tag (3.0 alphas)
+- **Lockfile:** regenerate from a clean `node_modules`, so that both `@tauri-apps/cli-linux-x64-gnu` and
+  `@tauri-apps/cli-win32-x64-msvc` are in `package-lock.json`.
+- **`rust-toolchain.toml`:** `channel = "1.99.0"` (current stable, and at least the MSRV 1.90), `profile = "minimal"`.
+  Bump it only in a `chore(deps)` commit.
+- **`src-tauri/Cargo.toml`:**
+  - `edition = "2024"`, `rust-version = "1.90"`, `publish = false`
+  - library `crate-type = ["staticlib", "cdylib", "rlib"]`, which Android needs later
+  - `tauri ~2.12.3`, `tauri-build ~2.7.2`, `tauri-plugin-fs ~2.7.0`, `tauri-plugin-opener ~2.7.1`
+  - `tauri-plugin-http = { version = "~2.8.2", default-features = false, features = ["rustls-tls-native-roots", "http2", "charset", "system-proxy", "gzip"] }`:
+    no cookie jar, the OS trust store (so servers behind an internal CA work), and gzip. Each feature exists in the
+    crate's `[features]`.
+  - `[features] devtools = ["tauri/devtools"]`
+  - commit `Cargo.lock`
+- **`src-tauri/src/lib.rs`** is the only Rust:
+  - a `Builder` with the http, fs and opener plugins
+  - in `setup`: when `GEMIREDMINE_DATA_DIR` is set, `app.fs_scope().allow_directory(dir, true)`
+  - one command, `app_environment() -> { dataDirOverride, tauri: tauri::VERSION, webview: tauri::webview_version(), os, arch }`
+  - `#[cfg_attr(mobile, tauri::mobile_entry_point)] pub fn run()`
+  - `main.rs` uses `windows_subsystem = "windows"` in release builds; plus `build.rs` and a `.gitignore`
+    (`/target/`, `/gen/schemas`)
+- **`src-tauri/tauri.conf.json`** is the base config, set up as the dev channel:
+  - `productName`, `mainBinaryName: "Gemiredmine-Dev"`, `identifier: "com.gemiredmine.app.dev"`, `version: "../package.json"`
+  - `build.frontendDist: "../views/mainview"`, `devUrl: "http://localhost:5173"`, `beforeDevCommand: "npm run dev"`,
+    `beforeBuildCommand: "npm run build"` (its `prebuild` writes the build info for the current `CHANNEL`)
+  - one window `main`, 1024x768
+  - `bundle.active: false`, `bundle.icon: ["../assets/icons/dev.png", "../assets/icons/dev.ico"]`
+  - `app.security.capabilities: ["main", "dev-preview-dev"]`
+  - **a content security policy from the start:**
+    `"csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'"`,
+    with `devCsp: null` so Vite's hot reload keeps working. Whether Svelte or Tailwind output needs more sources is
+    not yet known.
+- **`src-tauri/capabilities/main.json`**, used by every channel:
+  - `core:default`
+  - `{"identifier": "http:default", "allow": [{"url": "http://*:*"}, {"url": "https://*:*"}]}`. A URL pattern with a
+    host but no port gets an *empty* port, so `http://*` alone would refuse a Redmine on a custom port (*read, not run*).
+  - `{"identifier": "opener:allow-open-url", "allow": [{"url": "http://*"}, {"url": "https://*"}]}`. The user's own
+    server is linked from `UserMenu.svelte`. The "issues/new only" rule stays in TypeScript.
+- **`src-tauri/capabilities/dev-preview-{canary,unstable,dev}.json`**, one file per channel so channels stay isolated:
+  - `fs:allow-exists`, `-stat`, `-mkdir`, `-read-file`, `-write-file`, `-read-dir`, `-rename`, `-remove`
+  - `fs:scope` limited to `$LOCALDATA/<that channel's dataDirName>` and `/**`. Use explicit names, not globs, so Tauri
+    resolves the real path.
+  - stable gets no file permissions at all
+  - no `*-text-file` permission: Tauri 3 removes them
+- **`scripts/release/tauri-config.mjs`** (pure): `tauriChannelConfig(info)` returns the JSON Merge Patch overlay for
+  `tauri build --config`:
+  - `productName`, `mainBinaryName: info.appName`, `version`, `identifier`
+  - the full `windows[0]` object with its `title` (arrays are replaced whole)
+  - `security.capabilities: devPreviewAvailable ? ['main', 'dev-preview-' + channel] : ['main']`
+  - per-channel `bundle.icon`
+  - never `csp`, never `null` (it would delete a key)
+- **`scripts/release/build-desktop.mjs`** replaces `build-electrobun.mjs`: derive `info` the way `electrobun.config.ts`
+  does, write `build/tauri.<channel>.conf.json`, then
+  `execFileSync(process.execPath, [<cli bin>, 'build', '--no-bundle', '--config', overlay, ...(devPreviewAvailable ? ['--features', 'devtools'] : []), '--', '--locked'])`.
+- `tsconfig.json` excludes `src-tauri`; `vitest.config.ts` excludes `src-tauri/**`.
+- **Tests:**
+  - `tauri-config.test.ts`: identity, version, binary name, window and icons for every channel; capabilities; no
+    `null` and no `csp` in the overlay; a non-null base CSP containing `default-src 'self'`; the base config equals
+    the dev overlay.
+  - `tauri-setup.test.ts`: the http and opener allow lists are exact; file permissions appear only in the
+    `dev-preview-<channel>` files, each listing exactly `CHANNELS[channel].dataDirName`; no `text-file` permission;
+    npm and `Cargo.lock` agree on major.minor; both CLI platform packages are in the lockfile; stable never gets
+    `devtools`; `build-desktop` passes `-- --locked`.
+
+### Commit 2: `feat(mainview): run the backend in the webview through Tauri plugins`
+
+- **`src/mainview/lib/tauri-platform.ts`** builds a `BackendPlatform` (see `src/bun/backend.ts`):
+  - `fetch`: `(url, init) => rustFetch(url, { ...init, maxRedirections: 0, connectTimeout: 10_000 })`. reqwest would
+    forward `X-Redmine-API-Key` to a new host on a redirect, so redirects are not followed; the client reports them
+    as `RedmineMovedError`.
+  - `fs`: a `DataFs` on the file plugin: `writeFile(..., { append, mode: 0o600 })`, `mkdir({ recursive: true, mode: 0o700 })`,
+    `readDir`, `rename`, `remove`, `stat`.
+  - `dataDir()`: `dataDirOverride ?? join(await localDataDir(), buildInfo.dataDirName)`. The same folder as today on
+    Linux and Windows.
+  - `environment()`: maps `x86_64` to `x64` and `windows` to `win32`, and the runtime to
+    `tauri X (WebKitGTK|WebView2 Y)`.
+- **`src/mainview/lib/api.ts`:** if `isTauri()` is false, throw today's message ("The desktop backend is not available
+  in this environment."), so Capacitor behaves as before. Otherwise build `createBackend(tauriPlatform())` lazily.
+- **`vite.config.ts`:** `clearScreen: false`, `server: { port: 5173, strictPort: true }`; reword the `views://` comment.
+- **Tests:**
+  - `tauri-platform.test.ts` with `vi.mock` of the `@tauri-apps/*` modules: the fetch options, the DataFs contract
+    (`src/bun/diagnostics/__tests__/data-fs.contract.ts`) against an in-memory fake of the plugin, `dataDir` with
+    and without the override (this replaces `paths.spec.ts`), and the environment mapping.
+  - `api.test.ts`: the `isTauri` guard and the routing.
+
+### Commit 3: `build(release): package the Tauri executable`
+
+- **`scripts/release/build-output.mjs`:** `findAppBinary(root, appName, platform, env)` returns
+  `<CARGO_TARGET_DIR or src-tauri/target>/release/<appName>[.exe]`. Pass the injected `env` at the call sites.
+- **`linux-metadata.mjs` `appRunScript(binPath)`:** `HERE=...`, then `export GDK_BACKEND="${GDK_BACKEND:-x11}"`
+  (Electrobun 1.18.1 forces X11, so this keeps parity; native Wayland is a later, deliberate choice), then
+  `exec "$HERE/usr/bin/<App>" "$@"`. No `cd`.
+- **`package-linux.mjs`:** `findAppBinary(..., 'linux', env)`; copy the binary to `usr/bin/<App>` with mode 0755
+  instead of `cp -a` into `usr/lib`; add an injectable `appimagetool` path (like `makeappx` in `package-windows.mjs`).
+  Unchanged: the pinned, checksum-verified appimagetool, the `-u` update information, zsyncmake, checksums and `release.json`.
+- **`package-windows.mjs`:** delete `ensureLauncher`, including its `node_modules/electrobun` fallback;
+  `findAppBinary(..., 'windows', env)`; copy `<App>.exe` into `payload/`; `Executable="<App>.exe"`. The rest is
+  unchanged. An MSVC build links the VC runtime and the WebView2 loader statically.
+- **Tests:** rewrite `build-output.test.ts`; update `linux-metadata.test.ts`, the fixture and expectations in
+  `package-windows.test.ts` (and delete the `ensureLauncher` tests) and `windows-metadata.test.ts`; add
+  `package-linux.test.ts` with a fake appimagetool that snapshots the AppDir. In PR 0's golden snapshot only the
+  `Executable=` attribute may change.
+
+### Commit 4: `ci: build the desktop app with Tauri`
+
+- **`build-linux.yml`:**
+  - `runs-on: ubuntu-22.04`, which sets the glibc floor.
+  - `apt-get install libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev zsync xvfb`.
+  - `rustup toolchain install 1.99.0 --profile minimal` (the version in `rust-toolchain.toml`).
+  - `Swatinem/rust-cache`, pinned to a full commit SHA, `workspaces: ./src-tauri -> target`.
+  - `npm run build:desktop`, then a check of the runtime libraries and the glibc floor:
+    `if grep -E 'not found|appindicator' ldd.txt; then exit 1; fi` (not `! grep`, which `bash -e` ignores), and
+    GLIBC no newer than 2.35.
+  - The existing package step, then a smoke test: `timeout 20 xvfb-run -a <AppImage> --appimage-extract-and-run`
+    must still be running after 20 s.
+- **`build-windows.yml`:** the same `rustup` and cache steps, then `npm run build:desktop`; `dumpbin /DEPENDENTS`
+  must show no `VCRUNTIME*.dll` and no `WebView2Loader.dll`; launch the exe with
+  `GEMIREDMINE_DATA_DIR=$RUNNER_TEMP\smoke` and require it to be alive after 20 s. Keep `windows-latest` and `TARGET_PLATFORM`.
+- **Unchanged:** `unstable.yml`, `canary.yml`, `stable.yml`, `weekly-tests.yml`, `publish.mjs`. Record clean and cached
+  build times against the 60 and 75 minute timeouts.
+- `tauri-setup.test.ts` gains, in this commit and not earlier: the workflow's `rustup` version equals
+  `rust-toolchain.toml`, and no `run:` line starts with `! `.
+
+### Commit 5: `chore: remove Electrobun`
+
+- Delete `src/bun/index.ts`, `src/bun/rpc.ts`, `src/bun/paths.ts`, `src/bun/__tests__/paths.spec.ts`,
+  `src/shared/rpc.ts`, `electrobun.config.ts`, `scripts/release/build-electrobun.mjs`, `src/types/shims.d.ts` and `bun.lock`.
+- Remove the `build:electrobun` and `prebuild:electrobun` scripts.
+- Run `npm uninstall electrobun` from a clean `node_modules` and commit `package-lock.json` (this also drops `@types/bun`).
+- Move `src/bun/node-data-fs.ts` into `src/bun/diagnostics/__tests__/support/`.
+- Reword `scripts/release/channels.mjs:6` and `scripts/release/write-build-info.mjs`.
+- `grep -ri electrobun --exclude-dir=node_modules .` must find nothing outside history.
+
+### Commit 6: `docs: describe the Tauri desktop shell`
+
+- **README:** the mentions at lines 7 and 35; the architecture section; the development setup (rustup through
+  `rust-toolchain.toml`, the apt list, the Visual Studio C++ build tools, `npm run tauri dev`, `build:desktop`).
+- **RELEASE_POLICY:** the Dependencies paragraph (Tauri 2.12.x; the npm packages and crates move together in one
+  `chore(deps)` commit and stay on matching major.minor; Tauri 3 is a separate decision); the Linux host requirements
+  (GTK 3, WebKitGTK 4.1 at least 2.40, XWayland; AppIndicator is no longer needed); the data-folder paragraph (webview
+  storage lives under `<LocalData>/<identifier>`); the "not covered yet" list once gate G5 has run.
+- **CONTRIBUTING:** a "Desktop shell" section: capabilities need review, Rust stays wiring, channel identity comes
+  only from `tauri-config.mjs`.
+- **`PLAN.md:8`, `ROADMAP.md:4`:** "Electrobun" becomes "Tauri 2".
+- **This folder:** update `progress.md`, and move this plan's finished parts into a short history.
+
+### Merge gates
+
+All run on the PR branch. Workflow-dispatch runs publish nothing.
+
+| Gate | Check |
+|---|---|
+| G1 | `npm test && npm run typecheck`, with `CHANNEL` unset and with `CHANNEL=stable` |
+| G2 | Dispatch the Linux build (unstable): build, ldd and glibc check, packaging and the xvfb smoke test are green |
+| G3 | Dispatch the Windows build (unstable, self-signed): the `cli-win32-x64-msvc` package installs, the `dumpbin` and launch smoke checks pass, the MSIX is signed |
+| G4 | The Linux checklist below on Ubuntu 22.04 (updated) and 24.04, on X11 and on a **GNOME Wayland session (one NVIDIA machine)**; launch and sign-in on Debian 12 and Fedora |
+| G5 | Windows 11, on a **clean VM** or with the published unstable uninstalled first: install the Electrobun build, enable the preview, upgrade in place to the Tauri build, run the checklist, record where the preview files really land under MSIX, and check that there is no console window. Repeat the upgrade through the real `.appinstaller` feed on the first unstable build after merge. |
+| G6 | Data continuity: a folder from the Electrobun era (preview on, rotated logs, ten or more reports) is read by the Tauri build; `logBytes` matches and rotation continues |
+
+### Manual checklist
+
+Run it against `node scripts/dev/mock-redmine.mjs`, and once against a real Redmine.
+
+1. The title, a 1024x768 window and the channel icon. `xprop WM_CLASS` should match `StartupWMClass=<appName>`.
+2. Sign in at `http://<LAN-IP>:8123`. This proves the `*:*` scope, plain http, Basic auth then the API key, paging, and
+   `crypto.randomUUID` in the Tauri origin.
+3. Add a server with an API key. A wrong password shows the right message.
+4. HTTPS: a public CA works, a private CA trusted by the OS works, a self-signed certificate gives a certificate error
+   and not "url not allowed".
+5. `/moved` and `/slow` show their messages. An unreachable host fails in about 10 s.
+6. All four `target="_blank"` links open the system browser (the opener plugin's init script handles them).
+7. Developer preview: the files are under `<LocalData>/gemiredmine-<channel>` with modes 0700 and 0600; the setting
+   survives a restart; a link that is not the issue page is refused; devtools open.
+8. `GEMIREDMINE_DATA_DIR=/tmp/x` is honoured.
+9. A stable build has no preview panel and no devtools. Canary and unstable run side by side.
+10. The content security policy blocks nothing: no violations in the console.
+
+**After merge:** soak five or more unstable builds (or one week), then one canary `x.y.z-rc.N` that testers reach
+from the Electrobun canary, then stable. Do not run Stable from a Tauri `main` before the canary has soaked.
+
+## Risk register
+
+| Risk | Mitigation | Fallback |
+|---|---|---|
+| The `*:*` URL-pattern scope was *read, not run* | Checklist 2 and 4 (G4, G5) | Add origins at run time from Rust when a server is added |
+| MSIX file virtualization against the file plugin's real-path scope check | G5 records the real path | Canonicalize in Rust, then `allow_directory` |
+| A hand-made AppImage around the raw binary is not a layout Tauri documents | xvfb smoke test, distro matrix | `WEBKIT_DISABLE_DMABUF_RENDERER=1` in AppRun |
+| WebKitGTK at least 2.40, and the glibc floor | `ubuntu-22.04` runner, CI glibc check, policy text | A container base image when that runner retires |
+| Wayland and NVIDIA rendering, `WM_CLASS` | `GDK_BACKEND=x11` by default (parity), G4 | Adjust `desktopEntry`, or `enableGTKAppId` |
+| `tauri.localhost` as a secure context (`randomUUID`) on Windows | Checklist 2 on Windows | `useHttpsScheme: true` on the window |
+| A larger webview attack surface (http to any host) | CSP in PR 2, no `{@html}` or `innerHTML` today, TypeScript guards, a per-channel file scope | none |
+| Rust build time against the job timeouts | `rust-cache`; record the times | Raise the timeout |
+| Tauri 3 | Exact pins, no `text-file` permissions | A planned migration |
+
+## Rollback
+
+- **PR 0 and PR 1:** `git revert`. The data formats are byte-identical.
+- **PR 2 after merge:** revert the merge commit. Unstable then rebuilds on Electrobun with higher version numbers, so
+  App Installer and the AppImage `.zsync` move users forward. The data folders are the same in both directions. Every
+  rollback build needs a higher version than the one it replaces: unstable run numbers grow, canary goes to `rc.N+1`,
+  stable goes to `x.y.(z+1)`.
+
+## Next phase (outline): Android on Tauri, retiring Capacitor
+
+1. `tauri android init` generates `src-tauri/gen/android`. `lib.rs` already has `mobile_entry_point`. The webview
+   backend runs unchanged, so the app can reach Redmine on Android for the first time.
+2. Choose the identity model: one Android identifier, or a per-channel `init` in CI with a tested patch script.
+   `capacitor.config.ts` uses `com.gemiredmine.app` and was never distributed.
+3. Add `'android'` to `PLATFORMS` (`channels.mjs`), `BuildInfo.platform` and `AboutView.svelte`. Add an
+   `androidVersionCode()` that is monotonic across rc and unstable builds, and pass `bundle.android.versionCode` in the overlay.
+4. Network: a `network_security_config.xml` that permits cleartext traffic (users' servers are arbitrary). Spike TLS
+   roots on Android: the native roots may be empty, so use target-specific webpki roots or a platform verifier.
+5. Report "Android System WebView" in `toEnvironment`. Run `tauri icon assets/icons/<channel>.png` per channel. Add the
+   Rust Android targets to the toolchain.
+6. A new `build-android.yml`: Temurin JDK, the Android SDK and NDK, `rustup target add aarch64-linux-android`,
+   `tauri android build --apk --config <overlay>`, keystore secrets handled like the Windows PFX secrets, and
+   `publish.mjs` support.
+7. Retire Capacitor: delete `android/`, `capacitor.config.ts` and the `@capacitor/*` packages; update README and
+   RELEASE_POLICY. Do the optional `src/bun` to `src/core` rename here.
+
+## Verifying PR 2
+
+- Every PR: `npm test && npm run typecheck && npm run build`, on pre-commit and in CI.
+- PR 2 as well: `cargo test --manifest-path src-tauri/Cargo.toml --lib`; `npm run tauri dev` against the mock
+  server; `CHANNEL=<channel> npm run build:desktop`, then `node scripts/release/package-linux.mjs` (or
+  `package-windows.mjs`); gates G1 to G6 written into the PR description, with the SHA of the last Electrobun commit.
