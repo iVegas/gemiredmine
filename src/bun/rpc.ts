@@ -1,5 +1,6 @@
 import { BrowserView, Utils } from 'electrobun';
-import type { GemiRPCSchema, ServerAccess } from '../shared/rpc';
+import type { GemiRPCSchema } from '../shared/rpc';
+import type { ServerAccess } from '../shared/backend';
 import { DEV_PREVIEW_AVAILABLE, buildInfo } from '../shared/build-info.generated';
 import { RedmineClient, assertHttpUrl } from './redmine/client';
 import { signInWithPassword } from './redmine/auth';
