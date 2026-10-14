@@ -79,6 +79,8 @@ export const rpc: AppRPC = BrowserView.defineRPC<GemiRPCSchema>({
         clientFor({ baseUrl, apiKey }).getAssignedOpenIssues({ dueFrom, dueTo })
       ),
 
+      listAssignedTasks: traced('listAssignedTasks', (access) => clientFor(access).getAssignedTasks()),
+
       getDevPreviewStatus: async () => {
         if (!DEV_PREVIEW_AVAILABLE) {
           return { available: false, enabled: false, dataDir: '', logBytes: 0, pendingEntries: 0 };

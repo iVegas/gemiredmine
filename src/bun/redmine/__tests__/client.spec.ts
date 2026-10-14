@@ -175,6 +175,21 @@ describe('RedmineClient', () => {
     expect(requestedUrl(0).searchParams.get('status_id')).toBe('open');
     expect(requestedUrl(0).searchParams.get('due_date')).toBe('><2026-10-01|2026-10-31');
   });
+
+  it('queries every open issue assigned to the current user, highest priority first', async () => {
+    vi.mocked(global.fetch).mockResolvedValueOnce(
+      jsonResponse({ issues: [{ id: 7, subject: 'Fix login' }], total_count: 1, offset: 0, limit: 100 })
+    );
+
+    const issues = await client.getAssignedTasks();
+
+    expect(issues).toEqual([{ id: 7, subject: 'Fix login' }]);
+    expect(requestedUrl(0).pathname).toBe('/issues.json');
+    expect(requestedUrl(0).searchParams.get('assigned_to_id')).toBe('me');
+    expect(requestedUrl(0).searchParams.get('status_id')).toBe('open');
+    expect(requestedUrl(0).searchParams.get('sort')).toBe('priority:desc');
+    expect(requestedUrl(0).searchParams.has('due_date')).toBe(false);
+  });
 });
 
 describe('assertHttpUrl', () => {

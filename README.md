@@ -34,6 +34,9 @@ Android builds are not part of the current release pipeline.
 
 - **Cross-Platform Support:** Native-feeling applications for Ubuntu (via Electrobun) and Android (via Capacitor).
 - **Multi-Server Management:** Easily connect to and switch between multiple independent Redmine backend servers.
+- **Dashboard and View Tabs:** The dashboard is pinned as the first tab and previews your calendar and to-do list. Select a preview to open the full view in its own tab; every tab except the dashboard can be closed.
+- **Calendar:** Time you logged and open tasks due, by day, for any month.
+- **To-do List:** Every open task assigned to you across all projects, grouped by priority, with overdue tasks highlighted.
 - **Deep Gemini AI Integration:** A cloud-first, configurable integration with Gemini to manage routines such as time logging, reminders, task updates, and wiki editing.
 - **Accessibility-First UI:** A beautiful, responsive interface built with Svelte and Tailwind CSS v4, prioritizing accessibility for all users.
 - **Secure Authentication:** Uses password login to securely retrieve API tokens, ensuring passwords aren't stored by default. KeePass authentication is also supported as an option for secure credential management.
@@ -45,7 +48,7 @@ Android builds are not part of the current release pipeline.
 
 Once you have downloaded and installed **gemiredmine**, follow these steps to get started:
 
-1. **Add Your Redmine Server:** Open the app and add the URL of your Redmine server. You can manage multiple server connections and easily switch between them.
+1. **Add Your Redmine Server:** On first start the app welcomes you and asks for your Redmine server. Add more servers, switch between them, sign out or remove them in **Settings**, which you open from the user menu in the top right. The user menu also shows the current server and lets you switch the server context.
 2. **Authenticate:** Enter your Redmine login and password. The app will use this to retrieve your API token and will not store your password by default. (Alternatively, you can use the KeePass integration).
 3. **Configure Gemini AI:** To utilize the AI features, navigate to the settings and configure your Gemini API integration. This will enable smart time logging, reminders, and context-aware task assistance.
 4. **Start Working:** You are all set! You can now manage your Redmine tasks, log time with Gemini's assistance, and switch servers as needed.

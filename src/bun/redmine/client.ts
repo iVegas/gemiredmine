@@ -148,6 +148,22 @@ export class RedmineClient {
     );
   }
 
+  /**
+   * Every open issue assigned to the authenticated user, across all projects.
+   * Redmine sorts priorities by their configured position, so the highest priority comes first.
+   */
+  async getAssignedTasks(): Promise<RedmineIssue[]> {
+    return this.fetchAllPages<IssuesResponse, RedmineIssue>(
+      '/issues.json',
+      {
+        assigned_to_id: 'me',
+        status_id: 'open',
+        sort: 'priority:desc'
+      },
+      (response) => response.issues
+    );
+  }
+
   private async fetchAllPages<R extends { total_count: number }, T>(
     path: string,
     filters: Record<string, string>,

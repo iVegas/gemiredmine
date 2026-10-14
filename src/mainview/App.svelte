@@ -1,75 +1,60 @@
 <script lang="ts">
-  import Sidebar from './Sidebar.svelte';
-  import AddServerForm from './AddServerForm.svelte';
-  import ServerContextSelector from './ServerContextSelector.svelte';
+  import WelcomeScreen from './WelcomeScreen.svelte';
+  import ViewTabs from './ViewTabs.svelte';
+  import UserMenu from './UserMenu.svelte';
   import ServerLogin from './ServerLogin.svelte';
+  import DashboardView from './DashboardView.svelte';
   import CalendarView from './CalendarView.svelte';
+  import TodoView from './TodoView.svelte';
+  import SettingsView from './SettingsView.svelte';
   import AboutView from './AboutView.svelte';
-  import { activeServer } from './lib/store';
-
-  let showAddForm = false;
-  let showAbout = false;
-
-  function isValidUrl(urlString: string): boolean {
-    try {
-      const url = new URL(urlString);
-      return url.protocol === 'http:' || url.protocol === 'https:';
-    } catch {
-      return false;
-    }
-  }
+  import { servers, activeServer } from './lib/store';
+  import { activeView, closeView, needsServer, openViews, viewPanelId, viewTabId } from './lib/views';
+  import { buildInfo } from '../shared/build-info.generated';
 </script>
 
-<div class="flex h-screen w-full bg-gray-50 font-sans">
-  <Sidebar onAddServerClick={() => showAddForm = true} onAboutClick={() => showAbout = true} />
-
-  <main class="flex-1 overflow-auto relative">
-    {#if showAddForm}
-      <div class="absolute inset-0 bg-gray-50 z-10 p-4 overflow-auto">
-        <AddServerForm
-          onCancel={() => showAddForm = false}
-          onSuccess={() => showAddForm = false}
-        />
+{#if $servers.length === 0}
+  <WelcomeScreen />
+{:else}
+  <div class="flex h-screen w-full flex-col bg-gray-50 font-sans">
+    <header class="flex items-end justify-between gap-4 border-b border-gray-200 bg-white px-4 pt-2">
+      <h1 class="sr-only">{buildInfo.productName}</h1>
+      <ViewTabs />
+      <div class="pb-1.5">
+        <UserMenu />
       </div>
-    {/if}
+    </header>
 
-    {#if showAbout}
-      <div class="absolute inset-0 bg-gray-50 z-10 p-8 overflow-auto">
-        <AboutView onClose={() => showAbout = false} />
-      </div>
-    {/if}
-
-    <div class="p-8 min-h-full flex flex-col gap-6">
-      {#if $activeServer && !showAddForm}
-        <header class="flex flex-wrap items-end justify-between gap-4">
-          <div class="min-w-0">
-            <h1 class="text-3xl font-bold text-gray-900 truncate">{$activeServer.name}</h1>
-            {#if isValidUrl($activeServer.url)}
-              <a href={$activeServer.url} target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline break-all">{$activeServer.url}</a>
-            {:else}
-              <span class="text-gray-600 break-all">{$activeServer.url}</span>
+    <main class="flex-1 overflow-auto">
+      <!-- Open tabs stay mounted, so a view keeps its state (such as the calendar month) while hidden. -->
+      {#each $openViews as view (view)}
+        <div
+          role="tabpanel"
+          id={viewPanelId(view)}
+          aria-labelledby={viewTabId(view)}
+          hidden={view !== $activeView}
+          class="p-6 md:p-8"
+        >
+          {#if needsServer(view) && !$activeServer}
+            <p class="text-gray-600">Choose a server from the user menu to see its data.</p>
+          {:else if needsServer(view) && !$activeServer?.apiToken}
+            <!-- One sign-in form at a time, in whichever server view is showing. -->
+            {#if view === $activeView && $activeServer}
+              <ServerLogin server={$activeServer} />
             {/if}
-          </div>
-          <ServerContextSelector />
-        </header>
-
-        {#if $activeServer.apiToken}
-          <CalendarView server={$activeServer} />
-        {:else}
-          <ServerLogin server={$activeServer} />
-        {/if}
-      {:else if !showAddForm}
-        <div class="h-full flex flex-col items-center justify-center text-center">
-          <h2 class="text-2xl font-semibold text-gray-700 mb-2">No Server Selected</h2>
-          <p class="text-gray-500 mb-6">Select a server from the sidebar or add a new one.</p>
-          <button
-            class="py-2 px-6 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors"
-            on:click={() => showAddForm = true}
-          >
-            Add First Server
-          </button>
+          {:else if view === 'dashboard' && $activeServer}
+            <DashboardView server={$activeServer} />
+          {:else if view === 'calendar' && $activeServer}
+            <CalendarView server={$activeServer} />
+          {:else if view === 'todo' && $activeServer}
+            <TodoView server={$activeServer} />
+          {:else if view === 'settings'}
+            <SettingsView />
+          {:else if view === 'about'}
+            <AboutView onClose={() => closeView('about')} />
+          {/if}
         </div>
-      {/if}
-    </div>
-  </main>
-</div>
+      {/each}
+    </main>
+  </div>
+{/if}

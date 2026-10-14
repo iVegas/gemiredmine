@@ -33,6 +33,7 @@ export const redmineApi = {
     backend().listTimeEntries({ ...access, ...range }),
   listOpenTasks: (access: ServerAccess, dueRange: { dueFrom: string; dueTo: string }) =>
     backend().listOpenTasks({ ...access, ...dueRange }),
+  listAssignedTasks: (access: ServerAccess) => backend().listAssignedTasks(access),
   getDevPreviewStatus: () => backend().getDevPreviewStatus(),
   setDevPreviewEnabled: (enabled: boolean) => backend().setDevPreviewEnabled({ enabled }),
   recordDiagnostic: (level: LogLevel, scope: string, message: string) =>
