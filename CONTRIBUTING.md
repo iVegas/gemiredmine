@@ -28,7 +28,7 @@ Releases are made with the workflows in `.github/workflows` (Unstable, Canary, S
 create release tags by hand. See [`RELEASE_POLICY.md`](./RELEASE_POLICY.md) for the channel rules
 and the steps to publish each channel.
 
-`npm run release` (standard-version) updates `CHANGELOG.md` and the version, but it also creates a
+`npm run release` (commit-and-tag-version) updates `CHANGELOG.md` and the version, but it also creates a
 local tag. Push the commit only, and let the Stable workflow create the tag.
 
 ## Testing and checks
