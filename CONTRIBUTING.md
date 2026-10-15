@@ -33,14 +33,17 @@ local tag. Push the commit only, and let the Stable workflow create the tag.
 
 ## Ongoing work
 
-The desktop shell is moving from Electrobun to Tauri 2. The plan, the progress so far and what comes next are in
-[`docs/tauri-migration/`](./docs/tauri-migration/progress.md).
+The desktop shell moved from Electrobun to Tauri 2. What is left (tabs in windows of their own, Android on Tauri) and
+how the move went are in [`docs/tauri-migration/`](./docs/tauri-migration/progress.md).
 
 ## Testing and checks
 
 - `npm test` runs the unit tests. It regenerates `src/shared/build-info.generated.ts` first.
 - `npm run typecheck` type-checks the whole project, including the release scripts.
-- The reusable build workflow runs both before it packages anything.
+- `cargo test --manifest-path src-tauri/Cargo.toml --lib`, `cargo fmt --manifest-path src-tauri/Cargo.toml --check`
+  and `cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings` check the Rust crate. Pull
+  requests run them in CI; the crate needs the packages listed in the README's development setup.
+- The reusable build workflows run the unit tests and the type check before they package anything.
 
 ## Windows packages and signing
 
@@ -80,10 +83,26 @@ requests and responses are described by `GemiBackend` in `src/shared/backend.ts`
 
 `createBackend` uses no Node or Bun API, so that it can also run inside a webview. It gets what
 it needs from the platform it is given: an HTTP client, the file operations of `DataFs`, a way to
-open a link, and the machine's description. Today the desktop shell supplies them from Bun
-(`src/bun/rpc.ts`, `src/bun/node-data-fs.ts`, `src/bun/paths.ts`). A test
+open a link, and the machine's description. The desktop shell supplies them from Tauri's HTTP, file and opener
+plugins (`src/mainview/lib/tauri-platform.ts`), and `src/mainview/lib/bridge.ts` creates the backend. Tests that need
+a real folder use `src/bun/diagnostics/__tests__/support/node-data-fs.ts`. A test
 (`src/bun/__tests__/webview-safe.spec.ts`) fails when `node:` imports, `Buffer`, `process` or `Bun`
-appear in the files that have to stay portable. Put code that needs them next to `rpc.ts`.
+appear in the files that have to stay portable. Put code that needs them next to `tauri-platform.ts`.
+
+## The desktop shell
+
+The shell is Tauri 2: the webview plus a small Rust crate in `src-tauri/` that does nothing but wire up plugins.
+Keep it that way; logic belongs in TypeScript, where the tests and the Android build reach it.
+
+- **Capabilities need review.** `src-tauri/capabilities/` says what the webview may do. `main.json` lets it talk to
+  any host over http(s) (the server is the user's own) and open web links. Each `dev-preview-<channel>.json` gives
+  that channel's developer preview file access to its own data folder only, and stable gets none. A new permission is
+  a security change: say why in the pull request.
+- **Identity comes from one place.** The name, identifier, version, icons and capabilities of a channel come from
+  `scripts/release/channels.mjs` through `scripts/release/tauri-config.mjs`. Do not edit them in
+  `src-tauri/tauri.conf.json`, which is the dev channel and what every channel shares (the content security policy).
+- **Run it:** `npm run tauri dev`. Build a channel with `CHANNEL=<channel> npm run build:desktop`.
+- **Tauri and its plugins** are updated as described in `RELEASE_POLICY.md`, in a `chore(deps)` commit.
 
 To try the app without a Redmine server, run `node scripts/dev/mock-redmine.mjs` and sign in as
 `alice` with the password `secret`.

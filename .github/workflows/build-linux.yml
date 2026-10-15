@@ -1,4 +1,4 @@
-# Reusable build: tests, type check, Electrobun build and AppImage for one release channel.
+# Reusable build: tests, type check, Tauri build and AppImage for one release channel.
 # Called by the unstable, canary and stable workflows. Nothing is published from here.
 name: Build Linux AppImage
 
@@ -24,7 +24,9 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # The oldest system the AppImage supports. The executable can only use the glibc and library versions the
+    # build machine has, so it runs here and on anything newer. check-linux-binary.mjs enforces the floor.
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
       CHANNEL: ${{ inputs.channel }}
@@ -49,17 +51,54 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
-      - name: Build webview
-        run: npm run build
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          # Tauri's build dependencies, zsync for the AppImage update file, xvfb for the smoke test.
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev \
+            libayatana-appindicator3-dev librsvg2-dev zsync xvfb
 
-      - name: Build Electrobun app
-        run: npm run build:electrobun
+      - name: Install Rust
+        # The same version as rust-toolchain.toml, which tauri-setup.test.ts checks.
+        run: rustup toolchain install 1.99.0 --profile minimal --no-self-update
 
-      - name: Install AppImage update tools
-        run: sudo apt-get update && sudo apt-get install -y zsync
+      - name: Cache Rust build
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+            src-tauri/target
+          # Per channel: the channels build different feature sets (developer tools), so they share no objects.
+          key: rust-${{ runner.os }}-${{ inputs.channel }}-${{ hashFiles('rust-toolchain.toml', 'src-tauri/Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-${{ inputs.channel }}-
+
+      # Builds the web assets first (the Tauri config's beforeBuildCommand), then the executable.
+      - name: Build desktop app
+        run: npm run build:desktop
+
+      - name: Check the executable
+        run: node scripts/release/check-linux-binary.mjs
 
       - name: Package AppImage
         run: node scripts/release/package-linux.mjs
+
+      - name: Smoke test the AppImage
+        env:
+          GEMIREDMINE_DATA_DIR: ${{ runner.temp }}/smoke-data
+        run: |
+          # Starts the packaged app on a virtual display. It has to still be running when `timeout` stops it
+          # after 20 seconds (status 124); any earlier exit means it did not start.
+          name="$(node -p "JSON.parse(require('fs').readFileSync('dist/linux/${CHANNEL}/release.json', 'utf8')).assets[0].name")"
+          echo "Starting $name"
+          status=0
+          xvfb-run -a timeout 20 "dist/linux/${CHANNEL}/${name}" --appimage-extract-and-run || status=$?
+          if [ "$status" -ne 124 ]; then
+            echo "::error title=Smoke test::The app exited with status $status within 20 seconds."
+            exit 1
+          fi
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

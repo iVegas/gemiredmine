@@ -77,11 +77,6 @@ export function xmlEscape(value) {
     .replace(/'/g, '&apos;');
 }
 
-/** Windows paths in the manifest use backslashes. */
-export function windowsPath(...segments) {
-  return segments.join('\\');
-}
-
 export function buildAppxManifest({
   identityName,
   publisher,

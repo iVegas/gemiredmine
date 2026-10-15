@@ -51,6 +51,8 @@ Open the link (or use `ms-appinstaller:?source=<link>`) to install the channel. 
 the App Installer feed when the app starts, every 8 hours, and upgrades the installed package in place.
 Only one package is installed per channel. Settings live under `%LOCALAPPDATA%` in a folder named for
 the channel, and the packaged app's data is private to its identity, so channels never share settings.
+The webview keeps its own storage (local storage and caches, not Redmine data) in a folder named for the
+package identity, below the same `%LOCALAPPDATA%`.
 Uninstalling a channel from Windows Settings removes its package and its data.
 
 MSIX versions have four numbers, so each build maps onto them in order: stable `1.2.0` becomes
@@ -105,9 +107,11 @@ Dependencies are updated once before the first stable release, and afterwards on
 release candidate. Dependency updates go in their own `chore(deps)` commit so they are easy to
 review and revert.
 
-Electrobun stays on the 1.x line for now. Electrobun 2.x delivers its application APIs through the
-Hutch devkit rather than npm, so adopting it means changing the build toolchain, not just bumping a
-version. That migration is a separate decision.
+Tauri stays on the 2.12 line. The `@tauri-apps/*` npm packages are pinned exactly, and the crates in
+`src-tauri/Cargo.lock` move with them: update both in one `chore(deps)` commit, and keep each package on
+the same minor version as its crate (`scripts/release/__tests__/tauri-setup.test.ts` fails otherwise).
+The Rust toolchain is pinned in `rust-toolchain.toml`; a bump also changes the version in the three
+workflows that install it, which the same test checks. Tauri 3 is a separate decision.
 
 ## Signing secrets (Windows)
 
@@ -142,20 +146,25 @@ Each workflow validates the version against this policy before it builds anythin
 
 ## Host requirements (Windows 11)
 
-Windows 11 (build 22000 or later) on x64. The app uses the WebView2 runtime, which ships with Windows 11.
+Windows 11 (build 22000 or later) on x64. The app uses the WebView2 runtime, which ships with Windows 11. The
+executable has the Visual C++ runtime and the WebView2 loader linked in, so no redistributable is needed.
 
 ## Host requirements (Linux)
 
-The AppImage bundles the application but not the desktop runtime. It needs WebKitGTK 4.1, libsoup 3,
-JavaScriptCore 4.1 and the AppIndicator library, for example on Ubuntu 24.04:
+The AppImage bundles the application but not the desktop runtime. It needs GTK 3, WebKitGTK 4.1 (2.40 or newer),
+libsoup 3 and JavaScriptCore 4.1, and glibc 2.35 or newer (Ubuntu 22.04, Debian 12 and Fedora qualify). No tray
+library is needed. For example on Ubuntu 24.04:
 
 ```sh
-sudo apt install libwebkit2gtk-4.1-0 libsoup-3.0-0 libjavascriptcoregtk-4.1-0 libayatana-appindicator3-1
+sudo apt install libwebkit2gtk-4.1-0 libsoup-3.0-0 libjavascriptcoregtk-4.1-0
 ```
+
+The app runs on X11, through XWayland on a Wayland desktop. Set `GDK_BACKEND=wayland` to override.
 
 ## Not covered yet
 
 - Android builds are not part of this pipeline.
+- Tabs cannot be dragged out into windows of their own yet; the Tauri shell has one window.
 - AppImages are not code-signed. Windows packages need signing secrets for their channel (see above).
 - The Linux update path has not been tested with a published release yet, and the Windows packages have not been
   installed on a Windows machine by the pipeline (see the verification notes in the pull request).

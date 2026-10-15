@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { get } from 'svelte/store';
-import type { TabStripLayout, WindowMessages } from '../../../shared/rpc';
+import type { TabStripLayout, WindowMessages } from '../../../shared/window-contract';
 
 const desktop = vi.hoisted(() => ({
   available: true,
@@ -18,8 +18,8 @@ const desktop = vi.hoisted(() => ({
 }));
 
 vi.mock('../bridge', () => ({
-  hasDesktopBackend: () => desktop.available,
-  backend: () => desktop.requests,
+  hasWindowLayer: () => desktop.available,
+  windowBackend: () => desktop.requests,
   onBackendMessage: (name: string, listener: ((payload: never) => void) | undefined) => {
     desktop.listeners[name] = listener;
   },

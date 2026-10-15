@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, existsSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { nodeDataFs } from '../../node-data-fs';
+import { nodeDataFs } from './support/node-data-fs';
 import type { DataFs } from '../fs';
 import { DevPreview, type DevPreviewOptions } from '../service';
 import { createMemoryDataFs } from './support/memory-data-fs';

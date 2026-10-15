@@ -3,7 +3,7 @@
 // The only hand-edited version is `version` in package.json. Everything the
 // app and the packaging pipeline need (display version, identifiers, data
 // directories, feature gates) is derived here, from that value plus the
-// channel and CI metadata. Pure functions only, so the Electrobun config,
+// channel and CI metadata. Pure functions only, so the Tauri config overlay,
 // the build-info generator and the release scripts all share one definition.
 
 export const REPOSITORY = Object.freeze({ owner: 'iVegas', name: 'gemiredmine' });

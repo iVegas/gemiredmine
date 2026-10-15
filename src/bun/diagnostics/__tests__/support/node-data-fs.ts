@@ -1,8 +1,8 @@
 import { access, appendFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { DataFs } from './diagnostics/fs';
+import type { DataFs } from '../../fs';
 
-/** DataFs on node:fs, for Bun and Node. Creates files with mode 0600 and folders with 0700. */
+/** DataFs on node:fs, for tests that work on a real folder. Creates files with mode 0600 and folders with 0700. */
 export const nodeDataFs: DataFs = {
   join: (...parts) => join(...parts),
 

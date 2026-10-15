@@ -2,16 +2,16 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { findAppBuild } from '../build-output.mjs';
+import { findAppBinary } from '../build-output.mjs';
 
-describe('findAppBuild', () => {
+describe('findAppBinary', () => {
   let root: string;
 
-  const app = (envDir: string, name: string, launcher: string) => {
-    const dir = join(root, envDir, name, 'bin');
+  const executable = (targetDir: string, name: string) => {
+    const dir = join(targetDir, 'release');
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, launcher), '');
-    return join(root, envDir, name);
+    writeFileSync(join(dir, name), '');
+    return join(dir, name);
   };
 
   beforeEach(() => {
@@ -22,22 +22,36 @@ describe('findAppBuild', () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it('finds the Linux and Windows builds of the requested app', () => {
-    expect(app('canary-linux-x64', 'Gemiredmine-Unstable-canary', 'launcher')).toBeTruthy();
-    expect(findAppBuild(root, 'Gemiredmine-Unstable')).toBe(join(root, 'canary-linux-x64', 'Gemiredmine-Unstable-canary'));
+  it('finds the Linux executable in the crate target folder', () => {
+    const binary = executable(join(root, 'src-tauri', 'target'), 'Gemiredmine-Unstable');
 
-    const windows = app('dev-win-x64', 'Gemiredmine-Unstable-dev', 'launcher.exe');
-    expect(findAppBuild(join(root), 'Gemiredmine-Unstable')).toBeTruthy();
-    expect(windows).toContain('dev-win-x64');
+    expect(findAppBinary(root, 'Gemiredmine-Unstable', 'linux', {})).toBe(binary);
+  });
+
+  it('finds the Windows executable, which has an .exe extension', () => {
+    const binary = executable(join(root, 'src-tauri', 'target'), 'Gemiredmine-Unstable.exe');
+
+    expect(findAppBinary(root, 'Gemiredmine-Unstable', 'windows', {})).toBe(binary);
+    expect(() => findAppBinary(root, 'Gemiredmine-Unstable', 'linux', {})).toThrow('No Gemiredmine-Unstable executable');
+  });
+
+  it('follows CARGO_TARGET_DIR, absolute or relative to the repository', () => {
+    const absolute = executable(join(root, 'elsewhere'), 'Gemiredmine');
+    expect(findAppBinary(root, 'Gemiredmine', 'linux', { CARGO_TARGET_DIR: join(root, 'elsewhere') })).toBe(absolute);
+
+    const relative = executable(join(root, 'out'), 'Gemiredmine-Canary');
+    expect(findAppBinary(root, 'Gemiredmine-Canary', 'linux', { CARGO_TARGET_DIR: 'out' })).toBe(relative);
   });
 
   it('never returns another channel build', () => {
-    app('canary-win-x64', 'Gemiredmine-Canary-canary', 'launcher.exe');
-    expect(() => findAppBuild(root, 'Gemiredmine-Unstable')).toThrow('No Gemiredmine-Unstable build');
+    executable(join(root, 'src-tauri', 'target'), 'Gemiredmine-Canary');
+
+    expect(() => findAppBinary(root, 'Gemiredmine-Unstable', 'linux', {})).toThrow('No Gemiredmine-Unstable executable');
+    // The stable app name is a prefix of the others, so a prefix match would pick the wrong build.
+    expect(() => findAppBinary(root, 'Gemiredmine', 'linux', {})).toThrow('No Gemiredmine executable');
   });
 
-  it('requires a launcher, not just a folder', () => {
-    mkdirSync(join(root, 'stable-win-x64', 'Gemiredmine'), { recursive: true });
-    expect(() => findAppBuild(root, 'Gemiredmine')).toThrow('No Gemiredmine build');
+  it('says which build command to run when nothing was built', () => {
+    expect(() => findAppBinary(root, 'Gemiredmine-Dev', 'linux', {})).toThrow('npm run build:desktop');
   });
 });

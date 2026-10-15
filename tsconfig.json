@@ -20,5 +20,5 @@
 			"node"
 		]
 	},
-	"exclude": ["node_modules", "build", "views", "dist", "dist-*"]
+	"exclude": ["node_modules", "build", "views", "dist", "dist-*", "src-tauri"]
 }

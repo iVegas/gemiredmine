@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, sep } from 'node:path';
-import { nodeDataFs } from '../../node-data-fs';
+import { nodeDataFs } from './support/node-data-fs';
 import { DevPreview } from '../service';
 
 // Golden snapshot of the per-channel data folder. Users keep this folder across updates,

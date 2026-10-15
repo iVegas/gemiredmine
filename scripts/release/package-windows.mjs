@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Packages the Electrobun Windows build of one channel as an MSIX with an App Installer feed.
+// Packages the Tauri Windows executable of one channel as an MSIX with an App Installer feed.
 //
 // Inputs:  CHANNEL, GITHUB_RUN_NUMBER (unstable build number), GITHUB_SHA (optional)
 //          WINDOWS_SIGNING     none | self-signed | trusted (see windows-signing.mjs)
@@ -10,12 +10,12 @@
 //          the public certificate (self-signed only), SHA256SUMS-windows.txt and release.json.
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REPOSITORY, deriveBuildInfo } from './channels.mjs';
 import { POINTER_TAGS, tagFor } from './policy.mjs';
-import { findAppBuild } from './build-output.mjs';
+import { findAppBinary } from './build-output.mjs';
 import { releaseMetadata } from './linux-metadata.mjs';
 import { resolveSigning } from './windows-signing.mjs';
 import {
@@ -26,7 +26,6 @@ import {
   fixedPackageFileName,
   msixVersion,
   packageFileName,
-  windowsPath,
 } from './windows-metadata.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -69,22 +68,6 @@ function compareVersionsDesc(a, b) {
     if (left[i] !== right[i]) return right[i] - left[i];
   }
   return 0;
-}
-
-/**
- * The manifest must start the app's launcher. Electrobun ships bin/launcher.exe on Windows; if a
- * build only has the extensionless launcher, the genuine launcher.exe from Electrobun's Windows core is used.
- */
-export function ensureLauncher(payloadDir, root) {
-  const exe = join(payloadDir, 'bin', 'launcher.exe');
-  if (existsSync(exe)) return windowsPath('bin', 'launcher.exe');
-
-  const core = join(root, 'node_modules', 'electrobun', 'dist-win-x64', 'launcher.exe');
-  if (existsSync(join(payloadDir, 'bin', 'launcher')) && existsSync(core)) {
-    copyFileSync(core, exe);
-    return windowsPath('bin', 'launcher.exe');
-  }
-  throw new Error(`No Windows launcher found in ${payloadDir}/bin. Run the Windows Electrobun build first.`);
 }
 
 function copyAssets(assetDir, targetDir) {
@@ -157,14 +140,15 @@ export function packageWindows({
     buildDate: env.BUILD_DATE || new Date().toISOString(),
   });
 
-  const source = findAppBuild(join(root, 'build'), info.appName);
+  const binary = findAppBinary(root, info.appName, 'windows', env);
   const outDir = join(root, 'dist', 'windows', channel);
   const payload = join(outDir, 'payload');
   rmSync(outDir, { recursive: true, force: true });
   mkdirSync(payload, { recursive: true });
 
-  cpSync(source, payload, { recursive: true });
-  const executable = ensureLauncher(payload, root);
+  // One self-contained executable: the web assets are inside it, and the WebView2 loader is linked in.
+  const executable = `${info.appName}.exe`;
+  copyFileSync(binary, join(payload, executable));
   copyAssets(join(root, 'assets', 'windows', channel), join(payload, 'Assets'));
 
   const packageVersion = msixVersion(channel, info.version);

@@ -47,14 +47,19 @@ export function desktopEntry({ productName, version, channel, identifier, appNam
   ].join('\n');
 }
 
-/** Starts the bundled Electrobun launcher from its own directory. */
-export function appRunScript(installDir) {
+/**
+ * Starts the bundled executable, `binary` being its path inside the AppImage, for example usr/bin/Gemiredmine.
+ * The app runs on X11 (through XWayland on a Wayland desktop) unless the user sets GDK_BACKEND: windows
+ * that follow each other across the screen need the pointer position, which Wayland does not give, and
+ * the previous desktop shell forced X11 too.
+ */
+export function appRunScript(binary) {
   return [
     '#!/bin/sh',
-    '# Starts the bundled Electrobun launcher from the AppImage mount point.',
+    '# Starts the app from the AppImage mount point.',
     'HERE="$(dirname "$(readlink -f "$0")")"',
-    `cd "$HERE/${installDir}" || exit 1`,
-    'exec "./bin/launcher" "$@"',
+    'export GDK_BACKEND="${GDK_BACKEND:-x11}"',
+    `exec "$HERE/${binary}" "$@"`,
     '',
   ].join('\n');
 }

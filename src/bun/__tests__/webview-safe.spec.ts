@@ -6,7 +6,7 @@ import { join, relative, sep } from 'node:path';
 
 // The backend also runs inside a webview, which has none of the Node or Bun APIs. A browser build only
 // warns about such an import, and the failure would show up as a blank screen, so check it here.
-// Platform code lives outside this set: rpc.ts, node-data-fs.ts and paths.ts are the Bun adapter.
+// Code that needs a platform brings it in through BackendPlatform, see backend.ts.
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 

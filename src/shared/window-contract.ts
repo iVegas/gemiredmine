@@ -1,24 +1,12 @@
-// Typed contract between the Bun backend (src/bun) and the webview (src/mainview).
-// Type-only imports keep this file free of runtime code on either side.
-import type { RPCSchema } from 'electrobun/view';
-import type { RedmineIssue, RedmineTimeEntry } from '../bun/redmine/types';
-import type { DevPreviewStatus, FeedbackResult } from '../bun/diagnostics/service';
-import type { LogLevel } from '../bun/diagnostics/aggregator';
+// The contract between the windows of the app: what a view window may ask of the main window, and
+// what the window layer tells a window's webview. Type-only imports keep this file free of runtime code.
 import type { ServerConnection } from '../mainview/lib/store';
 import type { ViewId } from '../mainview/lib/views';
-import type {
-  CurrentUserSummary,
-  DateRange,
-  DueRange,
-  ServerAccess,
-  SignInParams,
-  SignInResponse,
-} from './backend';
 import type { Point, Rect, TabEdges } from './windows';
 
 /**
  * The servers and the server in use. Every window of the app shows the same ones, so the
- * backend passes them between windows. It keeps them in memory only, and only while a view
+ * window layer passes them between windows. It keeps them in memory only, and only while a view
  * has a window of its own.
  */
 export interface SessionSnapshot {
@@ -66,14 +54,14 @@ export type WindowRequests = {
   shareSession: { params: SessionSnapshot; response: void };
 };
 
-/** Handlers for the window requests, as the Bun side implements them for one window. */
+/** Handlers for the window requests, as the window layer implements them for one window. */
 export type WindowRequestHandlers = {
   [K in keyof WindowRequests]: (
     params: WindowRequests[K]['params']
   ) => WindowRequests[K]['response'] | Promise<WindowRequests[K]['response']>;
 };
 
-/** Messages the Bun side sends to a window's webview. */
+/** Messages the window layer sends to a window's webview. */
 export type WindowMessages = {
   /** Another window changed the servers. */
   sessionChanged: SessionSnapshot;
@@ -85,27 +73,4 @@ export type WindowMessages = {
   viewWindowClosed: { view: ViewId };
   /** Main window: a view window asked to open a view. */
   openView: { view: ViewId };
-};
-
-export type GemiRPCSchema = {
-  bun: RPCSchema<{
-    requests: {
-      signIn: { params: SignInParams; response: SignInResponse };
-      getCurrentUser: { params: ServerAccess; response: CurrentUserSummary };
-      listTimeEntries: { params: ServerAccess & DateRange; response: RedmineTimeEntry[] };
-      listOpenTasks: { params: ServerAccess & DueRange; response: RedmineIssue[] };
-      listAssignedTasks: { params: ServerAccess; response: RedmineIssue[] };
-      getDevPreviewStatus: { params: void; response: DevPreviewStatus };
-      setDevPreviewEnabled: { params: { enabled: boolean }; response: DevPreviewStatus };
-      recordDiagnostic: { params: { level: LogLevel; scope: string; message: string }; response: void };
-      createFeedback: {
-        params: { title: string; description: string; includeLogs: boolean };
-        response: FeedbackResult;
-      };
-      openIssueLink: { params: { url: string }; response: void };
-    } & WindowRequests;
-  }>;
-  webview: RPCSchema<{
-    messages: WindowMessages;
-  }>;
 };

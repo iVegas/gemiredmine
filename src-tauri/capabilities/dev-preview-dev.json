@@ -1,0 +1,20 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "dev-preview-dev",
+  "description": "The developer preview of the dev channel writes its logs and feedback below its own data folder.",
+  "windows": ["main"],
+  "permissions": [
+    "fs:allow-exists",
+    "fs:allow-stat",
+    "fs:allow-mkdir",
+    "fs:allow-read-file",
+    "fs:allow-write-file",
+    "fs:allow-read-dir",
+    "fs:allow-rename",
+    "fs:allow-remove",
+    {
+      "identifier": "fs:scope",
+      "allow": [{ "path": "$LOCALDATA/gemiredmine-dev" }, { "path": "$LOCALDATA/gemiredmine-dev/**" }]
+    }
+  ]
+}

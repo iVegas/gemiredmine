@@ -1,0 +1,5 @@
+# Bump together with the `rustup toolchain install` steps in the build workflows
+# (tauri-setup.test.ts checks that they agree). Change it only in a `chore(deps)` commit.
+[toolchain]
+channel = "1.99.0"
+profile = "minimal"
