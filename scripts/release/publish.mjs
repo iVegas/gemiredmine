@@ -123,7 +123,7 @@ export function loadArtifacts(dirs) {
       if (!existsSync(path)) throw new Error(`Missing artifact ${path}`);
       if (names.has(asset.name)) throw new Error(`${asset.name} is produced by more than one package.`);
       names.add(asset.name);
-      assets.push({ name: asset.name, path, pointer: asset.pointer === true });
+      assets.push({ name: asset.name, path, pointer: asset.pointer === true, copyToPointer: asset.copyToPointer === true });
     }
   }
 
@@ -147,6 +147,18 @@ export function loadArtifacts(dirs) {
 /** Checksum files are attached to the pointer release too, so it can be verified on its own. */
 const isChecksumFile = name => name.startsWith('SHA256SUMS');
 
+/**
+ * The files of the build's own release, and those of the pointer release. A `pointer` asset is only on the pointer
+ * release (the fixed-name copies the update feeds follow). Every other asset is on the build's own release, and is
+ * also on the pointer release when it is a checksum file or the package asks for it with `copyToPointer`.
+ */
+export function releaseFiles(assets) {
+  return {
+    files: assets.filter(asset => !asset.pointer).map(asset => asset.path),
+    pointerFiles: assets.filter(asset => asset.pointer || asset.copyToPointer || isChecksumFile(asset.name)).map(asset => asset.path),
+  };
+}
+
 function releaseExists(tag, { dryRun, log }) {
   if (dryRun) return false;
   try {
@@ -160,8 +172,7 @@ function releaseExists(tag, { dryRun, log }) {
 export function publish({ dirs, dryRun = false, log = console.log }) {
   const { metadata, platforms, assets, windowsSigning, certificateName } = loadArtifacts(dirs);
   const { channel, tag, pointerTag, commitSha } = metadata;
-  const files = assets.filter(asset => !asset.pointer).map(asset => asset.path);
-  const pointerFiles = assets.filter(asset => asset.pointer || isChecksumFile(asset.name)).map(asset => asset.path);
+  const { files, pointerFiles } = releaseFiles(assets);
 
   const title = `${CHANNEL_LABEL[channel]} ${metadata.version}`;
   const createArgs = ['release', 'create', tag, ...files, '--title', title, '--target', commitSha];

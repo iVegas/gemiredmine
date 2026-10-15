@@ -4,6 +4,7 @@ import type { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { errorAnnotation, exportPublicCertificate, packageWindows } from '../package-windows.mjs';
+import { publish } from '../publish.mjs';
 
 // Stand-ins for makeappx.exe and signtool.exe. They run on Linux, so the packaging flow can be
 // tested here. The real tools run on the Windows CI runner.
@@ -18,7 +19,7 @@ echo "$@" >> "$SIGNTOOL_LOG"
 exit 0
 `;
 
-type Asset = { name: string; pointer: boolean };
+type Asset = { name: string; pointer: boolean; copyToPointer?: boolean };
 type Exporter = (args: { pfx: string; password: string; out: string }) => string;
 
 const fakeExport: Exporter = ({ out }) => {
@@ -149,10 +150,28 @@ describe('packageWindows', () => {
     expect(existsSync(join(outDir, 'signing-certificate.pfx'))).toBe(false);
 
     const cer = metadata.assets.find((a: Asset) => a.name === 'Gemiredmine-Unstable-self-signed.cer');
-    expect(cer).toEqual({ name: 'Gemiredmine-Unstable-self-signed.cer', pointer: true });
+    // On the build's own release, where its notes tell testers to import it, and on the pointer release.
+    expect(cer).toEqual({ name: 'Gemiredmine-Unstable-self-signed.cer', pointer: false, copyToPointer: true });
     const installer = readFileSync(join(outDir, 'Gemiredmine-Unstable.appinstaller'), 'utf8');
     expect(installer).toContain('Publisher="CN=Gemiredmine"');
     expect(JSON.parse(readFileSync(join(outDir, 'release.json'), 'utf8'))).toMatchObject({ signing: 'self-signed', publisher: 'CN=Gemiredmine' });
+  });
+
+  it('publishes the public certificate with the build and with the pointer release', () => {
+    const { outDir } = packageWindows({ env: env({ ...selfSigned, REQUIRE_SIGNING: '1' }), root, exportCertificate: fakeExport });
+    const commands: string[] = [];
+
+    publish({ dirs: [outDir], dryRun: true, log: (line: string) => commands.push(line) });
+
+    const certificate = join(outDir, 'Gemiredmine-Unstable-self-signed.cer');
+    const create = commands.find(line => line.includes('release create unstable-v1.0.0-unstable.7'));
+    const upload = commands.find(line => line.includes('release upload unstable-latest'));
+    expect(create).toContain(certificate);
+    expect(upload).toContain(certificate);
+    // The fixed-name copies are for the update feed only.
+    expect(create).not.toContain(join(outDir, 'Gemiredmine-Unstable-x64.msix'));
+    expect(create).not.toContain(join(outDir, 'Gemiredmine-Unstable.appinstaller'));
+    expect(upload).toContain(join(outDir, 'Gemiredmine-Unstable-x64.msix'));
   });
 
   it('signs and verifies stable with the trusted certificate and publishes no certificate', () => {

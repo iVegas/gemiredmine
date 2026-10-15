@@ -192,8 +192,9 @@ export function packageWindows({
     { name: appInstallerFileName(info.appName), path: installerPath, pointer: pointerTag !== null },
   ];
   if (certificatePath) {
-    // Testers need the certificate before the package can be installed, so it ships with each release.
-    assets.push({ name: `${info.appName}-self-signed.cer`, path: certificatePath, pointer: pointerTag !== null });
+    // Testers need the certificate before the package can be installed. It is attached to the build's own release,
+    // whose notes name it, and copied to the pointer release, where the App Installer link lives.
+    assets.push({ name: `${info.appName}-self-signed.cer`, path: certificatePath, pointer: false, copyToPointer: pointerTag !== null });
   }
 
   const checksums = assets.map(asset => `${sha256(asset.path)}  ${asset.name}`).join('\n');
@@ -208,7 +209,7 @@ export function packageWindows({
     commitSha,
     tag: tagFor(channel, info.version),
     pointerTag,
-    assets: assets.map(({ name, pointer }) => ({ name, pointer })),
+    assets: assets.map(({ name, pointer, copyToPointer }) => ({ name, pointer, ...(copyToPointer ? { copyToPointer } : {}) })),
   });
   writeFileSync(
     join(outDir, 'release.json'),
