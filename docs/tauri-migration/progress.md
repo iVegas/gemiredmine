@@ -231,12 +231,11 @@ clean Windows 11. That is gate G5. A runner has WebView2 and a desktop session, 
    `ViewWindows` with a `TauriHost`, and replace the two `electrobun-webkit-app-region-*` classes.
 
 **Decided by the project owner**
+- **2026-10-15, shipping between PR 2 and PR 2b: allowed for every channel** ("It does not matter to ship in mid pr or not").
 - **2026-10-14, the window layer: split.** "I allow a regression, the goal is to migrate." PR 2 swaps the shell with one
   window and turns dragging tabs into windows off on Tauri; PR 2b ports it. Unstable users lose the feature between the two.
 
 **Open questions for the project owner**
-- May Canary and Stable ship between PR 2 and PR 2b? The owner accepted the regression, but did not say for which
-  channels. Until they do, the plan holds both back.
 - Keep the X11 default on Linux? PR 2 does: `AppRun` sets `GDK_BACKEND=x11` unless the user set it, as Electrobun did.
   Dragging a window back into the tab strip (PR 2b) needs the global pointer, which native Wayland does not give
   applications. A Wayland-only system without XWayland cannot start the app until this changes.

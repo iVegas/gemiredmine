@@ -147,7 +147,8 @@ backend. Read it before estimating PR 2.
 **Decided by the project owner, 2026-10-14: split** ("I allow a regression, the goal is to migrate"). PR 2 swaps the
 shell with one window, and `canDetachViews()` is false on Tauri. A follow-up, **PR 2b**, ports the window layer as
 described above. The feature is already on `main`, so Unstable users lose dragging tabs into windows between the two.
-- **Still open:** whether Canary and Stable may ship between PR 2 and PR 2b. Until the owner says so, they wait.
+- **Answered 2026-10-15:** it does not matter whether Canary and Stable ship between PR 2 and PR 2b ("It does not matter to
+  ship in mid pr or not"). So the channels are not held back: merge as soon as the gates the owner cares about have run.
 - **X11 only on Linux** for as long as the feature depends on global pointer access. PR 2 keeps `GDK_BACKEND=x11` for
   parity; PR 2b needs it.
 
