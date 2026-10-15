@@ -21,7 +21,7 @@ const previewChannels = Object.entries(CHANNELS).filter(([, config]) => config.d
 describe('capabilities', () => {
   it('has the window capabilities and one preview capability per channel that offers the preview', () => {
     expect(capabilityFiles.sort()).toEqual(
-      ['backend.json', 'main.json', 'view-window.json', ...previewChannels.map(([channel]) => `dev-preview-${channel}.json`)].sort()
+      ['backend.json', 'main.json', 'storage.json', 'view-window.json', ...previewChannels.map(([channel]) => `dev-preview-${channel}.json`)].sort()
     );
     for (const file of capabilityFiles) {
       expect(capability(file.replace(/\.json$/, '')).identifier).toBe(file.replace(/\.json$/, ''));
@@ -32,6 +32,8 @@ describe('capabilities', () => {
     expect(capability('backend').windows).toEqual(['main', 'view-*']);
     expect(capability('main').windows).toEqual(['main']);
     expect(capability('view-window').windows).toEqual(['view-*']);
+    // The configuration belongs to the main window too. A view window gets its servers from it.
+    expect(capability('storage').windows).toEqual(['main']);
     // The developer preview belongs to the main window, so view windows never touch files.
     for (const [channel] of previewChannels) expect(capability(`dev-preview-${channel}`).windows).toEqual(['main']);
   });
@@ -59,8 +61,16 @@ describe('capabilities', () => {
     expect(opener).toEqual([{ identifier: 'opener:allow-open-url', allow: [{ url: 'http://*' }, { url: 'https://*' }] }]);
   });
 
-  it('keeps file access out of the window capabilities', () => {
+  it('lets the main window read and write its database, and nothing else about it', () => {
+    // No `sql:default` and no `sql:allow-close`: the plugin closes its pools when the app ends.
+    expect(capability('storage').permissions).toEqual(['sql:allow-load', 'sql:allow-select', 'sql:allow-execute']);
     for (const name of ['backend', 'main', 'view-window']) {
+      expect(capability(name).permissions.map(identifier).filter((id) => id.startsWith('sql:')), name).toEqual([]);
+    }
+  });
+
+  it('keeps file access out of the window capabilities', () => {
+    for (const name of ['backend', 'main', 'storage', 'view-window']) {
       expect(capability(name).permissions.map(identifier).filter((id) => id.startsWith('fs:')), name).toEqual([]);
     }
   });
@@ -94,6 +104,7 @@ describe('capabilities', () => {
       'backend',
       'main',
       'view-window',
+      'storage',
       'dev-preview-dev',
     ]);
   });
@@ -124,6 +135,7 @@ describe('versions', () => {
       '@tauri-apps/plugin-fs',
       '@tauri-apps/plugin-http',
       '@tauri-apps/plugin-opener',
+      '@tauri-apps/plugin-sql',
     ]);
     for (const name of tauriPackages) expect(npm[name], name).toMatch(/^\d+\.\d+\.\d+$/);
   });
@@ -137,6 +149,7 @@ describe('versions', () => {
       ['@tauri-apps/plugin-http', 'tauri-plugin-http'],
       ['@tauri-apps/plugin-fs', 'tauri-plugin-fs'],
       ['@tauri-apps/plugin-opener', 'tauri-plugin-opener'],
+      ['@tauri-apps/plugin-sql', 'tauri-plugin-sql'],
     ];
     for (const [npmName, crate] of pairs) {
       expect(crates.has(crate), `${crate} is in Cargo.lock`).toBe(true);
@@ -173,6 +186,12 @@ describe('the crate', () => {
     expect(http).toContain('"rustls-tls-native-roots"');
     expect(http).toContain('"gzip"');
     expect(http).not.toContain('cookies');
+  });
+
+  it('keeps its data in SQLite, built into the app, and in no other kind of database', () => {
+    const sql = /tauri-plugin-sql = \{[^}]*\}/s.exec(cargo)?.[0] ?? '';
+    expect(sql).toContain('features = ["sqlite"]');
+    expect(sql).not.toMatch(/mysql|postgres/);
   });
 
   it('offers developer tools only as an opt-in feature', () => {

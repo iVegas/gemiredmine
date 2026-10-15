@@ -54,7 +54,7 @@ describe.each(Object.entries(CHANNELS))('tauriChannelConfig for %s', (channel, c
   });
 
   it('enables the developer preview capability only where the preview exists', () => {
-    const windowCapabilities = ['backend', 'main', 'view-window'];
+    const windowCapabilities = ['backend', 'main', 'view-window', 'storage'];
     expect(overlay.app.security.capabilities).toEqual(
       channelConfig.devPreviewAvailable ? [...windowCapabilities, `dev-preview-${channel}`] : windowCapabilities
     );

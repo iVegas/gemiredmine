@@ -13,8 +13,11 @@
  */
 const MAIN_WINDOW = Object.freeze({ label: 'main', width: 1024, height: 768, dragDropEnabled: false });
 
-/** The capabilities of every channel: the backend in each window, the main window's own, and the view windows'. */
-const WINDOW_CAPABILITIES = Object.freeze(['backend', 'main', 'view-window']);
+/**
+ * The capabilities of every channel: the backend in each window, the main window's own, the view windows', and the
+ * main window's access to the app's database.
+ */
+const WINDOW_CAPABILITIES = Object.freeze(['backend', 'main', 'view-window', 'storage']);
 
 /**
  * @param {ReturnType<typeof import('./channels.mjs').deriveBuildInfo>} info

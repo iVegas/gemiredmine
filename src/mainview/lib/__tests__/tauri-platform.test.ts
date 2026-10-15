@@ -1,16 +1,29 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
 import { sep } from '@tauri-apps/api/path';
 import { fetch as pluginFetch } from '@tauri-apps/plugin-http';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import Database from '@tauri-apps/plugin-sql';
 import { buildInfo } from '../../../shared/build-info.generated';
 import { describeDataFsContract } from '../../../bun/diagnostics/__tests__/data-fs.contract';
 import { resetFakePluginFs, type FakePluginFs } from './support/fake-plugin-fs';
-import { dataDir, tauriDataFs, tauriFetch, tauriPlatform, toEnvironment, type AppEnvironment } from '../tauri-platform';
+import {
+  DATABASE_FILE,
+  dataDir,
+  openDatabase,
+  sqliteUrl,
+  tauriDataFs,
+  tauriFetch,
+  tauriPlatform,
+  toEnvironment,
+  type AppEnvironment,
+} from '../tauri-platform';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
 vi.mock('@tauri-apps/api/path', () => ({ localDataDir: vi.fn(), sep: vi.fn(() => '/') }));
 vi.mock('@tauri-apps/plugin-http', () => ({ fetch: vi.fn() }));
 vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: vi.fn() }));
+vi.mock('@tauri-apps/plugin-sql', () => ({ default: { load: vi.fn() } }));
 // Only the byte-based commands exist, so the adapter cannot reach for a text-file command.
 vi.mock('@tauri-apps/plugin-fs', async () => (await import('./support/fake-plugin-fs')).pluginFsModule);
 
@@ -139,6 +152,83 @@ describe('tauriDataFs', () => {
   });
 });
 
+describe('sqliteUrl', () => {
+  it('is sqlite: and the path', () => {
+    expect(sqliteUrl('/home/a/.local/share/gemiredmine/gemiredmine.db')).toBe('sqlite:/home/a/.local/share/gemiredmine/gemiredmine.db');
+    expect(sqliteUrl('C:\\Users\\a b\\AppData\\Local\\gemiredmine\\gemiredmine.db')).toBe(
+      'sqlite:C:\\Users\\a b\\AppData\\Local\\gemiredmine\\gemiredmine.db'
+    );
+  });
+
+  it('escapes the two characters that the plugin reads as syntax: the start of options and escapes', () => {
+    expect(sqliteUrl('/home/50%/what?/a#b.db')).toBe('sqlite:/home/50%25/what%3F/a#b.db');
+  });
+});
+
+describe('openDatabase', () => {
+  const connection = { execute: vi.fn(), select: vi.fn() };
+
+  beforeEach(() => {
+    vi.mocked(sep).mockReturnValue('/');
+    vi.mocked(invoke).mockReset().mockResolvedValue('/home/a/.local/share/gemiredmine-test');
+    vi.mocked(Database.load).mockReset().mockResolvedValue(connection as unknown as Database);
+    connection.execute.mockReset().mockResolvedValue({ rowsAffected: 1 });
+    connection.select.mockReset().mockResolvedValue([]);
+  });
+
+  it('has the Rust side make the channel folder, then opens the database file in it', async () => {
+    await openDatabase();
+
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('prepare_storage_dir', { name: buildInfo.dataDirName });
+    expect(Database.load).toHaveBeenCalledExactlyOnceWith(`sqlite:/home/a/.local/share/gemiredmine-test/${DATABASE_FILE}`);
+  });
+
+  it('puts the file in the folder the Rust side answers with, using the separator of the system', async () => {
+    vi.mocked(sep).mockReturnValue('\\');
+    vi.mocked(invoke).mockResolvedValue('C:\\Users\\a\\AppData\\Local\\gemiredmine');
+
+    await openDatabase();
+
+    expect(Database.load).toHaveBeenCalledWith(`sqlite:C:\\Users\\a\\AppData\\Local\\gemiredmine\\${DATABASE_FILE}`);
+  });
+
+  it('runs statements and queries with their parameters, as plain arrays', async () => {
+    connection.select.mockResolvedValue([{ value: 'x' }]);
+    const db = await openDatabase();
+    const params = ['a', 1, null] as const;
+
+    await db.execute('INSERT INTO settings (key, value) VALUES (?, ?)', params);
+    await db.execute('PRAGMA user_version = 1');
+    const rows = await db.select('SELECT value FROM settings WHERE key = ?', ['a']);
+
+    expect(connection.execute).toHaveBeenNthCalledWith(1, 'INSERT INTO settings (key, value) VALUES (?, ?)', ['a', 1, null]);
+    expect(connection.execute).toHaveBeenNthCalledWith(2, 'PRAGMA user_version = 1', []);
+    expect(connection.select).toHaveBeenCalledWith('SELECT value FROM settings WHERE key = ?', ['a']);
+    expect(rows).toEqual([{ value: 'x' }]);
+  });
+
+  it('rejects with an Error when the Rust side or the plugin rejects with a string', async () => {
+    vi.mocked(invoke).mockRejectedValueOnce('Could not create /data: Permission denied (os error 13)');
+    const first = await openDatabase().catch((error: unknown) => error);
+    expect(first).toBeInstanceOf(Error);
+    expect((first as Error).message).toBe('Could not create /data: Permission denied (os error 13)');
+
+    vi.mocked(Database.load).mockRejectedValueOnce('error returned from database: (code: 14) unable to open database file');
+    const second = await openDatabase().catch((error: unknown) => error);
+    expect(second).toBeInstanceOf(Error);
+    expect((second as Error).message).toContain('unable to open database file');
+  });
+
+  it('rejects with an Error when a statement or a query fails', async () => {
+    const db = await openDatabase();
+    connection.execute.mockRejectedValue('error returned from database: (code: 5) database is locked');
+    connection.select.mockRejectedValue('error returned from database: (code: 1) no such table: servers');
+
+    await expect(db.execute('DELETE FROM servers')).rejects.toThrow('database is locked');
+    await expect(db.select('SELECT * FROM servers')).rejects.toThrow('no such table');
+  });
+});
+
 describe('toEnvironment', () => {
   it('names the platform and CPU the way Node does and describes the webview', () => {
     expect(toEnvironment(linuxEnvironment)).toEqual({
@@ -215,10 +305,11 @@ describe('tauriPlatform', () => {
     expect(openUrl).toHaveBeenCalledWith('https://github.com/iVegas/gemiredmine/issues/new');
   });
 
-  it('is made of the Tauri fetch and file system', () => {
+  it('is made of the Tauri fetch, file system and database', () => {
     const platform = tauriPlatform();
 
     expect(platform.fetch).toBe(tauriFetch);
     expect(platform.fs).toBe(tauriDataFs);
+    expect(platform.database).toBe(openDatabase);
   });
 });
