@@ -50,7 +50,17 @@ describe('labels', () => {
 
   it('names every request and message of the contract', () => {
     expect(windowRequestNames.sort()).toEqual(
-      ['attachView', 'closeViewWindow', 'detachView', 'focusViewWindow', 'getSession', 'openInMainWindow', 'reportTabStrip', 'shareSession'].sort()
+      [
+        'attachView',
+        'attachViewWindow',
+        'closeViewWindow',
+        'detachView',
+        'focusViewWindow',
+        'getSession',
+        'openInMainWindow',
+        'reportTabStrip',
+        'shareSession',
+      ].sort()
     );
     expect(previewRequestNames.sort()).toEqual(['previewCreateFeedback', 'previewRecord', 'previewSetEnabled', 'previewStatus']);
     expect(Object.keys(MESSAGE_NAMES).sort()).toEqual(['openView', 'sessionChanged', 'viewAttached', 'viewDropTarget', 'viewWindowClosed']);

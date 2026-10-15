@@ -39,6 +39,18 @@ export function containsPoint(rect: Rect, point: Point, margin = 0): boolean {
   );
 }
 
+/**
+ * The data type of a view that is dragged from its own window onto the main window's tabs. It is a drag and
+ * drop between two windows of the app, which the system routes, so it needs no position on screen: that is
+ * what a Wayland session does not give an application.
+ */
+export const VIEW_DRAG_TYPE = 'application/x-gemiredmine-view';
+
+/** The view id in dropped data, or null when the data is not a plain view id. */
+export function viewFromDragData(data: string): string | null {
+  return /^[a-z]+$/.test(data) ? data : null;
+}
+
 const VIEW_PARAM = 'view';
 
 /** The URL fragment that makes the webview show one view in a window of its own. */

@@ -1,14 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, fireEvent, within } from '@testing-library/svelte';
+import { render, fireEvent, createEvent, within } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import ViewTabs from '../ViewTabs.svelte';
 import { openViews, activeView, openView, resetViews } from '../lib/views';
 import { detachedViews, windowDropTarget } from '../lib/windows';
+import { VIEW_DRAG_TYPE } from '../../shared/windows';
 
 const desktop = vi.hoisted(() => ({
   available: false,
   requests: {
     detachView: vi.fn(),
+    attachViewWindow: vi.fn(),
     reportTabStrip: vi.fn(),
   },
 }));
@@ -33,6 +35,29 @@ async function dragTab(tab: HTMLElement, toX: number, toY = 20) {
   await fireEvent.pointerDown(tab, { pointerId: 1, button: 0, clientX: fromX, clientY: 20 });
   await fireEvent.pointerMove(tab, { pointerId: 1, clientX: (fromX + toX) / 2, clientY: toY });
   await fireEvent.pointerMove(tab, { pointerId: 1, clientX: toX, clientY: toY });
+}
+
+/**
+ * Fires a drag event the way a browser does for a drag from another window: the data cannot be read before the drop.
+ * Returns whether the event allowed the drop, and the data transfer the handlers saw.
+ */
+async function dragEvent(
+  type: 'dragStart' | 'dragOver' | 'dragLeave' | 'drop',
+  target: Element,
+  init: { types?: string[]; data?: string; clientX?: number; relatedTarget?: Element } = {}
+) {
+  const data: Record<string, string> = init.data === undefined ? {} : { [VIEW_DRAG_TYPE]: init.data };
+  const dataTransfer = {
+    types: init.types ?? Object.keys(data),
+    getData: (type: string) => data[type] ?? '',
+    setData: vi.fn((type: string, value: string) => void (data[type] = value)),
+    effectAllowed: '',
+    dropEffect: '',
+  };
+  const event = createEvent[type](target, { dataTransfer });
+  Object.defineProperty(event, 'clientX', { value: init.clientX ?? 0 });
+  if (init.relatedTarget) Object.defineProperty(event, 'relatedTarget', { value: init.relatedTarget });
+  return { allowed: !(await fireEvent(target, event)), dataTransfer };
 }
 
 const tabNames = (tabs: HTMLElement[]) => tabs.map(tab => tab.textContent?.replace('✕', '').trim());
@@ -265,10 +290,10 @@ describe('ViewTabs Component', () => {
     it('shows where a view window dragged over the tabs would go', async () => {
       const view = render(ViewTabs);
 
-      windowDropTarget.set({ view: 'about', index: 2 });
+      windowDropTarget.set({ index: 2 });
       expect(await within(view.getByRole('tab', { name: 'To-do' })).findByTestId('drop-indicator')).toBeInTheDocument();
 
-      windowDropTarget.set({ view: 'about', index: 4 });
+      windowDropTarget.set({ index: 4 });
       expect(await within(view.getByRole('tab', { name: 'Settings' })).findByTestId('drop-indicator')).toBeInTheDocument();
 
       windowDropTarget.set(null);
@@ -324,6 +349,109 @@ describe('ViewTabs Component', () => {
       // PageUp alone does not move tabs.
       await fireEvent.keyDown(todo, { key: 'PageUp' });
       expect(get(openViews)).toEqual(['dashboard', 'calendar', 'settings', 'todo']);
+    });
+
+    describe('a view window dragged onto the tabs by its tab', () => {
+      it('shows where the view would go and allows the drop', async () => {
+        desktop.available = true;
+        const view = render(ViewTabs);
+        layOutTabs(view.getAllByRole('tab'));
+        const strip = view.getByRole('tablist');
+
+        // Over the middle of the second tab (to-do): the view would go after it.
+        const { allowed, dataTransfer } = await dragEvent('dragOver', strip, { types: [VIEW_DRAG_TYPE], clientX: 160 });
+
+        expect(allowed).toBe(true);
+        expect(dataTransfer.dropEffect).toBe('move');
+        expect(get(windowDropTarget)).toEqual({ index: 2 });
+        expect(await within(view.getByRole('tab', { name: 'To-do' })).findByTestId('drop-indicator')).toBeInTheDocument();
+      });
+
+      it('never offers a place before the pinned dashboard', async () => {
+        desktop.available = true;
+        const view = render(ViewTabs);
+        layOutTabs(view.getAllByRole('tab'));
+
+        await dragEvent('dragOver', view.getByRole('tablist'), { types: [VIEW_DRAG_TYPE], clientX: 2 });
+
+        expect(get(windowDropTarget)).toEqual({ index: 1 });
+      });
+
+      it('clears the place when the drag leaves the tabs, but not when it moves from one tab to the next', async () => {
+        desktop.available = true;
+        const view = render(ViewTabs);
+        const strip = view.getByRole('tablist');
+        windowDropTarget.set({ index: 2 });
+
+        await dragEvent('dragLeave', view.getByRole('tab', { name: 'To-do' }), { relatedTarget: view.getByRole('tab', { name: 'Settings' }) });
+        expect(get(windowDropTarget)).toEqual({ index: 2 });
+
+        await dragEvent('dragLeave', strip, { relatedTarget: document.body });
+        expect(get(windowDropTarget)).toBeNull();
+      });
+
+      it('puts the dropped view where it was dropped', async () => {
+        desktop.available = true;
+        const view = render(ViewTabs);
+        layOutTabs(view.getAllByRole('tab'));
+
+        const { allowed } = await dragEvent('drop', view.getByRole('tablist'), { data: 'about', clientX: 400 });
+
+        expect(allowed).toBe(true);
+        expect(desktop.requests.attachViewWindow).toHaveBeenCalledWith({ view: 'about', index: 4 });
+        expect(get(windowDropTarget)).toBeNull();
+      });
+
+      it('ignores drags that are not a view from this app, and data that is not a closable view', async () => {
+        desktop.available = true;
+        const view = render(ViewTabs);
+        layOutTabs(view.getAllByRole('tab'));
+        const strip = view.getByRole('tablist');
+
+        // Text or a file dragged in from elsewhere.
+        expect((await dragEvent('dragOver', strip, { types: ['text/plain', 'Files'] })).allowed).toBe(false);
+        expect(get(windowDropTarget)).toBeNull();
+        expect((await dragEvent('drop', strip, { types: ['text/plain'] })).allowed).toBe(false);
+
+        // The right type, but not a view that can have a window of its own.
+        for (const data of ['dashboard', 'nonsense', '../x', 'Todo', '']) {
+          await dragEvent('drop', strip, { data, clientX: 400 });
+        }
+        expect(desktop.requests.attachViewWindow).not.toHaveBeenCalled();
+      });
+
+      it('takes no drops outside the desktop app', async () => {
+        const view = render(ViewTabs);
+
+        expect((await dragEvent('dragOver', view.getByRole('tablist'), { types: [VIEW_DRAG_TYPE] })).allowed).toBe(false);
+        expect(get(windowDropTarget)).toBeNull();
+      });
+
+      it('makes the tab of a view window draggable, carrying the view', async () => {
+        desktop.available = true;
+        resetViews();
+        openViews.set(['calendar']);
+        activeView.set('calendar');
+        const view = render(ViewTabs, { movable: false });
+        const calendar = view.getByRole('tab', { name: 'Calendar' });
+
+        expect(calendar).toHaveAttribute('draggable', 'true');
+        const { dataTransfer } = await dragEvent('dragStart', calendar);
+
+        expect(dataTransfer.setData).toHaveBeenCalledWith(VIEW_DRAG_TYPE, 'calendar');
+        expect(dataTransfer.effectAllowed).toBe('move');
+      });
+
+      it('does not make the tabs of the main window draggable this way', async () => {
+        desktop.available = true;
+        openView('calendar');
+        const view = render(ViewTabs);
+        const calendar = view.getByRole('tab', { name: 'Calendar' });
+
+        expect(calendar).not.toHaveAttribute('draggable');
+        const { dataTransfer } = await dragEvent('dragStart', calendar);
+        expect(dataTransfer.setData).not.toHaveBeenCalled();
+      });
     });
 
     it('does not move the tab of a view window', async () => {

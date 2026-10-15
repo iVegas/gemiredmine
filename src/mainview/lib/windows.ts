@@ -22,7 +22,7 @@ import {
 /** Main window: views that have moved into windows of their own. */
 export const detachedViews = writable<ViewId[]>([]);
 /** Main window: where a view window dragged over the tab strip would join the tabs. */
-export const windowDropTarget = writable<Required<ViewPlacement> | null>(null);
+export const windowDropTarget = writable<{ index: number } | null>(null);
 /** View window: false until it has the servers from the main window. */
 export const sessionReady = writable(true);
 
@@ -176,6 +176,11 @@ export async function detachView(view: ViewId): Promise<boolean> {
   detachedViews.update(views => [...views, view]);
   closeView(view);
   return true;
+}
+
+/** Main window: a view's tab was dropped on the tab strip, so its window closes and the view takes the tab's place. */
+export function attachViewWindowAt(view: ViewId, index: number): Promise<void> {
+  return windowBackend().attachViewWindow({ view, index });
 }
 
 /** View window: puts the view back in the main window's tabs. */

@@ -85,6 +85,8 @@ export const tauriWindowSystem: WindowSystem = {
       width: frame.width,
       height: frame.height,
       focus: true,
+      // So that a view's tab can be dragged from this window into the main one (see ViewTabs.svelte).
+      dragDropEnabled: false,
     });
     return nativeWindow(window);
   },

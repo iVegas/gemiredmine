@@ -43,6 +43,8 @@ export type WindowRequests = {
   detachView: { params: { view: ViewId; title: string; session: SessionSnapshot }; response: void };
   /** Main window: bring forward the window showing a view. False when no window shows it. */
   focusViewWindow: { params: { view: ViewId }; response: boolean };
+  /** Main window: a view's tab was dropped on its tab strip. Closes that view's window and shows the view at `index`. */
+  attachViewWindow: { params: ViewPlacement; response: void };
   /** Main window: where its tab strip is. */
   reportTabStrip: { params: TabStripLayout; response: void };
   /** View window: put the view back at the end of the main window's tabs, and close. */

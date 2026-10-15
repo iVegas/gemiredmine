@@ -25,6 +25,7 @@ export type RequestName = keyof WindowRequests | keyof PreviewRequests;
 const WINDOW_REQUEST_NAMES = {
   detachView: true,
   focusViewWindow: true,
+  attachViewWindow: true,
   reportTabStrip: true,
   attachView: true,
   closeViewWindow: true,
