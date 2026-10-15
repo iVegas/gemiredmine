@@ -50,3 +50,15 @@ export function viewWindowHash(view: string): string {
 export function viewFromHash(hash: string): string | null {
   return new URLSearchParams(hash.replace(/^#/, '')).get(VIEW_PARAM);
 }
+
+/**
+ * JSON with the keys of every object in alphabetical order, so that two values that mean the same thing
+ * give the same text. Windows compare what they have with what they were sent, and the events that carry
+ * the data between windows do not keep the order of an object's keys.
+ */
+export function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, item: unknown) => {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) return item;
+    return Object.fromEntries(Object.entries(item).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  });
+}

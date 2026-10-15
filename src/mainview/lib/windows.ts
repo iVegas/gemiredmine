@@ -1,6 +1,6 @@
 import { get, writable } from 'svelte/store';
 import type { SessionSnapshot, TabStripLayout, ViewPlacement, WindowMessages } from '../../shared/window-contract';
-import { viewFromHash } from '../../shared/windows';
+import { stableJson, viewFromHash } from '../../shared/windows';
 import { hasWindowLayer, onBackendMessage, windowBackend } from './bridge';
 import { activeServerId, servers } from './store';
 import {
@@ -37,6 +37,9 @@ export function canDetachViews(): boolean {
   return hasWindowLayer();
 }
 
+// What the windows last agreed on, in a form that does not depend on the order of the keys: the events that
+// carry the session between windows sort them, and a window that thought its own copy was different would send it
+// back, and so on forever.
 let lastShared = '';
 
 function snapshot(): SessionSnapshot {
@@ -44,7 +47,7 @@ function snapshot(): SessionSnapshot {
 }
 
 function applySession(session: SessionSnapshot) {
-  lastShared = JSON.stringify(session);
+  lastShared = stableJson(session);
   servers.set(session.servers);
   activeServerId.set(session.activeServerId);
 }
@@ -60,7 +63,7 @@ function shareSessionChanges(active: () => boolean): () => void {
       queued = false;
       if (!active()) return;
       const session = snapshot();
-      const json = JSON.stringify(session);
+      const json = stableJson(session);
       if (json === lastShared) return;
       lastShared = json;
       void windowBackend().shareSession(session);
@@ -169,7 +172,7 @@ export async function detachView(view: ViewId): Promise<boolean> {
   if (!canDetachViews() || !isClosable(view) || !get(openViews).includes(view)) return false;
   const session = snapshot();
   await windowBackend().detachView({ view, title: VIEW_TITLES[view], session });
-  lastShared = JSON.stringify(session);
+  lastShared = stableJson(session);
   detachedViews.update(views => [...views, view]);
   closeView(view);
   return true;
