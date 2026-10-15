@@ -3,7 +3,7 @@
 **Start here.** This file says what is done, what is next, and how to check it. The reasoning and the full
 specification of the remaining work are in [`plan.md`](./plan.md).
 
-*Last updated 2026-10-14, after PR 2 was implemented as a draft on `claude/tauri-2-shell`. PR 0 and PR 1 are merged (`648fe5b`).*
+*Last updated 2026-10-15, after PR 2b was implemented on `claude/tauri-window-layer`, stacked on PR 2. PR 0 and PR 1 are merged (`648fe5b`).*
 
 **Keep this file current.** Whoever does a step updates this file in the same pull request: the status table, the
 commit SHAs, anything that went differently from the plan, and what you learned about the environment. Put a decision
@@ -17,7 +17,7 @@ that changes in `plan.md`, with the reason.
 | PR 1: runtime-neutral backend | **done** | `d3cb9bd` `73539b7` `7422bf2` `9a93f87` | Still ships on Electrobun; no change for users except the timeout message |
 | Merge of `main` | **done** | `7340021` | `main` gained `e9f36d1` (view tabs in their own windows) while the PR was open; see "Merge with main" |
 | PR 2: Tauri shell | **implemented, draft** | `27f8129` `d4be6ac` `7b7e677` `2681143` `63ee18b` and a docs commit | Branch `claude/tauri-2-shell`, pull request #21. One window only. CI gates G1 to G3 passed on the first run. Open: the hardware gates G4 to G6. SHAs are as first pushed |
-| PR 2b: window layer on Tauri | not started | | Follows PR 2. Port `ViewWindows` with a `TauriHost`; see `plan.md`, "Window layer" |
+| PR 2b: window layer on Tauri | **implemented, draft** | `49df48e` `e1cd3f9` `30ebcf9` `c4eceaa` `4af9cbf` and a docs commit | Branch `claude/tauri-window-layer`, stacked on `claude/tauri-2-shell`. Works on Linux under X11 in this sandbox. Open: Windows, a Wayland session, mixed-DPI monitors. See "PR 2b" below |
 | PR 3: end-to-end tests, rename `src/bun` to `src/core` | optional | | Best at the start of the Android phase |
 | Android on Tauri, retire Capacitor | not started | | Outline in `plan.md` |
 
@@ -104,7 +104,7 @@ carries over and what has to be built.
    `tauri-config.test.ts` and `tauri-setup.test.ts` pin the identity, the capabilities and the version agreement.
 2. `feat(mainview): run the backend in the webview through Tauri plugins`: `src/mainview/lib/tauri-platform.ts` (fetch,
    `DataFs` on the file plugin, data folder, environment), `bridge.ts` creates the backend, `api.ts` is a delegate.
-   `hasWindowLayer()` is false, so `canDetachViews()` is false. The `DataFs` contract suite runs against the adapter.
+   `hasWindowLayer()` was false in PR 2, so `canDetachViews()` was false. The `DataFs` contract suite runs against the adapter.
 3. `build(release): package the Tauri executable`: `findAppBinary`, `AppRun` (`GDK_BACKEND` defaults to x11), the
    AppImage from `usr/bin/<app>`, the MSIX from `<app>.exe`. In the identity snapshot only `Executable=` changed.
 4. `ci: build the desktop app with Tauri`: both build workflows, `check-linux-binary.mjs`, `check-windows-binary.mjs`,
@@ -129,12 +129,62 @@ carries over and what has to be built.
 - Tauri's `build.windows.staticVCRuntime` defaults to true, so no `.cargo/config.toml` with `+crt-static` is needed. The
   Windows check proves it on CI; it has not run yet.
 - `bridge.ts` now has `hasDesktopBackend()` (the backend exists) and `hasWindowLayer()` (false until PR 2b). `windows.ts`
-  and `ViewTabs` use the second.
+  and `ViewTabs` use the second. *PR 2b made it true in the main window and in view windows.*
 - The two `electrobun-webkit-app-region-*` CSS classes in `App.svelte` and `ViewTabs.svelte` remain. They mark the drag
-  region of a frameless view window, which does not exist yet; PR 2b replaces them.
+  region of a view window, which does not exist yet; PR 2b replaced them (`data-tauri-drag-region` on the header of a
+  view window, and nothing on the button, which a drag region does not capture).
 - **A mistake caught late:** the `tauri` and `build:desktop` scripts were missing from `package.json` until the CI commit
   was written, so the new workflows would have failed. They were folded into commit 1, and `tauri-setup.test.ts` now
   fails when a workflow runs an npm script that `package.json` does not define.
+
+### PR 2b: the window layer on Tauri (stacked on PR 2)
+
+Commits, in order: `49df48e` docs (the owner's answer), `e1cd3f9` `feat(shell): report whether the primary mouse button is
+down`, `30ebcf9` `refactor(backend): let a second window use the preview that another window owns`, `c4eceaa`
+`fix(windows): compare shared sessions regardless of key order`, `4af9cbf` `feat(mainview): open tabs in their own windows
+on Tauri`, and a docs commit. A tab can be dragged out of the main window into a view window, and dragged back by that
+window's title bar, as it could on Electrobun.
+
+- **`ViewWindows` is unchanged.** `src/bun/windows/view-windows.ts` runs in the main window's webview. It needs a
+  synchronous host, and Tauri answers asynchronously, so `src/mainview/lib/tauri-windows.ts` (`TauriHost`) keeps the latest
+  answers (window frames, minimized state, scale factor, the pointer, the work areas) and refreshes them before they are
+  needed: when a view is detached, when the tab strip is reported, and on each step of a drag.
+  All coordinates are CSS pixels (Tauri's physical pixels divided by the main window's scale factor).
+- **Messages between windows** are Tauri events (`src/mainview/lib/window-transport.ts`): a request and response layer
+  with correlation ids for the window requests of `src/shared/window-contract.ts`, plus the messages to a window.
+  `window-layer.ts` starts the layer in the main window and gives a view window its stand-ins. `bridge.ts` chooses.
+- **The developer preview has one owner, the main window.** `createBackend` takes a `preview` option, a `PreviewPort`
+  (`status`, `setEnabled`, `record`, `createFeedback`). A view window's backend gets a port that sends each call to the
+  main window (`PreviewRequests`), so there is one aggregation and one set of rotated files. Each window has its own
+  `createBackend` and HTTP client otherwise.
+- **A Rust command, `primary_button_down`** (`src-tauri/src/pointer.rs`), reads the primary mouse button, which no Tauri API
+  does: on Linux through GDK (X11), on Windows `GetAsyncKeyState` with the swapped-buttons setting. It is the only logic
+  in the crate besides wiring. `lib.rs` also ends the app when the main window is destroyed.
+- **Capabilities are split by what a window needs:** `backend.json` (windows `main` and `view-*`: `core:default`, http,
+  opener), `main.json` (create a window, focus, unminimize, close) and `view-window.json` (start dragging). The preview
+  folder permissions stay in `dev-preview-<channel>.json` for the main window only. `tauri-config.mjs` lists
+  `backend`, `main`, `view-window`, plus `dev-preview-<channel>` where the preview exists.
+- `stableJson` (`src/shared/windows.ts`) compares sessions without looking at key order (see the next list).
+- `webview-safe.spec.ts` also scans `view-windows.ts`; tests for the host, the transport and the capability files were added.
+
+**Findings that cost time, and that the next person should know**
+- **A listener without a target hears every event in its webview**, whatever label the sender used with `emitTo`. Every listener
+  in `window-transport.ts` passes `{ target: <its own label> }`. The test bus models this, and a mutation test shows
+  that the suite fails without it.
+- **Events re-serialise their payload with the keys of each object sorted.** Two windows that kept a session as JSON text and
+  compared it with what they received saw their own copy as different and sent it back, forever: the Rust process reached
+  2.9 GB. Found by disabling features one at a time. `stableJson` fixes it, with a regression test (a session that arrives
+  with its keys reordered must not be sent back).
+- **`Window.onCloseRequested` calls `destroy()` after the handler**, which needs `core:window:allow-destroy`. Without it
+  the window never closes, and the X button and Alt+F4 do nothing. There is no handler now; the Rust `on_window_event` ends
+  the app when the main window is destroyed.
+- **Window events cross webviews.** `tauri://move` and `tauri://destroyed` reach a listener in another webview that names the
+  window's label, which is how the main window follows its view windows.
+- **Which window manager matters when testing on X11.** openbox sends no move notifications while a window is dragged, so
+  dropping a view window on the tab strip never fires (the button still works); xfwm4 needs xfconf; **metacity**, like
+  GNOME's mutter, works. `GDK_BACKEND=x11` stays the default.
+- A click at the top edge of a window can hit the invisible resize border of another window's frame, which looked like
+  "the main window will not close" in one test. Click lower in the title bar.
 
 ## How it was verified
 
@@ -194,6 +244,31 @@ AppImage 5.0 MB) and driven with `xdotool`:
 - Wayland, NVIDIA, other distributions, and whether the content security policy logs violations (nothing looked broken, but
   the console was not read).
 
+### PR 2b, in this sandbox (Xvfb :98, metacity, GDK_BACKEND=x11, the mock Redmine)
+
+The unstable build of the final tree, driven with `xdotool`:
+
+- Dragging the To-do tab out of the strip opens a view window under the pointer. It is titled "To-do - Gemiredmine Unstable",
+  loaded its 130 tasks (so it has its own working backend and received the session), and has the **Move to main window** button.
+- Dropping the view window by its title bar on the main window's tab strip puts the tab back at the pointer's place and makes
+  it active, and closes the view window. Detaching again afterwards works.
+- **Move to main window** works. Closing a view window with its X works, and the same view can be opened again.
+- The main window's X button and Alt+F4 end the app, with and without a view window open (the process is gone).
+- From a view window, turning the developer preview on reached the main window's backend and wrote `settings.json`
+  (folder 0700, file 0600).
+- Idle CPU is 0 once `stableJson` is in; before it, two windows ping-ponged the session.
+- Tests: 55 files, 575 tests (one skipped), `tsc` clean, `cargo test --lib` 4 tests. Removing the event targets from the
+  transport, or comparing sessions with plain `JSON.stringify` again, each turns a test red.
+
+**Not verified (PR 2b)**
+- **Windows**: the pointer command (`GetAsyncKeyState`), window creation, dragging and dropping, and the title bar there.
+  This is the main open risk of PR 2b. The Windows branch of `pointer.rs` has not even been compiled yet: the Windows build
+  workflow on this branch will do that first.
+- **A Wayland session** (GNOME, NVIDIA): AppRun forces X11, so dragging goes through XWayland. Dropping onto the tab strip needs
+  the window manager to report moves during a drag.
+- **Monitors with different scale factors**: placement uses the main window's scale factor for every window.
+- Several view windows open at once, and the feedback form from a view window, were not exercised in the real app.
+
 ### PR 2, first CI run (pull request #21, head `9acc3c5`)
 
 All green on the first attempt:
@@ -222,13 +297,17 @@ clean Windows 11. That is gate G5. A runner has WebView2 and a desktop session, 
 
 1. ~~Check the Unstable run that the merge of PR 0 and PR 1 triggered.~~ It succeeded (run #8).
 2. ~~Open the draft pull request and dispatch the two build workflows.~~ Done: pull request #21; gates G1 to G3 passed.
-3. Hardware gates G4 (Linux checklist, Wayland and NVIDIA), G5 (Windows 11 on a clean VM, upgrade in place from the
+3. ~~PR 2b: the window layer.~~ Implemented on `claude/tauri-window-layer`, stacked on PR 2 (see "PR 2b" above).
+   Dispatch the Linux and Windows build workflows on it. The Windows one compiles the pointer command for the first time.
+4. Hardware gates G4 (Linux checklist, Wayland and NVIDIA), G5 (Windows 11 on a clean VM, upgrade in place from the
    Electrobun build) and G6 (data continuity) need a person; see `plan.md`. Record the SHA of the last Electrobun commit
-   (`648fe5b`) in the pull request.
-4. Take the pull request out of draft once G4 to G6 have been run, and merge it with a merge commit, because this file
-   names commits by SHA. After the merge: soak unstable, then one canary, then stable (`plan.md`, "After merge").
-5. Then PR 2b, the window layer (`plan.md`, "Window layer"). Replace `hasWindowLayer()` in `bridge.ts`, port
-   `ViewWindows` with a `TauriHost`, and replace the two `electrobun-webkit-app-region-*` classes.
+   (`648fe5b`) in the pull request. **G4 and G5 now also cover the window layer:** drag a tab out, drag the window back by its
+   title bar, use **Move to main window**, close the main window with a view window open, and turn the preview on from a view window.
+5. **Merge order.** Merge #21 (PR 2) first, with a merge commit, because this file names commits by SHA. The owner allows
+   shipping between PR 2 and PR 2b, so #21 does not have to wait for PR 2b, but then Unstable users lose dragging tabs into
+   windows until PR 2b merges. Merge PR 2b second, with a merge commit too. Its base is `claude/tauri-2-shell`; GitHub
+   retargets it to `main` when that branch is deleted on merge, otherwise change the base by hand first. After both: soak unstable, then one canary, then stable (`plan.md`, "After merge").
+6. Then the optional PR 3 (end-to-end tests, rename `src/bun` to `src/core`) and the Android phase.
 
 **Decided by the project owner**
 - **2026-10-15, shipping between PR 2 and PR 2b: allowed for every channel** ("It does not matter to ship in mid pr or not").
@@ -238,9 +317,10 @@ clean Windows 11. That is gate G5. A runner has WebView2 and a desktop session, 
 **Open questions for the project owner**
 - Keep the X11 default on Linux? PR 2 does: `AppRun` sets `GDK_BACKEND=x11` unless the user set it, as Electrobun did.
   Dragging a window back into the tab strip (PR 2b) needs the global pointer, which native Wayland does not give
-  applications. A Wayland-only system without XWayland cannot start the app until this changes.
-- Who runs gates G4 to G6, and when? They block taking pull request #21 out of draft. G4 now also covers dragging view windows on X11 and
-  on a Wayland session.
+  applications. A Wayland-only system without XWayland cannot start the app until this changes. On X11, a window manager that
+  sends no move notifications during a drag (openbox) cannot drop a window onto the tab strip; the button is the fallback.
+- Who runs gates G4 to G6, and when? They block taking pull request #21 out of draft. G4 and G5 now also cover dragging view
+  windows (on X11 and a Wayland session, and on Windows 11).
 - How long should the unstable and canary soak last before stable? The plan says five or more unstable builds or one week.
 
 ## Recipes
@@ -289,6 +369,12 @@ xdotool mousemove 512 362 click 1; xdotool type --delay 25 "text"
   Only the native-roots loader reads that variable, so a successful sign-in proves the system certificates are used.
 - The AppImage: `CHANNEL=unstable node scripts/release/package-linux.mjs`, then run the file with
   `--appimage-extract-and-run` (the sandbox has no FUSE). `xprop -id <window> WM_CLASS` should print the app name.
+- **The window layer needs a window manager that streams move events.** Start one inside a session bus:
+  `dbus-run-session -- metacity --replace --sm-disable &` (apt: `metacity dbus-x11`). openbox and xfwm4 do not work for this
+  (see "PR 2b"). Run the app with `GDK_BACKEND=x11`. With the To-do tab open (click "Open to-do list" on the dashboard), press
+  the mouse on the tab, move the pointer in steps of about 100 ms out of the strip, and release: a view window opens under
+  the pointer. Drag it by its title bar back onto the tab strip and release to attach it. Take a screenshot with `scrot`
+  between the steps, and check the windows with `xdotool search --onlyvisible --name ""`.
 - Stop everything by process ID (`kill $!` when you start each one). `pkill -f` matches its own shell. When you restart
   the app between scenarios, check with `pgrep -a Gemiredmine` that the old one is gone.
 - A background command that ends in `&` inside `run_in_background` returns at once; wait for a file instead.

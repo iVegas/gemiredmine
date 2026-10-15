@@ -94,7 +94,7 @@ The rest of this file is what is still ahead.
 Open it as a draft. Each commit keeps `npm test` green, because the husky pre-commit hook runs it.
 Start from `main` once PR 0 and PR 1 are merged.
 
-**Status:** implemented as six commits on `claude/tauri-2-shell`, open as a draft. `progress.md` says what was built, where it
+**Status:** implemented as six commits on `claude/tauri-2-shell`, open as a draft; the window layer (PR 2b) is stacked on it. `progress.md` says what was built, where it
 differs from the text below (marked *As built* where it matters), what was verified, and which gates are still open.
 
 ### Window layer (new on `main`: `e9f36d1`, "drag view tabs ... into windows of their own")
@@ -109,7 +109,7 @@ backend. Read it before estimating PR 2.
   close events, and `send` for messages to that window's webview). It follows a dragged view window by polling the
   pointer and the mouse button every 40 ms, and puts the view back into a tab when the window is dropped on the main
   window's tab strip. Its spec (`__tests__/view-windows.spec.ts`) runs against a fake host.
-- `src/bun/windows/electrobun-host.ts` is the only Electrobun part: `BrowserWindow`, `Screen.getCursorScreenPoint()`,
+- `src/bun/windows/electrobun-host.ts` (removed in PR 2; `src/mainview/lib/tauri-windows.ts` replaces it) was the only Electrobun part: `BrowserWindow`, `Screen.getCursorScreenPoint()`,
   `Screen.getMouseButtons()`, `Screen.getAllDisplays()`.
 - `src/bun/rpc.ts` `createRpc(windowRequests)` builds one RPC per window, so a request is answered knowing which window
   sent it. The requests and messages are typed in `src/shared/rpc.ts` (`WindowRequests`, `WindowMessages`).
@@ -143,6 +143,14 @@ backend. Read it before estimating PR 2.
    `redmineApi` becomes `createBackend(tauriPlatform())` directly, `hasDesktopBackend()` becomes `isTauri()`, and the
    window parts move to a Tauri window bridge that `lib/windows.ts` calls. Add `view-windows.ts` and the new
    host to `webview-safe.spec.ts` when `ViewWindows` moves into the webview.
+
+**As built (PR 2b):** points 1 to 8 held, with these differences. The preview owner is the main window, and a view window's
+backend hands its diagnostics over through a `PreviewPort` (`createBackend`'s `preview` option). Messages are Tauri events
+with a request and response layer. The label pattern is `view-<view>`, so the same view always gets the same window.
+Capabilities: `backend.json` (the main and view windows), `main.json` (window management) and `view-window.json`
+(`start-dragging`). `core:window:allow-destroy` is not granted: there is no `onCloseRequested` handler, because its wrapper
+calls `destroy()`, and a Rust `on_window_event` ends the app when the main window is destroyed instead. The Windows branch of the pointer command is written but was not run. See `progress.md`,
+"PR 2b", for the findings (event targets, key order, close handling, window managers).
 
 **Decided by the project owner, 2026-10-14: split** ("I allow a regression, the goal is to migrate"). PR 2 swaps the
 shell with one window, and `canDetachViews()` is false on Tauri. A follow-up, **PR 2b**, ports the window layer as
@@ -360,7 +368,7 @@ from the Electrobun canary, then stable. Do not run Stable from a Tauri `main` b
 | `tauri.localhost` as a secure context (`randomUUID`) on Windows | Checklist 2 on Windows | `useHttpsScheme: true` on the window |
 | A larger webview attack surface (http to any host) | CSP in PR 2, no `{@html}` or `innerHTML` today, TypeScript guards, a per-channel file scope | none |
 | Rust build time against the job timeouts | A per-channel cache; record the times (locally: 4m23s for a cold release build of the crate and its dependencies, 1m42s for one more channel; on the runners, cold: 7m32s on Linux and 12m01s on Windows) | Raise the timeout |
-| Dragging view windows needs global pointer position and button state (no mouse-button API in Tauri; unavailable on native Wayland) | A small Rust command, `GDK_BACKEND=x11`, G4 on Wayland | Disable `canDetachViews()` on Tauri; the "Move to main window" button remains |
+| Dragging view windows needs global pointer position and button state (no mouse-button API in Tauri; unavailable on native Wayland) | A small Rust command, `GDK_BACKEND=x11`, G4 on Wayland | Disable `canDetachViews()` on Tauri; the "Move to main window" button remains. *PR 2b: built; verified on X11 with metacity only* |
 | Several windows each own a backend, so several developer previews | One owner for the preview, in the main window | Move the preview to Rust |
 | Tauri 3 | Exact pins, no `text-file` permissions | A planned migration |
 

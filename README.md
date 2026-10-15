@@ -84,7 +84,7 @@ We welcome contributions! Please review our [`CONTRIBUTING.md`](./CONTRIBUTING.m
    - Windows 11 MSIX (on Windows): `set TARGET_PLATFORM=windows` (PowerShell: `$env:TARGET_PLATFORM='windows'`), then `CHANNEL=<channel>` with `npm run build:desktop` and `node scripts/release/package-windows.mjs`. It needs the Windows SDK tools; without `WINDOWS_SIGNING` the package is unsigned.
    - Android (Capacitor): `npx cap sync android`
 
-Tabs cannot be dragged out into windows of their own in the Tauri shell yet; see [`docs/tauri-migration/`](./docs/tauri-migration/progress.md).
+Dragging a tab out into a window of its own needs the pointer position, so on Linux the app runs on X11 (through XWayland on a Wayland desktop). The state of the Tauri migration is in [`docs/tauri-migration/`](./docs/tauri-migration/progress.md).
 
 The version is set only in `version` in `package.json`. The app's name, identifier, settings folder and
 version are derived from it at build time (see `scripts/release/channels.mjs`).

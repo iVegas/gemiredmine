@@ -164,7 +164,9 @@ The app runs on X11, through XWayland on a Wayland desktop. Set `GDK_BACKEND=way
 ## Not covered yet
 
 - Android builds are not part of this pipeline.
-- Tabs cannot be dragged out into windows of their own yet; the Tauri shell has one window.
+- Dragging a window back onto the main window's tabs needs the pointer position and the window moves. It works on X11 with a
+  window manager that reports moves while a window is dragged (GNOME's and metacity do, openbox does not), and has not been
+  tried on Windows or on a Wayland session. **Move to main window** always works.
 - AppImages are not code-signed. Windows packages need signing secrets for their channel (see above).
 - The Linux update path has not been tested with a published release yet, and the Windows packages have not been
   installed on a Windows machine by the pipeline (see the verification notes in the pull request).

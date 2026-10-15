@@ -94,9 +94,11 @@ appear in the files that have to stay portable. Put code that needs them next to
 The shell is Tauri 2: the webview plus a small Rust crate in `src-tauri/` that does nothing but wire up plugins.
 Keep it that way; logic belongs in TypeScript, where the tests and the Android build reach it.
 
-- **Capabilities need review.** `src-tauri/capabilities/` says what the webview may do. `main.json` lets it talk to
-  any host over http(s) (the server is the user's own) and open web links. Each `dev-preview-<channel>.json` gives
-  that channel's developer preview file access to its own data folder only, and stable gets none. A new permission is
+- **Capabilities need review.** `src-tauri/capabilities/` says what the webview may do. `backend.json` lets the main window and
+  the view windows (`view-*`) talk to any host over http(s) (the server is the user's own) and open web links. `main.json`
+  lets the main window open, focus and close view windows, and `view-window.json` lets a view window be dragged. Each
+  `dev-preview-<channel>.json` gives that channel's developer preview file access to its own data folder, for the main
+  window only (a view window hands its diagnostics to the main window), and stable gets none. A new permission is
   a security change: say why in the pull request.
 - **Identity comes from one place.** The name, identifier, version, icons and capabilities of a channel come from
   `scripts/release/channels.mjs` through `scripts/release/tauri-config.mjs`. Do not edit them in
