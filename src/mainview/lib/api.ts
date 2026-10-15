@@ -14,4 +14,6 @@ export const redmineApi: GemiBackend = {
   recordDiagnostic: (level, scope, message) => backend().recordDiagnostic(level, scope, message),
   createFeedback: (input) => backend().createFeedback(input),
   openIssueLink: (url) => backend().openIssueLink(url),
+  loadSavedServers: () => backend().loadSavedServers(),
+  saveServers: (saved) => backend().saveServers(saved),
 };
