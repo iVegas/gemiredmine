@@ -284,7 +284,7 @@
           title="Close tab (Delete)"
           data-testid="close-{view}"
           data-tab-close
-          class="electrobun-webkit-app-region-no-drag -mr-1 rounded px-1 leading-none text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+          class="-mr-1 rounded px-1 leading-none text-gray-400 hover:bg-gray-200 hover:text-gray-700"
           on:click|stopPropagation={() => close(view)}
         >
           ✕

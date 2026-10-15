@@ -10,11 +10,14 @@
 /** The size of the main window, as before the move to Tauri. */
 const MAIN_WINDOW = Object.freeze({ label: 'main', width: 1024, height: 768 });
 
+/** The capabilities of every channel: the backend in each window, the main window's own, and the view windows'. */
+const WINDOW_CAPABILITIES = Object.freeze(['backend', 'main', 'view-window']);
+
 /**
  * @param {ReturnType<typeof import('./channels.mjs').deriveBuildInfo>} info
  */
 export function tauriChannelConfig(info) {
-  const capabilities = info.devPreviewAvailable ? ['main', `dev-preview-${info.channel}`] : ['main'];
+  const capabilities = info.devPreviewAvailable ? [...WINDOW_CAPABILITIES, `dev-preview-${info.channel}`] : [...WINDOW_CAPABILITIES];
   return {
     productName: info.productName,
     mainBinaryName: info.appName,

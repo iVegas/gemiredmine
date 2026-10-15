@@ -23,6 +23,8 @@ const portable = [
   join(root, 'timeout.ts'),
   ...sourcesIn(join(root, 'redmine')),
   ...sourcesIn(join(root, 'diagnostics')),
+  // The window manager runs in the main window's webview.
+  ...sourcesIn(join(root, 'windows')),
 ];
 
 const withoutComments = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');
@@ -47,6 +49,7 @@ describe('portable backend sources', () => {
         'diagnostics/service.ts',
         'diagnostics/store.ts',
         'diagnostics/fs.ts',
+        'windows/view-windows.ts',
       ])
     );
   });

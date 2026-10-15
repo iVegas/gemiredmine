@@ -25,8 +25,11 @@
   <WelcomeScreen />
 {:else}
   <div class="flex h-screen w-full flex-col bg-gray-50 font-sans">
-    <!-- A view window can be dragged by its header too, back onto the main window's tabs. -->
-    <header class="flex items-end justify-between gap-4 border-b border-gray-200 bg-white px-4 pt-2 {windowView ? 'electrobun-webkit-app-region-drag' : ''}">
+    <!-- A view window can be dragged by the empty part of its header too, back onto the main window's tabs. -->
+    <header
+      class="flex items-end justify-between gap-4 border-b border-gray-200 bg-white px-4 pt-2"
+      data-tauri-drag-region={windowView ? '' : undefined}
+    >
       <h1 class="sr-only">{buildInfo.productName}</h1>
       <ViewTabs movable={!windowView} />
       <div class="pb-1.5">
@@ -34,7 +37,7 @@
           <button
             type="button"
             title="Puts this view back in the main window's tabs. You can also drag this window onto them."
-            class="electrobun-webkit-app-region-no-drag rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             on:click={attachToMainWindow}
           >
             Move to main window

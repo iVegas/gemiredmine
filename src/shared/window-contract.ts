@@ -1,5 +1,8 @@
 // The contract between the windows of the app: what a view window may ask of the main window, and
 // what the window layer tells a window's webview. Type-only imports keep this file free of runtime code.
+import type { LogEvent } from '../bun/diagnostics/aggregator';
+import type { FeedbackInput } from '../bun/diagnostics/feedback';
+import type { DevPreviewStatus, FeedbackResult } from '../bun/diagnostics/service';
 import type { ServerConnection } from '../mainview/lib/store';
 import type { ViewId } from '../mainview/lib/views';
 import type { Point, Rect, TabEdges } from './windows';
@@ -73,4 +76,15 @@ export type WindowMessages = {
   viewWindowClosed: { view: ViewId };
   /** Main window: a view window asked to open a view. */
   openView: { view: ViewId };
+};
+
+/**
+ * What a view window asks of the developer preview. The preview has one owner, the main window, because it
+ * aggregates in memory and rotates its files; a view window's backend hands its diagnostics to it.
+ */
+export type PreviewRequests = {
+  previewStatus: { params: void; response: DevPreviewStatus };
+  previewSetEnabled: { params: { enabled: boolean }; response: DevPreviewStatus };
+  previewRecord: { params: LogEvent; response: void };
+  previewCreateFeedback: { params: FeedbackInput; response: FeedbackResult };
 };

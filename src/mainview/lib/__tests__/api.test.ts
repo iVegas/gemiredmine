@@ -18,17 +18,27 @@ const fake = vi.hoisted(() => {
   return {
     methods,
     platform: { marker: 'tauri platform' },
+    window: { label: 'main' },
+    preview: { marker: 'remote preview' },
+    mainApi: { marker: 'main window api' },
+    remoteApi: { marker: 'remote window api' },
     backend: Object.fromEntries(methods.map(name => [name, vi.fn()])) as Record<(typeof methods)[number], ReturnType<typeof vi.fn>>,
   };
 });
 
 vi.mock('@tauri-apps/api/core', () => ({ isTauri: vi.fn() }));
+vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ label: fake.window.label }) }));
 vi.mock('../tauri-platform', () => ({ tauriPlatform: () => fake.platform }));
+vi.mock('../window-layer', () => ({
+  startMainLayer: vi.fn(() => ({ api: fake.mainApi })),
+  remoteWindowApi: () => fake.remoteApi,
+  remotePreview: () => fake.preview,
+}));
 vi.mock('../../../bun/backend', () => ({ createBackend: vi.fn(() => fake.backend) }));
 
 import { createBackend } from '../../../bun/backend';
 import { redmineApi } from '../api';
-import { backend, hasDesktopBackend, hasWindowLayer } from '../bridge';
+import { backend, hasDesktopBackend, hasWindowLayer, windowBackend } from '../bridge';
 import { canDetachViews } from '../windows';
 
 const access = { baseUrl: 'https://redmine.local', apiKey: 'key' };
@@ -57,7 +67,7 @@ describe('in the desktop app', () => {
     await redmineApi.getDevPreviewStatus();
 
     expect(createBackend).toHaveBeenCalledTimes(1);
-    expect(createBackend).toHaveBeenCalledWith(fake.platform);
+    expect(createBackend).toHaveBeenCalledWith(fake.platform, {});
   });
 
   it('hands every call to the backend with the same arguments', async () => {
@@ -94,10 +104,65 @@ describe('in the desktop app', () => {
 });
 
 describe('windows of their own', () => {
-  it('are not offered, even in the desktop app, until the window layer exists', () => {
+  beforeEach(() => {
     vi.mocked(isTauri).mockReturnValue(true);
+    fake.window.label = 'main';
+  });
 
+  it('are offered in the main window and in view windows of the desktop app', () => {
+    expect(hasWindowLayer()).toBe(true);
+    expect(canDetachViews()).toBe(true);
+
+    fake.window.label = 'view-calendar';
+    expect(hasWindowLayer()).toBe(true);
+  });
+
+  it('are not offered outside the desktop app, or in a window the layer does not know', () => {
+    fake.window.label = 'something-else';
+    expect(hasWindowLayer()).toBe(false);
+    expect(() => windowBackend()).toThrow('Windows of their own are not available in this build.');
+
+    fake.window.label = 'main';
+    vi.mocked(isTauri).mockReturnValue(false);
     expect(hasWindowLayer()).toBe(false);
     expect(canDetachViews()).toBe(false);
+  });
+
+  it('are answered by the main window itself, and asked of it by a view window', () => {
+    expect(windowBackend()).toBe(fake.mainApi);
+
+    fake.window.label = 'view-todo';
+    expect(windowBackend()).toBe(fake.remoteApi);
+  });
+});
+
+describe('the backend of each window', () => {
+  beforeEach(() => {
+    vi.mocked(isTauri).mockReturnValue(true);
+    vi.mocked(createBackend).mockClear();
+  });
+
+  // The bridge keeps the backend it made, so each case imports a fresh copy of it.
+  async function backendOfWindow(label: string) {
+    fake.window.label = label;
+    vi.resetModules();
+    const bridge = await import('../bridge');
+    const { createBackend: create } = await import('../../../bun/backend');
+    bridge.backend();
+    return vi.mocked(create).mock.calls.at(-1)!;
+  }
+
+  it('owns the developer preview in the main window', async () => {
+    const [platform, options] = await backendOfWindow('main');
+
+    expect(platform).toBe(fake.platform);
+    expect(options).toEqual({});
+  });
+
+  it('hands its diagnostics to the main window in a view window', async () => {
+    const [platform, options] = await backendOfWindow('view-calendar');
+
+    expect(platform).toBe(fake.platform);
+    expect(options).toEqual({ preview: fake.preview });
   });
 });
