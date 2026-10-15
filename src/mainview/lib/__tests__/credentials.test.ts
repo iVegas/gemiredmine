@@ -148,6 +148,54 @@ describe('reading the saved API keys', () => {
     expect(token('a1')).toBe('late-key');
   });
 
+  it('says that the store is slow once the user has waited, and takes that back when the answer comes', async () => {
+    vi.useFakeTimers();
+    const loading = deferred<{ apiKeys: Record<string, string>; problem: string | null }>();
+    api.loadCredentials.mockReturnValue(loading.promise);
+    servers.set([work]);
+    stop = startCredentials();
+
+    await vi.advanceTimersByTimeAsync(31_000);
+    expect(get(credentialProblem)).toContain('taking long to read');
+    expect(get(credentialsRestoring)).toBe(false);
+
+    loading.resolve({ apiKeys: { a1: 'late-key' }, problem: null });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(get(credentialProblem)).toBeNull();
+    expect(token('a1')).toBe('late-key');
+  });
+
+  it('replaces the notice about a slow store with the reason, when the answer is a failure', async () => {
+    vi.useFakeTimers();
+    const loading = deferred<{ apiKeys: Record<string, string>; problem: string | null }>();
+    api.loadCredentials.mockReturnValue(loading.promise);
+    servers.set([work]);
+    stop = startCredentials();
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    loading.resolve({ apiKeys: {}, problem: 'The keyring is locked.' });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(get(credentialProblem)).toContain('The keyring is locked.');
+    expect(get(credentialProblem)).not.toContain('taking long');
+  });
+
+  it('does not take away a notice that is about something else when the slow answer comes', async () => {
+    vi.useFakeTimers();
+    const loading = deferred<{ apiKeys: Record<string, string>; problem: string | null }>();
+    api.loadCredentials.mockReturnValue(loading.promise);
+    servers.set([work]);
+    stop = startCredentials();
+    await vi.advanceTimersByTimeAsync(31_000);
+    credentialProblem.set('Your sign-in could not be remembered. Something else.');
+
+    loading.resolve({ apiKeys: {}, problem: null });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(get(credentialProblem)).toContain('Something else.');
+  });
+
   it('changes nothing once it has been stopped', async () => {
     const loading = deferred<{ apiKeys: Record<string, string>; problem: string | null }>();
     api.loadCredentials.mockReturnValue(loading.promise);
@@ -312,6 +360,24 @@ describe('keeping the credential store in line with the servers', () => {
 
     expect(get(credentialProblem)).toContain('could not be removed');
     expect(get(credentialProblem)).toContain('the keyring is locked');
+  });
+
+  it('counts a store that does not answer as a failure after 30 seconds, and tries again with the next change', async () => {
+    vi.useFakeTimers();
+    api.saveCredential.mockReturnValueOnce(new Promise(() => {}));
+    updateServer('a1', { apiToken: 'key-a1' });
+    await vi.advanceTimersByTimeAsync(29_000);
+    expect(get(credentialProblem)).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(get(credentialProblem)).toContain('did not answer in 30 seconds');
+    expect(token('a1')).toBe('key-a1');
+
+    updateServer('b2', { name: 'Home office' });
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(api.saveCredential).toHaveBeenCalledTimes(2);
+    expect(get(credentialProblem)).toBeNull();
   });
 
   it('does nothing once it has been stopped', async () => {

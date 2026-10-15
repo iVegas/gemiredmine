@@ -1,7 +1,4 @@
 <script lang="ts">
-  import StorageNotice from './StorageNotice.svelte';
-  import { credentialProblem } from './lib/credentials';
-  import { storageProblem } from './lib/persistence';
   import { remembersSignIn, updateServer, type ServerConnection } from './lib/store';
   import { redmineApi } from './lib/api';
 
@@ -33,11 +30,6 @@
 <div class="max-w-md mx-auto mt-6 p-6 bg-white rounded-lg shadow border border-gray-200">
   <h2 class="text-xl font-semibold mb-1 text-gray-800">Sign in to {server.name}</h2>
   <p class="text-sm text-gray-500 mb-6">Your password is used once to fetch an API key. It is not stored.</p>
-
-  <!-- The saved sign-ins that could not be read are the reason this form is here. -->
-  {#if $storageProblem || $credentialProblem}
-    <div class="mb-4 space-y-2"><StorageNotice /></div>
-  {/if}
 
   {#if server.signInNotice}
     <p role="alert" class="mb-4 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded p-3">{server.signInNotice}</p>
