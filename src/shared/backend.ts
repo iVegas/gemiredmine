@@ -39,6 +39,21 @@ export interface SignInResponse {
 
 export type CurrentUserSummary = Pick<RedmineUser, 'id' | 'login' | 'firstname' | 'lastname'>;
 
+/** A Redmine server as it is kept between runs of the app. The API key is deliberately not part of it. */
+export interface SavedServer {
+  id: string;
+  name: string;
+  url: string;
+  /** Who signed in last, so that the sign-in form can start with the user name. */
+  user?: CurrentUserSummary;
+}
+
+export interface SavedServers {
+  /** In the order the user sees them */
+  servers: SavedServer[];
+  activeServerId: string | null;
+}
+
 export interface GemiBackend {
   signIn(params: SignInParams): Promise<SignInResponse>;
   getCurrentUser(access: ServerAccess): Promise<CurrentUserSummary>;
@@ -50,4 +65,8 @@ export interface GemiBackend {
   recordDiagnostic(level: LogLevel, scope: string, message: string): Promise<void>;
   createFeedback(input: FeedbackInput): Promise<FeedbackResult>;
   openIssueLink(url: string): Promise<void>;
+  /** The servers saved by an earlier run, and which one was active. Rejects when the app has no storage. */
+  loadSavedServers(): Promise<SavedServers>;
+  /** Makes the saved servers equal to `saved`: servers that are not in it are forgotten. */
+  saveServers(saved: SavedServers): Promise<void>;
 }

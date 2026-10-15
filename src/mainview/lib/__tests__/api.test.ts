@@ -14,6 +14,8 @@ const fake = vi.hoisted(() => {
     'recordDiagnostic',
     'createFeedback',
     'openIssueLink',
+    'loadSavedServers',
+    'saveServers',
   ] as const;
   return {
     methods,
@@ -84,6 +86,8 @@ describe('in the desktop app', () => {
       recordDiagnostic: ['error', 'scope', 'message'],
       createFeedback: [{ title: 't', description: 'd', includeLogs: true }],
       openIssueLink: ['https://github.com/iVegas/gemiredmine/issues/new'],
+      loadSavedServers: [],
+      saveServers: [{ servers: [{ id: 's1', name: 'Work', url: 'https://r' }], activeServerId: 's1' }],
     };
 
     for (const name of fake.methods) {

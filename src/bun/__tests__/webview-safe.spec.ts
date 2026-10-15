@@ -23,6 +23,7 @@ const portable = [
   join(root, 'timeout.ts'),
   ...sourcesIn(join(root, 'redmine')),
   ...sourcesIn(join(root, 'diagnostics')),
+  ...sourcesIn(join(root, 'storage')),
   // The window manager runs in the main window's webview.
   ...sourcesIn(join(root, 'windows')),
 ];
@@ -49,6 +50,8 @@ describe('portable backend sources', () => {
         'diagnostics/service.ts',
         'diagnostics/store.ts',
         'diagnostics/fs.ts',
+        'storage/app-storage.ts',
+        'storage/migrations.ts',
         'windows/view-windows.ts',
       ])
     );

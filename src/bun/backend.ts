@@ -7,12 +7,15 @@ import type { DataFs } from './diagnostics/fs';
 import type { DevPreview } from './diagnostics/service';
 import { signInWithPassword } from './redmine/auth';
 import { RedmineClient, assertHttpUrl, type FetchLike } from './redmine/client';
+import { openAppStorage, type AppStorage } from './storage/app-storage';
+import type { SqlDatabase } from './storage/database';
 import { withTimeout } from './timeout';
 
 /** How long a Redmine call may take before the user is told the server is not answering. */
 export const REDMINE_TIMEOUT_MS = 30_000;
 
 const NOT_AVAILABLE = 'The developer preview is not available in this build.';
+const NO_STORAGE = 'This build cannot save data between runs.';
 
 /**
  * What the backend needs from the place it runs in. The desktop shell supplies Bun's fetch and
@@ -26,6 +29,11 @@ export interface BackendPlatform {
   fs: DataFs;
   /** The per-channel folder for the developer preview's settings, logs and reports */
   dataDir(): Promise<string>;
+  /**
+   * Opens the SQLite database that holds what the app keeps between runs, creating it when it is missing. Only
+   * the window that owns the app's configuration calls it. A platform without one cannot save anything.
+   */
+  database?(): Promise<SqlDatabase>;
   /** Opens a link in the system browser */
   openUrl(url: string): Promise<void>;
   /** Describes the machine and runtime, for feedback reports */
@@ -85,6 +93,20 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
       throw error;
     });
     return preview;
+  }
+
+  // One storage, even when the first calls arrive together. A failed start can be tried again.
+  let storage: Promise<AppStorage> | undefined;
+  function appStorage(): Promise<AppStorage> {
+    if (!platform.database) return Promise.reject(new Error(NO_STORAGE));
+    storage ??= platform
+      .database()
+      .then(openAppStorage)
+      .catch((error) => {
+        storage = undefined;
+        throw error;
+      });
+    return storage;
   }
 
   /** Failed requests are recorded in the developer preview log, when it is enabled. */
@@ -165,6 +187,10 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
     async createFeedback({ title, description, includeLogs }) {
       return (await devPreview()).createFeedback({ title, description, includeLogs });
     },
+
+    loadSavedServers: traced('loadSavedServers', async () => (await appStorage()).loadServers()),
+
+    saveServers: traced('saveServers', async (saved) => (await appStorage()).saveServers(saved)),
 
     async openIssueLink(url) {
       if (!previewAvailable) throw new Error(NOT_AVAILABLE);
