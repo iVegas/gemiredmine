@@ -33,11 +33,13 @@ Android builds are not part of the current release pipeline.
 ## ✨ Features
 
 - **Cross-Platform Support:** Native-feeling applications for Ubuntu and Windows (via Tauri 2) and Android (via Capacitor).
-- **Multi-Server Management:** Easily connect to and switch between multiple independent Redmine backend servers. The servers you add are kept for the next start, in a database in the settings folder. Passwords and API keys are not, so you sign in again, and the form starts with the user name you used last time.
+- **Multi-Server Management:** Easily connect to and switch between multiple independent Redmine backend servers. The servers you add are kept for the next start, in a database in the settings folder. Passwords are never kept. With **Remember me on this computer** (checked by default, and chosen per server) only the API key is kept, in the system's credential store (Windows Credential Manager, or the Secret Service of GNOME Keyring and KDE Wallet), so you are signed in at the next start; without it, or where there is no credential store, you sign in again, and the form starts with the user name you used last time.
 - **Dashboard and View Tabs:** The dashboard is pinned as the first tab and previews your calendar and to-do list. Select a preview to open the full view in its own tab; every tab except the dashboard can be closed.
 - **Movable Tabs and View Windows:** Drag a tab to put it in another place, or press Ctrl+Shift+Page Up or Ctrl+Shift+Page Down. In the desktop app, drag a tab out of the window to open the view in a window of its own. To put it back, drag the tab in that window onto the main window's tabs and release it where the tab should go, or select **Move to main window**. Where the desktop reports window positions (Windows), you can also drag the window itself by its title bar onto the tabs. On Wayland your desktop decides where the new window opens, and the tab and the button are the ways back.
 - **Calendar:** Time you logged and open tasks due, by day, for any month.
 - **To-do List:** Every open task assigned to you across all projects, grouped by priority, with overdue tasks highlighted.
+- **Task and Log Entry Details:** Select a task (in the to-do list, the dashboard or the calendar) or a time entry (in the calendar) to open it in a tab: the task's facts, description, subtasks, relations, files, the time logged on it and its history, or the entry's time, day, activity, task and comment. A tab stays with the server it was opened on.
+- **One Window per App:** Starting the app a second time brings the open one forward instead of opening another.
 - **Deep Gemini AI Integration:** A cloud-first, configurable integration with Gemini to manage routines such as time logging, reminders, task updates, and wiki editing.
 - **Accessibility-First UI:** A beautiful, responsive interface built with Svelte and Tailwind CSS v4, prioritizing accessibility for all users.
 - **Secure Authentication:** Uses password login to securely retrieve API tokens, ensuring passwords aren't stored by default. KeePass authentication is also supported as an option for secure credential management.
@@ -50,7 +52,7 @@ Android builds are not part of the current release pipeline.
 Once you have downloaded and installed **gemiredmine**, follow these steps to get started:
 
 1. **Add Your Redmine Server:** On first start the app welcomes you and asks for your Redmine server. Add more servers, switch between them, sign out or remove them in **Settings**, which you open from the user menu in the top right. The user menu also shows the current server and lets you switch the server context.
-2. **Authenticate:** Enter your Redmine login and password. The app will use this to retrieve your API token and will not store your password by default, and it does not keep the API token between runs either. (Alternatively, you can use the KeePass integration).
+2. **Authenticate:** Enter your Redmine login and password. The app will use this to retrieve your API token and never stores your password. The API token is kept in your system's credential store only if **Remember me on this computer** is checked (it is by default). (Alternatively, you can use the KeePass integration).
 3. **Configure Gemini AI:** To utilize the AI features, navigate to the settings and configure your Gemini API integration. This will enable smart time logging, reminders, and context-aware task assistance.
 4. **Start Working:** You are all set! You can now manage your Redmine tasks, log time with Gemini's assistance, and switch servers as needed.
 
@@ -58,7 +60,7 @@ Once you have downloaded and installed **gemiredmine**, follow these steps to ge
 
 - **Frontend:** Svelte (built with Vite) and Tailwind CSS v4. Source code is located in `src/mainview/` and builds to `views/mainview/`.
 - **Backend:** TypeScript that talks to Redmine. Source code is located in `src/bun/` (the folder name is historical). It runs inside the webview.
-- **Desktop wrapper:** Tauri 2. The Rust crate in `src-tauri/` only wires up Tauri's HTTP, file, opener and SQL plugins; the app is not written in Rust.
+- **Desktop wrapper:** Tauri 2. The Rust crate in `src-tauri/` only wires up Tauri's HTTP, file, opener, SQL and single-instance plugins and the system's credential store; the app is not written in Rust.
 - **Storage:** A SQLite database (`gemiredmine.db`) in each channel's settings folder, with versioned migrations, in `src/bun/storage/`. It holds the configuration now and will hold the history of the Gemini conversations.
 - **Mobile wrapper:** Capacitor for Android synchronization.
 - **Testing:** Vitest and `@testing-library/svelte` for unit tests, Playwright for UI/E2E testing.

@@ -102,12 +102,33 @@ conversations with the language model goes in the same file, as new tables.
 - **A change to the schema is a new entry in `MIGRATIONS`** (`src/bun/storage/migrations.ts`), never an edit to one that
   was released. Write each step so that it is harmless when it runs twice (`CREATE TABLE IF NOT EXISTS`): the database
   has no transaction across calls, so an app that is closed in the middle of a migration starts it again. A test runs
-  every step twice. The data of a newer version is refused (`StorageTooNewError`), and the app carries on without saving.
+  every step twice. `ALTER TABLE ... ADD COLUMN` is not safe to run twice, so use `addColumn`, which looks first. The data of a newer version is refused (`StorageTooNewError`), and the app carries on without saving.
 - The plugin binds every number as a float, so declare whole numbers INTEGER, and bind 0 and 1, not booleans. A change
   that must be all or nothing has to be one statement; `AppStorage` runs its saves one at a time for the same reason.
 - Only the main window opens the database (`src-tauri/capabilities/storage.json`). A view window gets what it shows from
   the main window. `src/mainview/lib/persistence.ts` loads the servers when the app starts and saves them when they change.
 - The webview picks the database's path (the plugin takes a connection string), so keep the permission off the other windows.
+
+## Credentials and the sign-in
+
+The API key of a server is the only secret the app keeps, and only when the user chose to be remembered at that server (the box is
+checked by default and kept per server). It goes in the system's credential store, never in the database and never in a file, and the
+password is never kept. The Rust side (`src-tauri/src/credentials.rs`) reaches Windows Credential Manager and the Secret Service through
+`keyring-core` and one store crate per system; the webview asks by server id.
+
+- `src/mainview/lib/credentials.ts` keeps the store in line with the servers by following them, so no code that signs in, signs out or
+  removes a server has to call the store: it sets `apiToken` and `remember`, and the rest follows. Keep it that way.
+- A server that rejects a key (401) is signed out by `expireSignIn` through the backend's `onUnauthorized`. Add a Redmine call by wrapping it in
+  `authorized(access, ...)` in `src/bun/backend.ts`, which is what tells the app.
+- Every call to the store may wait, or hang (a locked keyring, a Secret Service that never answers), so nothing waits for it without a limit, and
+  a failure is told in the banner, never thrown at the user. Nothing is deleted from the store that is not known to be there.
+- `docs/tauri-migration/keyring-rig/rig.sh` runs the app against a real keyring on Linux.
+
+## Views of a task and of a log entry
+
+Their tab ids carry the server (`task:<server id>:<number>`, `log:<server id>:<number>`, `src/mainview/lib/views.ts`), so a tab stays with the
+server it was opened on, and `RecordPanel` finds that server for the tab. Open one with `openTask` or `openLogEntry`. They are not draggable into
+windows of their own (`canDetach`). Text that comes from Redmine (descriptions, comments, names) is shown as text, never as HTML: keep it so.
 
 ## The desktop shell
 
@@ -117,7 +138,9 @@ Keep it that way; logic belongs in TypeScript, where the tests and the Android b
 - **Capabilities need review.** `src-tauri/capabilities/` says what the webview may do. `backend.json` lets the main window and
   the view windows (`view-*`) talk to any host over http(s) (the server is the user's own) and open web links. `main.json`
   lets the main window open, focus and close view windows, `view-window.json` lets a view window be dragged, and
-  `storage.json` lets the main window read and write the app's database. Each
+  `storage.json` lets the main window read and write the app's database. The commands of `lib.rs` (`prepare_storage_dir`, the three credential
+  commands) are open to every window: Tauri restricts custom commands only when all of them are listed, and every window holds the API keys in
+  memory anyway. Each
   `dev-preview-<channel>.json` gives that channel's developer preview file access to its own data folder, for the main
   window only (a view window hands its diagnostics to the main window), and stable gets none. A new permission is
   a security change: say why in the pull request.
@@ -129,6 +152,8 @@ Keep it that way; logic belongs in TypeScript, where the tests and the Android b
   AppImage on a headless compositor to prove it. A feature that moves things between windows uses drag and drop or a request
   between windows, as dropping a view's tab onto the main window's tabs does. `docs/tauri-migration/wayland-rig/` is a rig to
   try it (a headless sway with a virtual pointer).
+- **One copy per channel.** `tauri-plugin-single-instance` has to stay the first plugin (a test checks it), so that a second start ends before it
+  opens anything. It brings the main window forward. Channels have their own identifiers and still run side by side.
 - **Run it:** `npm run tauri dev`. Build a channel with `CHANNEL=<channel> npm run build:desktop`.
 - **Tauri and its plugins** are updated as described in `RELEASE_POLICY.md`, in a `chore(deps)` commit.
 

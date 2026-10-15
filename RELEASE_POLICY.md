@@ -49,13 +49,14 @@ upgrades in place:
 
 Open the link (or use `ms-appinstaller:?source=<link>`) to install the channel. Windows then checks
 the App Installer feed when the app starts, every 8 hours, and upgrades the installed package in place.
-Only one package is installed per channel. Settings live under `%LOCALAPPDATA%` in a folder named for
+Only one package is installed per channel, and one copy of it runs: starting it again brings the open window forward. Settings live under `%LOCALAPPDATA%` in a folder named for
 the channel, and the packaged app's data is private to its identity, so channels never share settings.
 The app's database (`gemiredmine.db`: the servers the user added, and later the conversation history) is in
 that folder, and an upgrade in place keeps it.
 The webview keeps its own storage (local storage and caches, not Redmine data) in a folder named for the
 package identity, below the same `%LOCALAPPDATA%`.
-Uninstalling a channel from Windows Settings removes its package and its data.
+The API keys of the servers where the user chose "Remember me" are in Windows Credential Manager, named for the channel's identifier, not in
+that folder. Uninstalling a channel from Windows Settings removes its package and its data; the Credential Manager entries of the user may stay.
 
 MSIX versions have four numbers, so each build maps onto them in order: stable `1.2.0` becomes
 `1.2.0.0`, canary `1.2.0-rc.3` becomes `1.2.0.3`, and unstable `1.2.0-unstable.42` becomes `1.2.0.42`.
@@ -162,6 +163,10 @@ library is needed. For example on Ubuntu 24.04:
 sudo apt install libwebkit2gtk-4.1-0 libsoup-3.0-0 libjavascriptcoregtk-4.1-0
 ```
 
+"Remember me" keeps the API key in the Secret Service (GNOME Keyring, KDE Wallet or another implementation of it), which a desktop session
+normally provides. Without one, or when it cannot be reached, the app says so and the user signs in at every start. The AppImage needs no library
+for it.
+
 The app runs natively on Wayland, and on X11 where that is the session. Wayland is the supported Linux session; X11 is not tested
 and is not a target. The AppImage does not choose between them (it sets no `GDK_BACKEND`), and a user can still set it.
 
@@ -174,6 +179,9 @@ and is not a target. The AppImage does not choose between them (it sets no `GDK_
   On Wayland the desktop decides where a new window opens.
 - WebKitGTK can show a blank window on some systems with the proprietary NVIDIA driver. `WEBKIT_DISABLE_DMABUF_RENDERER=1` is the
   usual workaround; it is not set by the AppImage and has not been tried here.
+- "Remember me" has been tried against GNOME Keyring in a headless session on Linux only. Windows Credential Manager (from an installed MSIX
+  package), KDE Wallet, and a keyring that asks the user to unlock it have not been tried. The app waits at most 30 seconds for the credential store.
+- Task and log entry tabs show Redmine's text as typed: its markup is not rendered. They cannot be dragged into windows of their own.
 - AppImages are not code-signed. Windows packages need signing secrets for their channel (see above).
 - The Linux update path has not been tested with a published release yet, and the Windows packages have not been
   installed on a Windows machine by the pipeline (see the verification notes in the pull request).
