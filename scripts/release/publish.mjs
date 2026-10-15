@@ -72,15 +72,23 @@ export function validate({ channel, branch, releasesJson, env = process.env, log
   return { version, latestStable: latest };
 }
 
-const PLATFORM_NOTES = {
-  linux: 'Linux: the AppImage. Updates come from AppImageUpdate, not from the app.',
-  windows: 'Windows 11: the .msix package. Open the .appinstaller file to install; Windows keeps it up to date.',
-};
+/**
+ * The versioned release holds this build's packages; the .appinstaller that installs a channel and keeps it up to
+ * date is on the channel's pointer release, so the notes say where it is.
+ */
+function platformNotes({ channel, pointerTag }) {
+  return {
+    linux: 'Linux: the AppImage. Updates come from AppImageUpdate, not from the app.',
+    windows: pointerTag
+      ? `Windows 11: the .msix package installs this build. To install the channel and keep it up to date, open the .appinstaller of the "${CHANNEL_LABEL[channel]} (latest build)" release (tag ${pointerTag}).`
+      : 'Windows 11: the .msix package.',
+  };
+}
 
 function selfSignedNote(certificateName) {
   return [
     'Windows: this build is signed with a self-signed certificate, so Windows will not install it until the certificate is trusted.',
-    `Before opening the .appinstaller, import ${certificateName} as an administrator:`,
+    `Before installing, import ${certificateName} (attached to this release) as an administrator:`,
     `  Import-Certificate -FilePath ${certificateName} -CertStoreLocation Cert:\\LocalMachine\\TrustedPeople`,
   ].join('\n');
 }
@@ -90,7 +98,7 @@ function releaseNotes(metadata, platforms, { windowsSigning, certificateName }) 
   const lines = [
     `${label} build ${metadata.version} from commit ${metadata.commit}.`,
     '',
-    ...platforms.map(platform => PLATFORM_NOTES[platform]),
+    ...platforms.map(platform => platformNotes(metadata)[platform]),
     '',
     ...(windowsSigning === 'self-signed' ? [selfSignedNote(certificateName), ''] : []),
     'Each channel is installed separately and keeps its own settings.',
@@ -133,7 +141,7 @@ export function loadArtifacts(dirs) {
   if (first.channel === 'stable' && windows && windowsSigning !== 'trusted') {
     throw new Error(`Stable Windows packages must be signed with trusted signing, but this one is "${windowsSigning}".`);
   }
-  const certificate = assets.find(asset => asset.name.endsWith('-self-signed.cer'));
+  const certificate = assets.find(asset => isCertificateFile(asset.name));
 
   return {
     metadata: first,
@@ -146,6 +154,12 @@ export function loadArtifacts(dirs) {
 
 /** Checksum files are attached to the pointer release too, so it can be verified on its own. */
 const isChecksumFile = name => name.startsWith('SHA256SUMS');
+
+/**
+ * The self-signed certificate is attached to the pointer release, which holds the .appinstaller, and to every versioned
+ * release, whose notes tell testers to import it: a tester who starts from a build's page needs it there.
+ */
+const isCertificateFile = name => name.endsWith('-self-signed.cer');
 
 function releaseExists(tag, { dryRun, log }) {
   if (dryRun) return false;
@@ -160,7 +174,7 @@ function releaseExists(tag, { dryRun, log }) {
 export function publish({ dirs, dryRun = false, log = console.log }) {
   const { metadata, platforms, assets, windowsSigning, certificateName } = loadArtifacts(dirs);
   const { channel, tag, pointerTag, commitSha } = metadata;
-  const files = assets.filter(asset => !asset.pointer).map(asset => asset.path);
+  const files = assets.filter(asset => !asset.pointer || isCertificateFile(asset.name)).map(asset => asset.path);
   const pointerFiles = assets.filter(asset => asset.pointer || isChecksumFile(asset.name)).map(asset => asset.path);
 
   const title = `${CHANNEL_LABEL[channel]} ${metadata.version}`;

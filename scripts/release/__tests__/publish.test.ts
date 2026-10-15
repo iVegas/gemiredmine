@@ -210,4 +210,35 @@ describe('publish Windows signing', () => {
     expect(create).toContain(`Import-Certificate -FilePath ${cerName}`);
     expect(create).not.toContain('FilePath null');
   });
+
+  it('attaches the certificate to the versioned release that tells testers to import it, and to the pointer release', () => {
+    const cerName = 'Gemiredmine-Unstable-self-signed.cer';
+    const folder = windowsFolder('unstable', 'unstable', 'self-signed', [cerName], true);
+
+    publish({ dirs: [folder], dryRun: true, log });
+
+    // The versioned release is created with its files; the notes name the certificate, so it has to be one of them.
+    const create = logs.find(line => line.includes('release create unstable-v1.0.0-unstable.7'));
+    expect(create).toContain(join(folder, cerName));
+    expect(logs.find(line => line.includes('release upload unstable-latest'))).toContain(join(folder, cerName));
+  });
+
+  it('keeps the other pointer files off the versioned release', () => {
+    const folder = windowsFolder('unstable', 'unstable', 'self-signed', ['Gemiredmine-Unstable.appinstaller', 'Gemiredmine-Unstable-self-signed.cer'], true);
+
+    publish({ dirs: [folder], dryRun: true, log });
+
+    const create = logs.find(line => line.includes('release create unstable-v1.0.0-unstable.7'));
+    expect(create).not.toContain(join(folder, 'Gemiredmine-Unstable.appinstaller'));
+  });
+
+  it('says where the .appinstaller is, because the versioned release does not have it', () => {
+    const folder = windowsFolder('unstable', 'unstable', 'self-signed', ['Gemiredmine-Unstable-self-signed.cer'], true);
+
+    publish({ dirs: [folder], dryRun: true, log });
+
+    const create = logs.find(line => line.includes('release create unstable-v1.0.0-unstable.7'));
+    expect(create).toContain('"Unstable (latest build)" release (tag unstable-latest)');
+    expect(create).not.toContain('Open the .appinstaller file');
+  });
 });

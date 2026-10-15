@@ -26,6 +26,12 @@ public certificate attached to the release, as an administrator:
 Then open the App Installer link for the channel you want. Windows keeps the channel up to date from that link.
 The links are listed in [`RELEASE_POLICY.md`](./RELEASE_POLICY.md). Channels install side by side, one package per channel.
 
+If Windows cannot open the link or the `.msix` (for example "Invalid value for registry", which is Windows failing to start
+App Installer), repair or install App Installer from the Microsoft Store, or install from Windows PowerShell after trusting
+the certificate: `Add-AppxPackage -AppInstallerFile <link>` installs for your user and keeps it up to date, and
+`Add-AppxProvisionedPackage -Online -PackagePath <file>.msix -SkipLicense`, run as an administrator, installs for every user
+of the PC (without updates). Use Windows PowerShell, not PowerShell 7.
+
 See [`RELEASE_POLICY.md`](./RELEASE_POLICY.md) for the channel rules and host requirements.
 
 Android builds are not part of the current release pipeline.
