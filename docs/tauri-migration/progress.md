@@ -3,7 +3,7 @@
 **Start here.** This file says what is done, what is next, and how to check it. The reasoning and the full
 specification of the remaining work are in [`plan.md`](./plan.md).
 
-*Last updated 2026-10-15, after PR 2b was implemented on `claude/tauri-window-layer`, stacked on PR 2. PR 0 and PR 1 are merged (`648fe5b`).*
+*Last updated 2026-10-15, after PR 2b and the move to Wayland first on `claude/tauri-window-layer`, stacked on PR 2. PR 0 and PR 1 are merged (`648fe5b`).*
 
 **Keep this file current.** Whoever does a step updates this file in the same pull request: the status table, the
 commit SHAs, anything that went differently from the plan, and what you learned about the environment. Put a decision
@@ -17,7 +17,7 @@ that changes in `plan.md`, with the reason.
 | PR 1: runtime-neutral backend | **done** | `d3cb9bd` `73539b7` `7422bf2` `9a93f87` | Still ships on Electrobun; no change for users except the timeout message |
 | Merge of `main` | **done** | `7340021` | `main` gained `e9f36d1` (view tabs in their own windows) while the PR was open; see "Merge with main" |
 | PR 2: Tauri shell | **implemented, draft** | `27f8129` `d4be6ac` `7b7e677` `2681143` `63ee18b` and a docs commit | Branch `claude/tauri-2-shell`, pull request #21. One window only. CI gates G1 to G3 passed on the first run. Open: the hardware gates G4 to G6. SHAs are as first pushed |
-| PR 2b: window layer on Tauri | **implemented, draft** | `49df48e` `e1cd3f9` `30ebcf9` `c4eceaa` `4af9cbf` and a docs commit | Branch `claude/tauri-window-layer`, stacked on `claude/tauri-2-shell`. Works on Linux under X11 in this sandbox. Open: Windows, a Wayland session, mixed-DPI monitors. See "PR 2b" below |
+| PR 2b: window layer on Tauri, and native Wayland | **implemented, draft** | `49df48e` `e1cd3f9` `30ebcf9` `c4eceaa` `4af9cbf` `773f908` `47278ab` `5300d47` and a docs commit | Pull request #22, branch `claude/tauri-window-layer`, stacked on `claude/tauri-2-shell`. Verified on a Wayland compositor (sway, headless) and, for the title-bar drop, on X11 with metacity. Open: GNOME and KDE, an NVIDIA machine, Windows, mixed-DPI monitors. See "PR 2b" below |
 | PR 3: end-to-end tests, rename `src/bun` to `src/core` | optional | | Best at the start of the Android phase |
 | Android on Tauri, retire Capacitor | not started | | Outline in `plan.md` |
 
@@ -105,7 +105,7 @@ carries over and what has to be built.
 2. `feat(mainview): run the backend in the webview through Tauri plugins`: `src/mainview/lib/tauri-platform.ts` (fetch,
    `DataFs` on the file plugin, data folder, environment), `bridge.ts` creates the backend, `api.ts` is a delegate.
    `hasWindowLayer()` was false in PR 2, so `canDetachViews()` was false. The `DataFs` contract suite runs against the adapter.
-3. `build(release): package the Tauri executable`: `findAppBinary`, `AppRun` (`GDK_BACKEND` defaults to x11), the
+3. `build(release): package the Tauri executable`: `findAppBinary`, `AppRun` (`GDK_BACKEND` defaulted to x11; removed in PR 2b), the
    AppImage from `usr/bin/<app>`, the MSIX from `<app>.exe`. In the identity snapshot only `Executable=` changed.
 4. `ci: build the desktop app with Tauri`: both build workflows, `check-linux-binary.mjs`, `check-windows-binary.mjs`,
    smoke tests, a Rust job in `checks.yml`.
@@ -158,7 +158,7 @@ window's title bar, as it could on Electrobun.
   main window (`PreviewRequests`), so there is one aggregation and one set of rotated files. Each window has its own
   `createBackend` and HTTP client otherwise.
 - **A Rust command, `primary_button_down`** (`src-tauri/src/pointer.rs`), reads the primary mouse button, which no Tauri API
-  does: on Linux through GDK (X11), on Windows `GetAsyncKeyState` with the swapped-buttons setting. It is the only logic
+  does: on Linux through GDK (meaningful on X11 only), on Windows `GetAsyncKeyState` with the swapped-buttons setting. It is the only logic
   in the crate besides wiring. `lib.rs` also ends the app when the main window is destroyed.
 - **Capabilities are split by what a window needs:** `backend.json` (windows `main` and `view-*`: `core:default`, http,
   opener), `main.json` (create a window, focus, unminimize, close) and `view-window.json` (start dragging). The preview
@@ -180,11 +180,43 @@ window's title bar, as it could on Electrobun.
   the app when the main window is destroyed.
 - **Window events cross webviews.** `tauri://move` and `tauri://destroyed` reach a listener in another webview that names the
   window's label, which is how the main window follows its view windows.
-- **Which window manager matters when testing on X11.** openbox sends no move notifications while a window is dragged, so
-  dropping a view window on the tab strip never fires (the button still works); xfwm4 needs xfconf; **metacity**, like
-  GNOME's mutter, works. `GDK_BACKEND=x11` stays the default.
+- **Which window manager matters when testing the title-bar drop on X11.** openbox sends no move notifications while a window
+  is dragged, so dropping a view window on the tab strip never fires (the button still works); xfwm4 needs xfconf;
+  **metacity**, like GNOME's mutter, works. X11 is no longer a target (see "Wayland first").
 - A click at the top edge of a window can hit the invisible resize border of another window's frame, which looked like
   "the main window will not close" in one test. Click lower in the title bar.
+
+### Wayland first (added to PR 2b on 2026-10-15)
+
+The owner's instruction: "For linux we need support wayland first, no x11 support expected." The first version of PR 2b needed
+X11: it forced `GDK_BACKEND=x11` and followed a view window by the pointer and window positions on the screen, which
+Wayland does not give an application. What was found by running the app on a Wayland compositor, and what changed:
+
+| On native Wayland | Before | Now |
+|---|---|---|
+| The app starts, renders and signs in | works | works (nothing to change) |
+| Drag a tab out of the strip: a view window opens | works | works; the compositor places the window (the app cannot), so it may open over the main window |
+| Drag the new window by its header | did nothing | works: the drag attribute (`data-tauri-drag-region`) was on the header, which the tab strip fills, and Tauri applies it only to the element that carries it. It is on the strip now. The same should hold on X11 and Windows |
+| Drop the window on the main window's tab strip by its title bar | does nothing: no screen positions, no move events | still does nothing, and cannot work. The window layer never sees the drag, so nothing attaches by mistake |
+| **Drag the window's tab onto the main window's tab strip** | did not exist | **new**: a drag and drop between two windows of the app, which the system routes. The strip shows where the view would go; a drop closes the view window and puts the tab there |
+| **Move to main window** | works | works |
+| Closing the main window with a view window open ends the app | works | works |
+
+What changed in the code: `AppRun` no longer sets `GDK_BACKEND`; the view window's tab carries the view id
+(`application/x-gemiredmine-view`) and the main window's strip accepts only that type (ids of views that can have a window
+only) and asks the window layer (`attachViewWindow`) to close that window and show the view at the dropped place; windows
+are created with `dragDropEnabled` off, because Tauri's file-drop handling stops a drag between windows on Windows; and the
+Linux build starts the packaged AppImage on a headless Wayland compositor (`scripts/release/smoke-test-wayland.sh`, weston, no
+X server to fall back to). That script passes only when the app asks for a toplevel window itself (`xdg_toplevel.set_app_id`
+in the `WAYLAND_DEBUG` log) and keeps running. The title-bar drop remains for X11 and Windows, where positions exist.
+If one mechanism is preferred, the geometry path (`ViewWindows` polling, `pointer.rs`, the capabilities for it) can be
+deleted later, because the tab drop needs none of it.
+
+Notes for the next person:
+- `dragover` fires on every pointer move over the strip on Wayland, with the coordinates of the target window (measured with a temporary on-screen counter).
+- In the sandbox the drop indicator painted about a second after the pointer moved (software rendering); it does render.
+- Native Wayland has no NVIDIA problem here (no GPU in the sandbox). WebKitGTK can show a blank window with the proprietary NVIDIA
+  driver (reported for several WebKitGTK versions); `WEBKIT_DISABLE_DMABUF_RENDERER=1` is the workaround people use. It is **not** set, because it is unverified here. G4 decides.
 
 ## How it was verified
 
@@ -233,7 +265,7 @@ AppImage 5.0 MB) and driven with `xdotool`:
   `dev-preview-*` capability, has no preview panel, and creates no data folder. So a shared build cache does not carry one
   channel's identity into another.
 - `package-linux.mjs` with the real, pinned `appimagetool` made a working AppImage; run with
-  `--appimage-extract-and-run` it signed in to the mock, with `GDK_BACKEND=x11` set by AppRun.
+  `--appimage-extract-and-run` it signed in to the mock (AppRun still set `GDK_BACKEND=x11` then).
 - `rust-toolchain.toml` made rustup install 1.99.0 by itself. rustfmt and clippy (`-D warnings`) pass; `cargo test --lib` has 3 tests.
 - Tests: 53 files and 540 tests (one skipped) with the default channel and with `CHANNEL=stable`; `tsc` and the webview
   build are clean. Mutations of the adapter (file modes, redirect limit, recursive `mkdir`, remove error handling), the
@@ -244,7 +276,7 @@ AppImage 5.0 MB) and driven with `xdotool`:
 - Wayland, NVIDIA, other distributions, and whether the content security policy logs violations (nothing looked broken, but
   the console was not read).
 
-### PR 2b, in this sandbox (Xvfb :98, metacity, GDK_BACKEND=x11, the mock Redmine)
+### PR 2b, first pass, in this sandbox (Xvfb :98, metacity, GDK_BACKEND=x11, the mock Redmine; before the move to Wayland first)
 
 The unstable build of the final tree, driven with `xdotool`:
 
@@ -260,12 +292,24 @@ The unstable build of the final tree, driven with `xdotool`:
 - Tests: 55 files, 575 tests (one skipped), `tsc` clean, `cargo test --lib` 4 tests. Removing the event targets from the
   transport, or comparing sessions with plain `JSON.stringify` again, each turns a test red.
 
+### PR 2b, on a Wayland compositor in this sandbox
+
+Headless sway 1.9 (wlroots, software rendering) with a virtual pointer and `wtype`, `DISPLAY` unset, the unstable build run
+without `GDK_BACKEND` (`docs/tauri-migration/wayland-rig/`, see "Recipes"). Verified: the app starts natively (`app_id`
+`Gemiredmine-Unstable`), signs in and shows the dashboard; dragging the To-do tab out opens its window; dragging that window
+by the empty part of its tab strip moves it; dragging the window's tab onto the main window's strip shows the drop indicator,
+closes the view window and puts the tab back where it was dropped; **Move to main window** works; and closing the main window
+with a view window open ends the app. `scripts/release/smoke-test-wayland.sh` passes against the built app (the window opens
+after about a second) and fails, as it should, for a command that exits at once, one that opens no window, and the app on X11
+with no X server. Unit tests: the drop target, the accepted data, the `attachViewWindow` request and the config; three mutations
+(no `preventDefault` on `dragover`, no check of the dropped view id, no check of the drag type) each turn a test red.
+
 **Not verified (PR 2b)**
-- **Windows**: the pointer command (`GetAsyncKeyState`), window creation, dragging and dropping, and the title bar there.
-  This is the main open risk of PR 2b. The Windows branch of `pointer.rs` has not even been compiled yet: the Windows build
-  workflow on this branch will do that first.
-- **A Wayland session** (GNOME, NVIDIA): AppRun forces X11, so dragging goes through XWayland. Dropping onto the tab strip needs
-  the window manager to report moves during a drag.
+- **Windows**: the pointer command (`GetAsyncKeyState`), window creation, dragging and dropping there, and the tab drop (WebView2
+  with `dragDropEnabled` off). The Windows build workflow on `773f908` compiled the pointer command, passed the launch smoke
+  test and signed the MSIX, so it builds; it has not been run by a person.
+- **GNOME and KDE Wayland sessions, and an NVIDIA machine.** sway is not mutter: GTK draws its own title bar on GNOME, and
+  placement of new windows differs. G4 covers them.
 - **Monitors with different scale factors**: placement uses the main window's scale factor for every window.
 - Several view windows open at once, and the feedback form from a view window, were not exercised in the real app.
 
@@ -299,10 +343,11 @@ clean Windows 11. That is gate G5. A runner has WebView2 and a desktop session, 
 2. ~~Open the draft pull request and dispatch the two build workflows.~~ Done: pull request #21; gates G1 to G3 passed.
 3. ~~PR 2b: the window layer.~~ Implemented on `claude/tauri-window-layer`, stacked on PR 2 (see "PR 2b" above).
    Dispatch the Linux and Windows build workflows on it. The Windows one compiles the pointer command for the first time.
-4. Hardware gates G4 (Linux checklist, Wayland and NVIDIA), G5 (Windows 11 on a clean VM, upgrade in place from the
-   Electrobun build) and G6 (data continuity) need a person; see `plan.md`. Record the SHA of the last Electrobun commit
-   (`648fe5b`) in the pull request. **G4 and G5 now also cover the window layer:** drag a tab out, drag the window back by its
-   title bar, use **Move to main window**, close the main window with a view window open, and turn the preview on from a view window.
+4. Hardware gates G4 (Linux checklist **on Wayland: GNOME, an NVIDIA machine, KDE if available; X11 is not a target**), G5
+   (Windows 11 on a clean VM, upgrade in place from the Electrobun build) and G6 (data continuity) need a person; see `plan.md`.
+   Record the SHA of the last Electrobun commit (`648fe5b`) in the pull request. **G4 and G5 now also cover the window layer:**
+   drag a tab out, drag the new window's **tab** back onto the main window's tabs (G5 also by its title bar), use **Move to
+   main window**, close the main window with a view window open, and turn the preview on from a view window.
 5. **Merge order.** Merge #21 (PR 2) first, with a merge commit, because this file names commits by SHA. The owner allows
    shipping between PR 2 and PR 2b, so #21 does not have to wait for PR 2b, but then Unstable users lose dragging tabs into
    windows until PR 2b merges. Merge PR 2b second, with a merge commit too. Its base is `claude/tauri-2-shell`; GitHub
@@ -310,17 +355,18 @@ clean Windows 11. That is gate G5. A runner has WebView2 and a desktop session, 
 6. Then the optional PR 3 (end-to-end tests, rename `src/bun` to `src/core`) and the Android phase.
 
 **Decided by the project owner**
+- **2026-10-15, Linux: Wayland first, no X11 expected** ("For linux we need support wayland first, no x11 support expected").
+  `AppRun` does not force X11; X11 is neither tested nor supported; the window layer must not need screen positions.
 - **2026-10-15, shipping between PR 2 and PR 2b: allowed for every channel** ("It does not matter to ship in mid pr or not").
 - **2026-10-14, the window layer: split.** "I allow a regression, the goal is to migrate." PR 2 swaps the shell with one
   window and turns dragging tabs into windows off on Tauri; PR 2b ports it. Unstable users lose the feature between the two.
 
 **Open questions for the project owner**
-- Keep the X11 default on Linux? PR 2 does: `AppRun` sets `GDK_BACKEND=x11` unless the user set it, as Electrobun did.
-  Dragging a window back into the tab strip (PR 2b) needs the global pointer, which native Wayland does not give
-  applications. A Wayland-only system without XWayland cannot start the app until this changes. On X11, a window manager that
-  sends no move notifications during a drag (openbox) cannot drop a window onto the tab strip; the button is the fallback.
-- Who runs gates G4 to G6, and when? They block taking pull request #21 out of draft. G4 and G5 now also cover dragging view
-  windows (on X11 and a Wayland session, and on Windows 11).
+- Who runs gates G4 to G6, and when? They block taking pull request #21 out of draft. G4 and G5 now also cover the window layer
+  (on Wayland, and on Windows 11).
+- Keep the title-bar drop on Windows? It needs the pointer command and the polling code. The tab drop (new) works on every
+  platform without them; deleting the geometry path would remove the one piece of Rust that is more than wiring. Windows
+  users would lose dropping a window by its title bar, and keep dragging its tab.
 - How long should the unstable and canary soak last before stable? The plan says five or more unstable builds or one week.
 
 ## Recipes
@@ -369,13 +415,18 @@ xdotool mousemove 512 362 click 1; xdotool type --delay 25 "text"
   Only the native-roots loader reads that variable, so a successful sign-in proves the system certificates are used.
 - The AppImage: `CHANNEL=unstable node scripts/release/package-linux.mjs`, then run the file with
   `--appimage-extract-and-run` (the sandbox has no FUSE). `xprop -id <window> WM_CLASS` should print the app name.
-- **The window layer needs a window manager that streams move events.** Start one inside a session bus:
-  `dbus-run-session -- metacity --replace --sm-disable &` (apt: `metacity dbus-x11`). openbox and xfwm4 do not work for this
-  (see "PR 2b"). Run the app with `GDK_BACKEND=x11`. With the To-do tab open (click "Open to-do list" on the dashboard), press
-  the mouse on the tab, move the pointer in steps of about 100 ms out of the strip, and release: a view window opens under
-  the pointer. Drag it by its title bar back onto the tab strip and release to attach it. Take a screenshot with `scrot`
-  between the steps, and check the windows with `xdotool search --onlyvisible --name ""`.
-- Stop everything by process ID (`kill $!` when you start each one). `pkill -f` matches its own shell. When you restart
+- **Testing on Wayland: `docs/tauri-migration/wayland-rig/rig.sh`.** `apt install sway grim wtype libwayland-dev libwayland-bin
+  gcc curl`, then `rig.sh start` (a headless sway of 1280x900 and a virtual pointer), `rig.sh app`, and drive it with
+  `rig.sh click X Y`, `rig.sh type "text"`, `rig.sh ptr "move 310 109" "wait 150" down "move 900 300" up`, `rig.sh shot f.png`
+  and `rig.sh windows`. Run `node scripts/dev/mock-redmine.mjs --port 18123` first. The webview starts at about (128, 91);
+  sway's title bar is 25 px. Sign in (field centres 640,428 / 640,506 / 536,652 / 744,652, button 785,828), click "Open to-do
+  list" (1045,267), press on the To-do tab (310,109) and move out of the window in steps of 100 ms to detach it. sway opens the
+  new window exactly over the main one, so drag it aside by sway's title bar first (press at the title, move, release) to see
+  the main window's tab strip; then press on the view window's tab, move to the strip (300,110) in steps of 200 ms, and release.
+  Paint is slow without a GPU: wait a second before a screenshot. The virtual keyboard loses its first key, which `rig.sh type` works around.
+- To test the title-bar drop on X11 (not a target any more): Xvfb, `dbus-run-session -- metacity --replace --sm-disable &`, and
+  `GDK_BACKEND=x11`. openbox and xfwm4 do not work for this (see "PR 2b").
+- Stop everything by process ID (`kill $!` when you start each one). `pkill -f` matches its own shell, and so does a command line that contains the pattern. When you restart
   the app between scenarios, check with `pgrep -a Gemiredmine` that the old one is gone.
 - A background command that ends in `&` inside `run_in_background` returns at once; wait for a file instead.
 
