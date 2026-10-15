@@ -3,6 +3,7 @@ import { render, fireEvent } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import SettingsView from '../SettingsView.svelte';
 import { servers, activeServerId } from '../lib/store';
+import { storageProblem } from '../lib/persistence';
 import { activeView, openView, resetViews } from '../lib/views';
 
 vi.mock('../lib/api', () => ({
@@ -22,7 +23,23 @@ describe('SettingsView Component', () => {
   beforeEach(() => {
     servers.set([dev, prod]);
     activeServerId.set('1');
+    storageProblem.set(null);
     resetViews();
+  });
+
+  it('says nothing about storage while the servers are kept', () => {
+    const view = render(SettingsView);
+
+    expect(view.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('warns when the servers cannot be kept for the next start', () => {
+    storageProblem.set('Your servers could not be saved, so they will be missing the next time you start the app. disk full');
+
+    const view = render(SettingsView);
+
+    expect(view.getByRole('alert')).toHaveTextContent('could not be saved');
+    expect(view.getByRole('alert')).toHaveTextContent('disk full');
   });
 
   it('lists every server with its URL, sign-in state and which one is active', () => {

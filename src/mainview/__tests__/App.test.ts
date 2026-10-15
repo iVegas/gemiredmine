@@ -4,6 +4,7 @@ import App from '../App.svelte';
 import { servers, activeServerId } from '../lib/store';
 import { openView, resetViews } from '../lib/views';
 import { redmineApi } from '../lib/api';
+import { serversRestored, storageProblem } from '../lib/persistence';
 
 vi.mock('../lib/api', () => ({
   redmineApi: {
@@ -28,6 +29,8 @@ describe('App', () => {
     api.getDevPreviewStatus.mockResolvedValue({ available: true, enabled: false, dataDir: '', logBytes: 0, pendingEntries: 0 });
     servers.set([]);
     activeServerId.set(null);
+    serversRestored.set(true);
+    storageProblem.set(null);
     resetViews();
   });
 
@@ -42,6 +45,53 @@ describe('App', () => {
     expect(view.getByRole('heading', { name: 'Add your first server' })).toBeInTheDocument();
     expect(view.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
     expect(view.queryByRole('tablist')).not.toBeInTheDocument();
+  });
+
+  it('waits for the saved servers instead of welcoming a user who has some', async () => {
+    serversRestored.set(false);
+    const view = render(App);
+
+    expect(view.getByText('Loading…')).toBeInTheDocument();
+    expect(view.queryByRole('heading', { name: 'Welcome to Gemiredmine' })).not.toBeInTheDocument();
+
+    servers.set([signedIn]);
+    activeServerId.set('1');
+    serversRestored.set(true);
+
+    expect(await view.findByRole('tab', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(view.queryByText('Loading…')).not.toBeInTheDocument();
+  });
+
+  it('asks a restored server to sign in, with the user who signed in last time', async () => {
+    servers.set([{ id: '1', name: 'Dev', url: 'https://dev.local', user: signedIn.user }]);
+    activeServerId.set('1');
+    const view = render(App);
+
+    expect(await view.findByRole('heading', { name: 'Sign in to Dev' })).toBeInTheDocument();
+    expect(view.getByLabelText('Username')).toHaveValue('ana');
+    expect(view.getByLabelText('Password')).toHaveValue('');
+  });
+
+  it('offers the other server an empty form, not the user name of the one before', async () => {
+    servers.set([
+      { id: '1', name: 'Dev', url: 'https://dev.local', user: signedIn.user },
+      { id: '2', name: 'Prod', url: 'https://prod.local' },
+    ]);
+    activeServerId.set('1');
+    const view = render(App);
+    expect(await view.findByLabelText('Username')).toHaveValue('ana');
+
+    activeServerId.set('2');
+
+    expect(await view.findByRole('heading', { name: 'Sign in to Prod' })).toBeInTheDocument();
+    expect(view.getByLabelText('Username')).toHaveValue('');
+  });
+
+  it('tells a new user when the servers cannot be kept', () => {
+    storageProblem.set('The servers saved by an earlier run could not be loaded, so nothing is saved in this run. unable to open database file');
+    const view = render(App);
+
+    expect(view.getByRole('alert')).toHaveTextContent('unable to open database file');
   });
 
   it('shows the dashboard once the first server is added', async () => {
