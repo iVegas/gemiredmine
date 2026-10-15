@@ -51,6 +51,8 @@ Open the link (or use `ms-appinstaller:?source=<link>`) to install the channel. 
 the App Installer feed when the app starts, every 8 hours, and upgrades the installed package in place.
 Only one package is installed per channel. Settings live under `%LOCALAPPDATA%` in a folder named for
 the channel, and the packaged app's data is private to its identity, so channels never share settings.
+The app's database (`gemiredmine.db`: the servers the user added, and later the conversation history) is in
+that folder, and an upgrade in place keeps it.
 The webview keeps its own storage (local storage and caches, not Redmine data) in a folder named for the
 package identity, below the same `%LOCALAPPDATA%`.
 Uninstalling a channel from Windows Settings removes its package and its data.
