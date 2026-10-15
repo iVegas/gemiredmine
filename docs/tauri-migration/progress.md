@@ -304,6 +304,12 @@ after about a second) and fails, as it should, for a command that exits at once,
 with no X server. Unit tests: the drop target, the accepted data, the `attachViewWindow` request and the config; three mutations
 (no `preventDefault` on `dragover`, no check of the dropped view id, no check of the drag type) each turn a test red.
 
+**CI on `731f4fd` (pull request #22), all green:** Checks (including the `rust` job), **Build Linux AppImage** (unstable, on
+`ubuntu-22.04`) and **Build Windows package** (unstable, self-signed). In the Linux job the new step "Smoke test the AppImage on
+Wayland" ran `smoke-test-wayland.sh` against the packaged AppImage with weston 9: "The app opened a window after about 1 seconds",
+then "The app is still running", so the weston 9 options (`--backend=headless-backend.so`, `--use-pixman`) work. The Linux job took
+5 minutes and the Windows job 4 with a warm cache.
+
 **Not verified (PR 2b)**
 - **Windows**: the pointer command (`GetAsyncKeyState`), window creation, dragging and dropping there, and the tab drop (WebView2
   with `dragDropEnabled` off). The Windows build workflow on `773f908` compiled the pointer command, passed the launch smoke
