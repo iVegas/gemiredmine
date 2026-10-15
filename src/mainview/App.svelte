@@ -9,10 +9,11 @@
   import TodoView from './TodoView.svelte';
   import SettingsView from './SettingsView.svelte';
   import AboutView from './AboutView.svelte';
+  import RecordPanel from './RecordPanel.svelte';
   import { credentialsRestoring } from './lib/credentials';
   import { serversRestored, startPersistence } from './lib/persistence';
   import { servers, activeServer } from './lib/store';
-  import { activeView, closeView, needsServer, openViews, viewPanelId, viewTabId } from './lib/views';
+  import { activeView, closeView, isDetailView, needsServer, openViews, viewPanelId, viewTabId } from './lib/views';
   import { attachToMainWindow, sessionReady, startMainWindow, startViewWindow, viewWindowFromLocation } from './lib/windows';
   import { buildInfo } from '../shared/build-info.generated';
 
@@ -62,7 +63,10 @@
           hidden={view !== $activeView}
           class="p-6 md:p-8"
         >
-          {#if needsServer(view) && !$activeServer}
+          {#if isDetailView(view)}
+            <!-- A task or a log entry belongs to the server it was opened on, not to the server in use. -->
+            <RecordPanel {view} active={view === $activeView} />
+          {:else if needsServer(view) && !$activeServer}
             <p class="text-gray-600">Choose a server from the user menu to see its data.</p>
           {:else if needsServer(view) && !$activeServer?.apiToken}
             <!-- One sign-in form at a time, in whichever server view is showing. -->

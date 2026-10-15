@@ -1,15 +1,65 @@
 import { writable, get } from 'svelte/store';
 
-/** Views the app shows in tabs. */
-export type ViewId = 'dashboard' | 'calendar' | 'todo' | 'settings' | 'about';
+/** The views that exist once. */
+export type StaticViewId = 'dashboard' | 'calendar' | 'todo' | 'settings' | 'about';
 
-export const VIEW_TITLES: Record<ViewId, string> = {
+/**
+ * A view of one task or one log entry of one server: `task:<server id>:<number>` or `log:<server id>:<number>`. The
+ * server is part of the id because the same number means another task on another server, and because the view
+ * stays with its server when the user switches to another.
+ */
+export type DetailViewId = `task:${string}:${number}` | `log:${string}:${number}`;
+
+/** Views the app shows in tabs. */
+export type ViewId = StaticViewId | DetailViewId;
+
+export const VIEW_TITLES: Record<StaticViewId, string> = {
   dashboard: 'Dashboard',
   calendar: 'Calendar',
   todo: 'To-do',
   settings: 'Settings',
   about: 'About',
 };
+
+const DETAIL_VIEW = /^(task|log):([A-Za-z0-9_-]{1,64}):([1-9]\d{0,14})$/;
+
+export interface DetailViewTarget {
+  kind: 'task' | 'log';
+  serverId: string;
+  /** The Redmine id of the task or the log entry */
+  id: number;
+}
+
+/** What a detail view shows, or null when the id is not one. */
+export function parseDetailView(view: string): DetailViewTarget | null {
+  const match = DETAIL_VIEW.exec(view);
+  return match ? { kind: match[1] as 'task' | 'log', serverId: match[2], id: Number(match[3]) } : null;
+}
+
+export const isDetailView = (view: string): view is DetailViewId => DETAIL_VIEW.test(view);
+
+export const taskView = (serverId: string, taskId: number) => `task:${serverId}:${taskId}` as DetailViewId;
+export const logView = (serverId: string, entryId: number) => `log:${serverId}:${entryId}` as DetailViewId;
+
+/** What a detail view calls itself once it has loaded, such as the subject of a task. By view id. */
+export const viewLabels = writable<Record<string, string>>({});
+
+export function setViewLabel(view: ViewId, label: string) {
+  viewLabels.update(labels => (labels[view] === label ? labels : { ...labels, [view]: label }));
+}
+
+/** The title of a tab: what its view called itself, or what can be told from the id alone. */
+export function viewTitle(view: ViewId, labels: Record<string, string> = get(viewLabels)): string {
+  if (labels[view]) return labels[view];
+  const detail = parseDetailView(view);
+  if (detail) return `${detail.kind === 'task' ? 'Task' : 'Log'} #${detail.id}`;
+  return VIEW_TITLES[view as StaticViewId];
+}
+
+/** Whether a view can have a window of its own. Detail views are tabs of the main window. */
+export function canDetach(view: ViewId): boolean {
+  return isClosable(view) && !isDetailView(view);
+}
 
 /** The dashboard is pinned: it is always the first tab and cannot be closed. */
 export const PINNED_VIEW: ViewId = 'dashboard';
@@ -67,6 +117,11 @@ export function closeView(view: ViewId) {
 
   const remaining = views.filter(open => open !== view);
   openViews.set(remaining);
+  viewLabels.update(labels => {
+    if (!(view in labels)) return labels;
+    const { [view]: _closed, ...others } = labels;
+    return others;
+  });
   if (get(activeView) === view) {
     activeView.set(remaining[index] ?? remaining[index - 1]);
   }
@@ -98,4 +153,21 @@ export function insertView(view: ViewId, index?: number) {
 export function resetViews() {
   openViews.set([PINNED_VIEW]);
   activeView.set(PINNED_VIEW);
+}
+
+/** Opens a task of a server in a tab, or switches to its tab when it is open. */
+export function openTask(serverId: string, taskId: number) {
+  openView(taskView(serverId, taskId));
+}
+
+/** Opens a log entry of a server in a tab, or switches to its tab when it is open. */
+export function openLogEntry(serverId: string, entryId: number) {
+  openView(logView(serverId, entryId));
+}
+
+/** Closes the task and log entry tabs of a server, which is gone. */
+export function closeViewsOfServer(serverId: string) {
+  for (const view of get(openViews)) {
+    if (parseDetailView(view)?.serverId === serverId) closeView(view);
+  }
 }

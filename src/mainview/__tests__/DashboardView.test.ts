@@ -120,6 +120,24 @@ describe('DashboardView Component', () => {
     expect(get(activeView)).toBe('todo');
   });
 
+  it('opens a task in a tab of its own, not the to-do list, when a top task is selected', async () => {
+    const view = render(DashboardView, { props: { server } });
+
+    await fireEvent.click(await view.findByRole('button', { name: 'Open task #2: Review PR' }));
+
+    expect(get(openViews)).toEqual(['dashboard', 'task:1:2']);
+    expect(get(activeView)).toBe('task:1:2');
+  });
+
+  it('puts the tasks above the layer that makes a click anywhere on the card open the list', async () => {
+    const view = render(DashboardView, { props: { server } });
+    const row = await view.findByRole('button', { name: 'Open task #1: Hotfix' });
+
+    // jsdom has no layout, so the stacking is checked in the classes: the card's button covers the card at z-10.
+    expect(row.className).toContain('relative');
+    expect(row.className).toContain('z-20');
+  });
+
   it('reports a failure in the preview summary', async () => {
     api.listAssignedTasks.mockRejectedValueOnce(new Error('Redmine API request failed: 500 Internal Server Error'));
     const view = render(DashboardView, { props: { server } });

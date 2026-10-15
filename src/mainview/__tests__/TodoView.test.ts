@@ -3,6 +3,8 @@ import { render, fireEvent, within } from '@testing-library/svelte';
 import TodoView from '../TodoView.svelte';
 import { redmineApi } from '../lib/api';
 import { toDateKey } from '../lib/calendar';
+import { get } from 'svelte/store';
+import { activeView, openViews, resetViews } from '../lib/views';
 import type { RedmineIssue } from '../../bun/redmine/types';
 
 vi.mock('../lib/api', () => ({
@@ -41,6 +43,7 @@ describe('TodoView Component', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     api.listAssignedTasks.mockResolvedValue(tasks);
+    resetViews();
   });
 
   it('loads every task assigned to the user on the server', async () => {
@@ -103,5 +106,25 @@ describe('TodoView Component', () => {
     await fireEvent.click(view.getByRole('button', { name: 'Refresh' }));
 
     await vi.waitFor(() => expect(api.listAssignedTasks).toHaveBeenCalledTimes(2));
+  });
+
+  it('opens a task in a tab of its own, on this server, when its subject is selected', async () => {
+    const view = render(TodoView, { props: { server } });
+
+    await fireEvent.click(await view.findByRole('button', { name: 'Slow search' }));
+
+    expect(get(openViews)).toEqual(['dashboard', 'task:1:11']);
+    expect(get(activeView)).toBe('task:1:11');
+  });
+
+  it('switches to the tab of a task that is open already, instead of opening it twice', async () => {
+    const view = render(TodoView, { props: { server } });
+
+    await fireEvent.click(await view.findByRole('button', { name: 'Slow search' }));
+    await fireEvent.click(view.getByRole('button', { name: 'Fix typo' }));
+    await fireEvent.click(view.getByRole('button', { name: 'Slow search' }));
+
+    expect(get(openViews)).toEqual(['dashboard', 'task:1:11', 'task:1:12']);
+    expect(get(activeView)).toBe('task:1:11');
   });
 });

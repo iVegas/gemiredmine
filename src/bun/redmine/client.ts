@@ -22,8 +22,11 @@ import type {
   CurrentUserResponse,
   RedmineTimeEntry,
   TimeEntriesResponse,
+  TimeEntryResponse,
   RedmineIssue,
-  IssuesResponse
+  IssuesResponse,
+  IssueResponse,
+  RedmineIssueDetails
 } from './types';
 
 // Redmine caps list endpoints at 100 items per page; the cap keeps a runaway total from looping forever.
@@ -135,6 +138,12 @@ function basicAuthHeader(username: string, password: string): string {
   const bytes = new TextEncoder().encode(`${username}:${password}`);
   const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('');
   return `Basic ${btoa(binary)}`;
+}
+
+/** An id that goes into a URL has to be a whole number: it comes from the webview. */
+function recordId(id: number): number {
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error(`${String(id)} is not a Redmine id.`);
+  return id;
 }
 
 export class RedmineClient {
@@ -249,6 +258,30 @@ export class RedmineClient {
         sort: 'priority:desc'
       },
       (response) => response.issues
+    );
+  }
+
+  /**
+   * One issue, with its history, attachments, subtasks and relations. Redmine answers 404 for an issue that does not
+   * exist and for one the user may not see.
+   */
+  async getIssue(id: number): Promise<RedmineIssueDetails> {
+    const { issue } = await this.request<IssueResponse>(`/issues/${recordId(id)}.json?include=journals,attachments,children,relations`);
+    return issue;
+  }
+
+  /** One time entry. */
+  async getTimeEntry(id: number): Promise<RedmineTimeEntry> {
+    const { time_entry } = await this.request<TimeEntryResponse>(`/time_entries/${recordId(id)}.json`);
+    return time_entry;
+  }
+
+  /** The time entries logged on an issue, by anyone the user may see, the latest day first. */
+  async getIssueTimeEntries(issueId: number): Promise<RedmineTimeEntry[]> {
+    return this.fetchAllPages<TimeEntriesResponse, RedmineTimeEntry>(
+      '/time_entries.json',
+      { issue_id: String(recordId(issueId)), sort: 'spent_on:desc' },
+      (response) => response.time_entries
     );
   }
 

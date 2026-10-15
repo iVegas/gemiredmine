@@ -1,4 +1,4 @@
-import type { GemiBackend, LoadedCredentials, ServerAccess } from '../shared/backend';
+import type { GemiBackend, HistoryNames, LoadedCredentials, ServerAccess } from '../shared/backend';
 import type { BuildInfo } from '../shared/build-info';
 import { buildInfo as generatedBuildInfo, DEV_PREVIEW_AVAILABLE } from '../shared/build-info.generated';
 import { DevPreview as GeneratedDevPreview } from './dev-preview.generated';
@@ -7,6 +7,7 @@ import type { DataFs } from './diagnostics/fs';
 import type { DevPreview } from './diagnostics/service';
 import { signInWithPassword } from './redmine/auth';
 import { RedmineApiError, RedmineClient, assertHttpUrl, type FetchLike } from './redmine/client';
+import type { RedmineIssueDetails } from './redmine/types';
 import { openAppStorage, type AppStorage } from './storage/app-storage';
 import type { SqlDatabase } from './storage/database';
 import { withTimeout } from './timeout';
@@ -77,6 +78,37 @@ export interface BackendOptions {
    * request still fails. The callback must not throw; one that does is ignored.
    */
   onUnauthorized?: (access: ServerAccess) => void;
+}
+
+/** The lists that give the names of the ids an issue's history mentions, by the key of the field. */
+const NAME_LISTS = {
+  status_id: async (client: RedmineClient) => (await client.getIssueStatuses()).issue_statuses,
+  priority_id: async (client: RedmineClient) => (await client.getIssuePriorities()).issue_priorities,
+  tracker_id: async (client: RedmineClient) => (await client.getTrackers()).trackers,
+} as const;
+
+/**
+ * What the ids in the issue's history are called. Only the lists that the history needs are fetched, and one that
+ * cannot be fetched is left out: the view shows the id instead of failing.
+ */
+async function historyNames(client: RedmineClient, issue: RedmineIssueDetails): Promise<HistoryNames> {
+  const keys = new Set<keyof typeof NAME_LISTS>();
+  for (const journal of issue.journals ?? []) {
+    for (const detail of journal.details) {
+      if (detail.property === 'attr' && detail.name in NAME_LISTS) keys.add(detail.name as keyof typeof NAME_LISTS);
+    }
+  }
+  const names: HistoryNames = {};
+  await Promise.all(
+    [...keys].map(async (key) => {
+      try {
+        names[key] = Object.fromEntries((await NAME_LISTS[key](client)).map((entry) => [String(entry.id), entry.name]));
+      } catch {
+        // The id is shown instead.
+      }
+    })
+  );
+  return names;
 }
 
 export function createBackend(platform: BackendPlatform, options: BackendOptions = {}): GemiBackend {
@@ -210,6 +242,22 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
 
     listAssignedTasks: traced('listAssignedTasks', (access) =>
       authorized(access, (transport) => clientFor(access, transport).getAssignedTasks())
+    ),
+
+    getTask: traced('getTask', (access, taskId) =>
+      authorized(access, async (transport) => {
+        const client = clientFor(access, transport);
+        const issue = await client.getIssue(taskId);
+        return { issue, names: await historyNames(client, issue) };
+      })
+    ),
+
+    listTaskLogEntries: traced('listTaskLogEntries', (access, taskId) =>
+      authorized(access, (transport) => clientFor(access, transport).getIssueTimeEntries(taskId))
+    ),
+
+    getLogEntry: traced('getLogEntry', (access, entryId) =>
+      authorized(access, (transport) => clientFor(access, transport).getTimeEntry(entryId))
     ),
 
     async getDevPreviewStatus() {

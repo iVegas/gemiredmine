@@ -3,6 +3,7 @@
   import type { RedmineIssue } from '../bun/redmine/types';
   import { redmineApi } from './lib/api';
   import { formatDueDate, groupTasksByPriority, isOverdue } from './lib/todo';
+  import { openTask } from './lib/views';
 
   export let server: ServerConnection;
 
@@ -84,7 +85,14 @@
           {@const overdue = isOverdue(task)}
           <li class="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 px-4 py-3">
             <div class="min-w-0 flex-1">
-              <p class="text-gray-900"><span class="font-mono text-gray-500">#{task.id}</span> {task.subject}</p>
+              <p class="text-gray-900">
+                <span class="font-mono text-gray-500">#{task.id}</span>
+                <button
+                  type="button"
+                  class="rounded text-left hover:text-blue-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  on:click={() => openTask(server.id, task.id)}
+                >{task.subject}</button>
+              </p>
               <p class="text-xs text-gray-500">{task.project.name} · {task.tracker.name} · {task.status.name}</p>
             </div>
             <div class="shrink-0 text-right text-sm">

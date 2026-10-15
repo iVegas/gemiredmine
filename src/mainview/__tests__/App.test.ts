@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
 import App from '../App.svelte';
 import { servers, activeServerId } from '../lib/store';
-import { openView, resetViews } from '../lib/views';
+import { openTask, openView, resetViews } from '../lib/views';
 import { redmineApi } from '../lib/api';
 import { credentialProblem, credentialsRestoring } from '../lib/credentials';
 import { serversRestored, storageProblem } from '../lib/persistence';
@@ -14,6 +14,8 @@ vi.mock('../lib/api', () => ({
     listTimeEntries: vi.fn(),
     listOpenTasks: vi.fn(),
     listAssignedTasks: vi.fn(),
+    getTask: vi.fn(),
+    listTaskLogEntries: vi.fn(),
     getDevPreviewStatus: vi.fn(),
   },
 }));
@@ -104,6 +106,56 @@ describe('App', () => {
 
     expect(await view.findByLabelText('Password')).toBeInTheDocument();
     expect(view.getByText(/keyring is locked/)).toBeInTheDocument();
+  });
+
+  describe('a task in a tab', () => {
+    const work = { id: 'w', name: 'Work', url: 'https://work.local', apiToken: 'key-work', user: signedIn.user };
+    const home = { id: 'h', name: 'Home', url: 'https://home.local', apiToken: 'key-home', user: signedIn.user };
+    const task = (id: number, subject: string) => ({
+      issue: { id, subject, project: { id: 1, name: 'P' }, tracker: { id: 1, name: 'Bug' }, status: { id: 1, name: 'New' }, priority: { id: 2, name: 'Normal' } },
+      names: {},
+    });
+
+    beforeEach(() => {
+      api.getTask.mockResolvedValue(task(5, 'Fix the login') as never);
+      api.listTaskLogEntries.mockResolvedValue([]);
+      servers.set([work, home]);
+      activeServerId.set('w');
+    });
+
+    it('shows the task from the server it was opened on, even after the user moves to another server', async () => {
+      const view = render(App);
+      openTask('h', 5);
+
+      expect(await view.findByRole('heading', { name: '#5 Fix the login' })).toBeInTheDocument();
+      expect(api.getTask).toHaveBeenCalledWith({ baseUrl: 'https://home.local', apiKey: 'key-home' }, 5);
+      expect(await view.findByRole('tab', { name: '#5 Fix the login' })).toHaveAttribute('aria-selected', 'true');
+
+      activeServerId.set('w');
+      activeServerId.set('h');
+      expect(api.getTask).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the tab of a task of a server that is signed out, and asks for the sign-in of that server', async () => {
+      servers.set([work, { ...home, apiToken: undefined }]);
+      const view = render(App);
+      openTask('h', 5);
+
+      expect(await view.findByRole('heading', { name: 'Sign in to Home' })).toBeInTheDocument();
+      expect(api.getTask).not.toHaveBeenCalled();
+    });
+
+    it('closes the tab of a task when its server is removed', async () => {
+      const view = render(App);
+      openTask('h', 5);
+      await view.findByRole('tab', { name: '#5 Fix the login' });
+
+      servers.update((list) => list.filter((server) => server.id !== 'h'));
+      const { removeServer } = await import('../lib/store');
+      removeServer('h');
+
+      await vi.waitFor(() => expect(view.queryByRole('tab', { name: '#5 Fix the login' })).not.toBeInTheDocument());
+    });
   });
 
   it('offers the other server an empty form, not the user name of the one before', async () => {

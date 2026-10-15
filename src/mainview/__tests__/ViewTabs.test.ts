@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, fireEvent, createEvent, within } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import ViewTabs from '../ViewTabs.svelte';
-import { openViews, activeView, openView, resetViews } from '../lib/views';
+import { openViews, activeView, openView, resetViews, openTask, openLogEntry, setViewLabel, taskView, viewLabels } from '../lib/views';
 import { detachedViews, windowDropTarget } from '../lib/windows';
 import { VIEW_DRAG_TYPE } from '../../shared/windows';
 
@@ -70,6 +70,47 @@ describe('ViewTabs Component', () => {
     resetViews();
     detachedViews.set([]);
     windowDropTarget.set(null);
+  });
+
+  describe('tabs for a task and a log entry', () => {
+    beforeEach(() => viewLabels.set({}));
+
+    it('are named by what they show until the view has loaded', () => {
+      openTask('srv', 42);
+      openLogEntry('srv', 7);
+      const view = render(ViewTabs);
+
+      expect(view.getByRole('tab', { name: 'Task #42' })).toBeInTheDocument();
+      expect(view.getByRole('tab', { name: 'Log #7' })).toBeInTheDocument();
+    });
+
+    it('take the title that their view gave them, with the whole of it as a tooltip', async () => {
+      openTask('srv', 42);
+      const view = render(ViewTabs);
+
+      setViewLabel(taskView('srv', 42), '#42 Fix the login form that fails on a slow connection');
+
+      const tab = await view.findByRole('tab', { name: '#42 Fix the login form that fails on a slow connection' });
+      expect(tab).toHaveAttribute('title', '#42 Fix the login form that fails on a slow connection');
+    });
+
+    it('are closed with their close control like the others, and forget their title', async () => {
+      openTask('srv', 42);
+      setViewLabel(taskView('srv', 42), '#42 Fix the login');
+      const view = render(ViewTabs);
+
+      await fireEvent.click(view.getByTestId('close-task:srv:42'));
+
+      expect(get(openViews)).toEqual(['dashboard']);
+      expect(get(viewLabels)).toEqual({});
+    });
+
+    it('have no tooltip when they are an ordinary tab', () => {
+      openView('calendar');
+      const view = render(ViewTabs);
+
+      expect(view.getByRole('tab', { name: 'Calendar' })).not.toHaveAttribute('title');
+    });
   });
 
   it('shows the dashboard as a pinned first tab without a close control', () => {
@@ -272,6 +313,21 @@ describe('ViewTabs Component', () => {
       expect(desktop.requests.detachView).toHaveBeenCalledWith(expect.objectContaining({ view: 'calendar', title: 'Calendar' }));
       await vi.waitFor(() => expect(view.queryByRole('tab', { name: 'Calendar' })).not.toBeInTheDocument());
       expect(get(detachedViews)).toEqual(['calendar']);
+    });
+
+    it('does not open a task or a log entry in a window of its own, but moves it like another tab', async () => {
+      desktop.available = true;
+      openTask('srv', 42);
+      const view = render(ViewTabs);
+      layOutTabs(view.getAllByRole('tab'));
+      const task = view.getByRole('tab', { name: 'Task #42' });
+
+      await dragTab(task, 150, -40);
+      await fireEvent.pointerUp(task, { pointerId: 1, button: 0, clientX: 150, clientY: -40 });
+
+      expect(desktop.requests.detachView).not.toHaveBeenCalled();
+      expect(get(detachedViews)).toEqual([]);
+      expect(get(openViews)).toContain('task:srv:42');
     });
 
     it('only moves tabs outside the desktop app', async () => {

@@ -1,7 +1,7 @@
 // What the user interface asks of the backend: the Redmine calls and the developer preview.
 // The desktop shell answers over RPC (see rpc.ts); a backend that runs inside the webview
 // implements the same interface. Type-only imports keep this file free of runtime code.
-import type { RedmineIssue, RedmineTimeEntry, RedmineUser } from '../bun/redmine/types';
+import type { RedmineIssue, RedmineIssueDetails, RedmineTimeEntry, RedmineUser } from '../bun/redmine/types';
 import type { DevPreviewStatus, FeedbackResult } from '../bun/diagnostics/service';
 import type { FeedbackInput } from '../bun/diagnostics/feedback';
 import type { LogLevel } from '../bun/diagnostics/aggregator';
@@ -56,6 +56,17 @@ export interface SavedServers {
   activeServerId: string | null;
 }
 
+/**
+ * The names that an issue's history refers to by id. Redmine gives the old and the new value of a status, a priority or
+ * a tracker as its id; this says what the id is called, by the key of the field. A name that could not be found is missing.
+ */
+export type HistoryNames = Partial<Record<'status_id' | 'priority_id' | 'tracker_id', Record<string, string>>>;
+
+export interface TaskDetails {
+  issue: RedmineIssueDetails;
+  names: HistoryNames;
+}
+
 export interface LoadedCredentials {
   /** By server id */
   apiKeys: Record<string, string>;
@@ -69,6 +80,12 @@ export interface GemiBackend {
   listTimeEntries(access: ServerAccess, range: DateRange): Promise<RedmineTimeEntry[]>;
   listOpenTasks(access: ServerAccess, dueRange: DueRange): Promise<RedmineIssue[]>;
   listAssignedTasks(access: ServerAccess): Promise<RedmineIssue[]>;
+  /** One task with its history, attachments, subtasks and relations. Rejects with a 404 for one that cannot be seen. */
+  getTask(access: ServerAccess, taskId: number): Promise<TaskDetails>;
+  /** The time logged on a task, by anyone the user may see, the latest day first. */
+  listTaskLogEntries(access: ServerAccess, taskId: number): Promise<RedmineTimeEntry[]>;
+  /** One log entry, which is one time entry. */
+  getLogEntry(access: ServerAccess, entryId: number): Promise<RedmineTimeEntry>;
   getDevPreviewStatus(): Promise<DevPreviewStatus>;
   setDevPreviewEnabled(enabled: boolean): Promise<DevPreviewStatus>;
   recordDiagnostic(level: LogLevel, scope: string, message: string): Promise<void>;
