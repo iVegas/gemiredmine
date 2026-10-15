@@ -7,7 +7,7 @@
 mod pointer;
 
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use tauri::Manager;
@@ -49,6 +49,51 @@ fn app_environment() -> AppEnvironment {
     }
 }
 
+/// The folder that holds a channel's database: the `GEMIREDMINE_DATA_DIR` folder when that is set, otherwise the
+/// channel's folder `name` below the user's local data folder. The webview names the channel's folder, never a path,
+/// so a request cannot place the folder somewhere else.
+fn storage_dir_in(
+    override_dir: Option<PathBuf>,
+    local_data_dir: PathBuf,
+    name: &str,
+) -> Result<PathBuf, String> {
+    if let Some(dir) = override_dir {
+        return Ok(dir);
+    }
+    let plain = !name.is_empty()
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    if !plain {
+        return Err(format!("{name:?} is not a folder name for the app's data"));
+    }
+    Ok(local_data_dir.join(name))
+}
+
+/// Makes the folder, and any parent that is missing. On systems with permission bits the new folders are private to
+/// the user (0700), as the developer preview's are.
+fn create_private_dir(dir: &Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(dir)
+}
+
+/// Makes sure the folder of the channel's database exists and returns its path. The SQL plugin creates the database
+/// file but not the folder around it, and the webview has no file access of its own in a stable build.
+#[tauri::command]
+fn prepare_storage_dir(app: tauri::AppHandle, name: String) -> Result<String, String> {
+    let local_data_dir = app
+        .path()
+        .local_data_dir()
+        .map_err(|error| error.to_string())?;
+    let dir = storage_dir_in(data_dir_override(), local_data_dir, &name)?;
+    create_private_dir(&dir)
+        .map_err(|error| format!("Could not create {}: {error}", dir.display()))?;
+    Ok(dir.to_string_lossy().into_owned())
+}
+
 /// Whether the primary mouse button is held down anywhere on screen. The window layer needs it to follow a
 /// view window that the user drags by its title bar. A synchronous command, so it runs on the main thread,
 /// which GDK requires.
@@ -63,9 +108,13 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
+        // The schema is created and updated by the TypeScript side (src/bun/storage/migrations.ts), so the plugin has no
+        // migrations of its own to run: the database is opened at a path that depends on the channel.
+        .plugin(tauri_plugin_sql::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             app_environment,
-            primary_button_down
+            primary_button_down,
+            prepare_storage_dir
         ])
         .on_window_event(|window, event| {
             // View windows belong to the main window: when it is gone the app ends, whatever else is open.
@@ -99,6 +148,60 @@ mod tests {
     fn an_absolute_path_is_kept() {
         let dir = std::env::temp_dir().join("gemiredmine-data");
         assert_eq!(data_dir_from(Some(dir.clone().into_os_string())), Some(dir));
+    }
+
+    #[test]
+    fn the_database_goes_in_the_channels_folder_below_the_local_data_folder() {
+        let local = PathBuf::from("/home/alice/.local/share");
+        assert_eq!(
+            storage_dir_in(None, local.clone(), "gemiredmine-unstable"),
+            Ok(local.join("gemiredmine-unstable"))
+        );
+    }
+
+    #[test]
+    fn the_data_dir_override_wins_and_needs_no_name() {
+        let chosen = PathBuf::from("/tmp/chosen");
+        assert_eq!(
+            storage_dir_in(Some(chosen.clone()), PathBuf::from("/data"), ""),
+            Ok(chosen)
+        );
+    }
+
+    #[test]
+    fn a_name_that_could_leave_the_local_data_folder_is_refused() {
+        for name in [
+            "",
+            ".",
+            "..",
+            "../x",
+            "a/b",
+            "a\\b",
+            "x y",
+            "/etc",
+            "C:\\Users",
+        ] {
+            assert!(
+                storage_dir_in(None, PathBuf::from("/data"), name).is_err(),
+                "{name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_storage_folder_is_created_with_its_parents_and_may_exist_already() {
+        let root = std::env::temp_dir().join(format!("gemiredmine-storage-{}", std::process::id()));
+        let dir = root.join("one").join("two");
+        create_private_dir(&dir).unwrap();
+        create_private_dir(&dir).unwrap();
+        assert!(dir.is_dir());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&dir).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o700);
+        }
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

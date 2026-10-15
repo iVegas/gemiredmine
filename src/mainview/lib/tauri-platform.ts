@@ -3,16 +3,21 @@ import { localDataDir, sep } from '@tauri-apps/api/path';
 import { exists, mkdir, readDir, readFile, remove, rename, stat, writeFile } from '@tauri-apps/plugin-fs';
 import { fetch as pluginFetch } from '@tauri-apps/plugin-http';
 import { openUrl } from '@tauri-apps/plugin-opener';
+import Database from '@tauri-apps/plugin-sql';
 import { buildInfo } from '../../shared/build-info.generated';
 import type { BackendPlatform } from '../../bun/backend';
 import type { DataFs } from '../../bun/diagnostics/fs';
 import type { FetchLike } from '../../bun/redmine/client';
+import type { SqlDatabase, SqlRow } from '../../bun/storage/database';
 
 // The desktop shell runs the backend inside the webview. These are its hands: Rust-side HTTP and
 // file plugins (the webview itself may not connect anywhere, see the CSP), and the system browser.
 
 /** How long to wait for a connection before telling the user the server is not reachable. */
 const CONNECT_TIMEOUT_MS = 10_000;
+
+/** The plugins reject with a bare string, where the rest of the app expects an Error, as fetch rejects with. */
+const toError = (error: unknown): Error => (error instanceof Error ? error : new Error(String(error)));
 
 /**
  * Sends a request through the Rust HTTP client, which needs no CORS headers from the server.
@@ -23,8 +28,7 @@ export const tauriFetch: FetchLike = async (url, init) => {
   try {
     return await pluginFetch(url, { ...init, maxRedirections: 0, connectTimeout: CONNECT_TIMEOUT_MS });
   } catch (error) {
-    // The plugin rejects with a bare string, where fetch rejects with an Error.
-    throw error instanceof Error ? error : new Error(String(error));
+    throw toError(error);
   }
 };
 
@@ -104,12 +108,54 @@ export async function dataDir(): Promise<string> {
   return joinPath(sep(), [await localDataDir(), buildInfo.dataDirName]);
 }
 
+/** The app's database, a file in the channel's data folder. */
+export const DATABASE_FILE = 'gemiredmine.db';
+
+/**
+ * The connection string the SQL plugin takes for a file: `sqlite:` and the path. The plugin reads a `?` as the start
+ * of options and decodes `%` escapes, so those two characters of a folder name are escaped.
+ */
+export function sqliteUrl(path: string): string {
+  return `sqlite:${path.replace(/%/g, '%25').replace(/\?/g, '%3F')}`;
+}
+
+/**
+ * Opens the app's database in the channel's data folder. The Rust side makes the folder first, because the SQL
+ * plugin creates the file but not the folder around it. Only the main window may talk to the plugin
+ * (src-tauri/capabilities/storage.json).
+ */
+export async function openDatabase(): Promise<SqlDatabase> {
+  try {
+    const folder = await invoke<string>('prepare_storage_dir', { name: buildInfo.dataDirName });
+    const connection = await Database.load(sqliteUrl(joinPath(sep(), [folder, DATABASE_FILE])));
+    return {
+      execute: async (sql, params = []) => {
+        try {
+          await connection.execute(sql, [...params]);
+        } catch (error) {
+          throw toError(error);
+        }
+      },
+      select: async (sql, params = []) => {
+        try {
+          return await connection.select<SqlRow[]>(sql, [...params]);
+        } catch (error) {
+          throw toError(error);
+        }
+      },
+    };
+  } catch (error) {
+    throw toError(error);
+  }
+}
+
 /** The backend's platform inside the Tauri webview. */
 export function tauriPlatform(): BackendPlatform {
   return {
     fetch: tauriFetch,
     fs: tauriDataFs,
     dataDir,
+    database: openDatabase,
     openUrl: (url) => openUrl(url),
     environment: async () => toEnvironment(await readAppEnvironment()),
   };
