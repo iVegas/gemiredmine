@@ -4,10 +4,12 @@
 //! Keep it that way: anything about Redmine, diagnostics or the UI belongs in `src/`, where the
 //! unit tests and the Android build reach it.
 
+mod credentials;
 mod pointer;
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::Manager;
@@ -94,6 +96,56 @@ fn prepare_storage_dir(app: tauri::AppHandle, name: String) -> Result<String, St
     Ok(dir.to_string_lossy().into_owned())
 }
 
+/// Runs a call on the credential store on a thread of its own: the store can wait for the user, for example for the
+/// password that unlocks the keyring, and the window must not stand still meanwhile.
+async fn on_credentials<T: Send + 'static>(
+    credentials: tauri::State<'_, Arc<credentials::Credentials>>,
+    call: impl FnOnce(&credentials::Credentials) -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let credentials = credentials.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || call(&credentials))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+/// Keeps the API key of a server in the system's credential store.
+#[tauri::command]
+async fn credential_save(
+    credentials: tauri::State<'_, Arc<credentials::Credentials>>,
+    server_id: String,
+    token: String,
+) -> Result<(), String> {
+    on_credentials(credentials, move |store| store.save(&server_id, &token)).await
+}
+
+/// The API key kept for a server, or nothing.
+#[tauri::command]
+async fn credential_load(
+    credentials: tauri::State<'_, Arc<credentials::Credentials>>,
+    server_id: String,
+) -> Result<Option<String>, String> {
+    on_credentials(credentials, move |store| store.load(&server_id)).await
+}
+
+/// Forgets the API key of a server.
+#[tauri::command]
+async fn credential_delete(
+    credentials: tauri::State<'_, Arc<credentials::Credentials>>,
+    server_id: String,
+) -> Result<(), String> {
+    on_credentials(credentials, move |store| store.remove(&server_id)).await
+}
+
+/// Brings the main window forward, for a second start of the app.
+#[cfg(desktop)]
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 /// Whether the primary mouse button is held down anywhere on screen. The window layer needs it to follow a
 /// view window that the user drags by its title bar. A synchronous command, so it runs on the main thread,
 /// which GDK requires.
@@ -104,7 +156,14 @@ fn primary_button_down(window: tauri::WebviewWindow) -> bool {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // One copy of the app runs per channel. This plugin has to be the first, so that a second copy hands over and
+    // ends before it opens anything. The channels have their own identifiers, so they still run side by side.
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+        show_main_window(app);
+    }));
+    builder
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -114,7 +173,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             app_environment,
             primary_button_down,
-            prepare_storage_dir
+            prepare_storage_dir,
+            credential_save,
+            credential_load,
+            credential_delete
         ])
         .on_window_event(|window, event| {
             // View windows belong to the main window: when it is gone the app ends, whatever else is open.
@@ -123,6 +185,12 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            // The keys are kept per channel: the identifier names the service in the credential store.
+            let service = app.config().identifier.clone();
+            app.manage(Arc::new(credentials::Credentials::new(
+                service,
+                credentials::native_store,
+            )));
             // The capability files scope file access to the channel's own data folder. A folder chosen
             // with GEMIREDMINE_DATA_DIR is outside it, so allow that one explicitly.
             if let Some(dir) = data_dir_override() {

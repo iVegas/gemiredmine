@@ -194,6 +194,38 @@ describe('the crate', () => {
     expect(sql).not.toMatch(/mysql|postgres/);
   });
 
+  it('keeps the API keys in the credential store of each system, and has none for a system it does not know', () => {
+    /** The lines of one table of Cargo.toml, up to the next table. */
+    const table = (header: string) => new RegExp(`\\n\\[${header.replace(/[.[\]()"]/g, '\\$&')}\\]\\n([\\s\\S]*?)(?=\\n\\[|$)`).exec(cargo)?.[1] ?? '';
+
+    expect(table('target.\'cfg(target_os = "linux")\'.dependencies')).toMatch(/zbus-secret-service-keyring-store = \{[^}]*"crypto-rust"/);
+    expect(table("target.'cfg(windows)'.dependencies")).toMatch(/windows-native-keyring-store = /);
+    expect(cargo).toMatch(/^keyring-core = /m);
+    // The old all-in-one crate would bring a store for every system, and a library to install on Linux.
+    expect(cargo).not.toMatch(/^keyring = /m);
+  });
+
+  it('runs one copy of the app per channel, with the plugin first so a second copy ends before it opens anything', () => {
+    const lib = read('src-tauri', 'src', 'lib.rs');
+    const plugins = [...lib.matchAll(/\.plugin\(([\w:]+)/g)].map((match) => match[1]);
+
+    expect(plugins[0]).toBe('tauri_plugin_single_instance::init');
+    expect(cargo).toMatch(/tauri-plugin-single-instance = /);
+    // The callback brings the first copy's window forward.
+    expect(lib).toMatch(/fn show_main_window[^}]*unminimize[^}]*show\(\)[^}]*set_focus/s);
+  });
+
+  it('registers the commands that the webview calls, by the names it calls them with', () => {
+    const lib = read('src-tauri', 'src', 'lib.rs');
+    const handler = /generate_handler!\[([^\]]*)\]/s.exec(lib)?.[1] ?? '';
+    const registered = handler.split(',').map((name) => name.trim()).filter(Boolean);
+    const platform = read('src', 'mainview', 'lib', 'tauri-platform.ts') + read('src', 'mainview', 'lib', 'tauri-windows.ts');
+    const called = [...platform.matchAll(/invoke(?:<[^>]*>)?\(\s*'([a-z_]+)'/g)].map((match) => match[1]);
+
+    expect(called.length).toBeGreaterThan(4);
+    for (const name of called) expect(registered, name).toContain(name);
+  });
+
   it('offers developer tools only as an opt-in feature', () => {
     expect(cargo).toMatch(/\[features\]\s+[^\[]*devtools = \["tauri\/devtools"\]/);
     expect(/^tauri = \{[^}]*devtools/m.test(cargo)).toBe(false);
