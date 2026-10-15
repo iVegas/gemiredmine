@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validate, prune, publish } from '../publish.mjs';
+import { validate, prune, publish, releaseFiles } from '../publish.mjs';
 
 describe('publish CLI logic', () => {
   let dir: string;
@@ -188,7 +188,8 @@ describe('publish Windows signing', () => {
         commitSha: 'abc1234567890abcdef1234567890abcdef12345',
         tag: channel === 'stable' ? 'v1.0.0' : 'unstable-v1.0.0-unstable.7',
         pointerTag: pointer ? 'unstable-latest' : null,
-        assets: files.map(file => ({ name: file, pointer: file.endsWith('.cer') || pointer })),
+        // As package-windows.mjs describes them: the certificate is on the build's release and, with a pointer, on that too.
+        assets: files.map(file => ({ name: file, pointer: false, ...(file.endsWith('.cer') && pointer ? { copyToPointer: true } : {}) })),
       })
     );
     return folder;
@@ -209,5 +210,39 @@ describe('publish Windows signing', () => {
     expect(create).toContain('self-signed certificate');
     expect(create).toContain(`Import-Certificate -FilePath ${cerName}`);
     expect(create).not.toContain('FilePath null');
+  });
+
+  it('attaches the self-signed certificate to the release itself, which the notes send testers to', () => {
+    const cerName = 'Gemiredmine-Unstable-self-signed.cer';
+    const folder = windowsFolder('unstable', 'unstable', 'self-signed', [cerName], true);
+
+    publish({ dirs: [folder], dryRun: true, log });
+
+    expect(logs.find(line => line.includes('release create unstable-v1.0.0-unstable.7'))).toContain(join(folder, cerName));
+  });
+
+  it('copies the certificate to the pointer release too, where the App Installer link is', () => {
+    const cerName = 'Gemiredmine-Unstable-self-signed.cer';
+    const folder = windowsFolder('unstable', 'unstable', 'self-signed', [cerName], true);
+
+    publish({ dirs: [folder], dryRun: true, log });
+
+    expect(logs.find(line => line.includes('release upload unstable-latest'))).toContain(join(folder, cerName));
+  });
+});
+
+describe('releaseFiles', () => {
+  const asset = (name: string, extra: Record<string, boolean> = {}) => ({ name, path: `/out/${name}`, pointer: false, copyToPointer: false, ...extra });
+
+  it('puts pointer assets on the pointer release only, and the others on the build own release', () => {
+    const { files, pointerFiles } = releaseFiles([
+      asset('versioned.msix'),
+      asset('fixed.msix', { pointer: true }),
+      asset('SHA256SUMS-windows.txt'),
+      asset('cert.cer', { copyToPointer: true }),
+    ]);
+
+    expect(files).toEqual(['/out/versioned.msix', '/out/SHA256SUMS-windows.txt', '/out/cert.cer']);
+    expect(pointerFiles).toEqual(['/out/fixed.msix', '/out/SHA256SUMS-windows.txt', '/out/cert.cer']);
   });
 });

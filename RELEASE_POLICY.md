@@ -62,7 +62,8 @@ Within a channel the version always increases, so every upgrade is accepted.
 Windows packages are signed with one of two profiles, chosen by channel:
 
 - **Canary and unstable: self-signed.** One certificate, created once and kept as a secret, so every
-  build has the same publisher and upgrades work. Each release attaches the public certificate
+  build has the same publisher and upgrades work. Every build's own release (`unstable-v*`, `canary-v*`) and the
+  channel's latest-build release (`unstable-latest`, `canary-latest`) attach the public certificate
   (`<app>-self-signed.cer`). Before installing, import it as an administrator into the Trusted People store:
   `Import-Certificate -FilePath <file>.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople`.
 - **Stable: trusted.** A publicly trusted code-signing certificate, so Windows installs the package without
