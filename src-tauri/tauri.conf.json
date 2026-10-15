@@ -16,11 +16,12 @@
         "label": "main",
         "title": "Gemiredmine Dev",
         "width": 1024,
-        "height": 768
+        "height": 768,
+        "dragDropEnabled": false
       }
     ],
     "security": {
-      "capabilities": ["main", "dev-preview-dev"],
+      "capabilities": ["backend", "main", "view-window", "dev-preview-dev"],
       "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' data:; style-src 'self' 'unsafe-inline'",
       "devCsp": null
     }

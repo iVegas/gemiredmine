@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CHANNELS } from '../channels.mjs';
@@ -18,31 +19,50 @@ const identifier = (permission: Permission) => (typeof permission === 'string' ?
 const previewChannels = Object.entries(CHANNELS).filter(([, config]) => config.devPreviewAvailable);
 
 describe('capabilities', () => {
-  it('has the main capability and one preview capability per channel that offers the preview', () => {
+  it('has the window capabilities and one preview capability per channel that offers the preview', () => {
     expect(capabilityFiles.sort()).toEqual(
-      ['main.json', ...previewChannels.map(([channel]) => `dev-preview-${channel}.json`)].sort()
+      ['backend.json', 'main.json', 'view-window.json', ...previewChannels.map(([channel]) => `dev-preview-${channel}.json`)].sort()
     );
     for (const file of capabilityFiles) {
-      const parsed = capability(file.replace(/\.json$/, ''));
-      expect(parsed.identifier).toBe(file.replace(/\.json$/, ''));
-      expect(parsed.windows).toEqual(['main']);
+      expect(capability(file.replace(/\.json$/, '')).identifier).toBe(file.replace(/\.json$/, ''));
     }
+  });
+
+  it('gives each kind of window only what it needs', () => {
+    expect(capability('backend').windows).toEqual(['main', 'view-*']);
+    expect(capability('main').windows).toEqual(['main']);
+    expect(capability('view-window').windows).toEqual(['view-*']);
+    // The developer preview belongs to the main window, so view windows never touch files.
+    for (const [channel] of previewChannels) expect(capability(`dev-preview-${channel}`).windows).toEqual(['main']);
+  });
+
+  it('lets only the main window create, focus and close windows', () => {
+    expect(capability('main').permissions).toEqual([
+      'core:webview:allow-create-webview-window',
+      'core:window:allow-set-focus',
+      'core:window:allow-unminimize',
+      'core:window:allow-close',
+    ]);
+    // A view window is dragged by its header. It cannot open or close windows, or move them around.
+    expect(capability('view-window').permissions).toEqual(['core:window:allow-start-dragging']);
   });
 
   it('lets the webview reach any host and port over http(s), because it is the user server', () => {
     // A pattern without a port only matches the default port, and Redmine often runs on 8080 or 3000.
-    const http = capability('main').permissions.find((p) => identifier(p) === 'http:default');
+    const http = capability('backend').permissions.find((p) => identifier(p) === 'http:default');
     expect(http).toEqual({ identifier: 'http:default', allow: [{ url: 'http://*:*' }, { url: 'https://*:*' }] });
   });
 
   it('opens only web links in the system browser', () => {
     // The opener scope is a glob, not a URL pattern, so `*` already covers any port and path.
-    const opener = capability('main').permissions.filter((p) => identifier(p).startsWith('opener:'));
+    const opener = capability('backend').permissions.filter((p) => identifier(p).startsWith('opener:'));
     expect(opener).toEqual([{ identifier: 'opener:allow-open-url', allow: [{ url: 'http://*' }, { url: 'https://*' }] }]);
   });
 
-  it('keeps file access out of the main capability', () => {
-    expect(capability('main').permissions.map(identifier).filter((id) => id.startsWith('fs:'))).toEqual([]);
+  it('keeps file access out of the window capabilities', () => {
+    for (const name of ['backend', 'main', 'view-window']) {
+      expect(capability(name).permissions.map(identifier).filter((id) => id.startsWith('fs:')), name).toEqual([]);
+    }
   });
 
   it.each(previewChannels)('limits the %s preview to that channel data folder', (channel, config) => {
@@ -70,7 +90,12 @@ describe('capabilities', () => {
   });
 
   it('enables, in the base config, the capabilities of the dev channel and no other', () => {
-    expect(readJson('src-tauri', 'tauri.conf.json').app.security.capabilities).toEqual(['main', 'dev-preview-dev']);
+    expect(readJson('src-tauri', 'tauri.conf.json').app.security.capabilities).toEqual([
+      'backend',
+      'main',
+      'view-window',
+      'dev-preview-dev',
+    ]);
   });
 });
 
@@ -174,6 +199,27 @@ describe('the build workflows', () => {
     expect(workflow).toContain('run: npm run build:desktop');
     expect(workflow).toContain(`scripts/release/check-${name}-binary.mjs`);
     expect(workflow.toLowerCase()).not.toContain('electrobun');
+  });
+
+  it('smoke-tests the AppImage on a Wayland compositor as well as on X11', () => {
+    const smoke = read('scripts', 'release', 'smoke-test-wayland.sh');
+
+    expect(workflows.linux).toContain('weston');
+    expect(workflows.linux).toContain('xvfb-run');
+    expect(workflows.linux).toContain('scripts/release/smoke-test-wayland.sh "dist/linux/${CHANNEL}/${name}" --appimage-extract-and-run');
+    // No X server to fall back to, and the app's own request for a toplevel window is what proves a Wayland client.
+    expect(smoke).toContain('env -u DISPLAY');
+    expect(smoke).toContain('WAYLAND_DEBUG=1');
+    expect(smoke).toContain('xdg_toplevel@[0-9]*\\.set_app_id("Gemiredmine');
+  });
+
+  it('runs the Wayland smoke test script as a command and refuses to run without one', () => {
+    const script = join(ROOT, 'scripts', 'release', 'smoke-test-wayland.sh');
+
+    expect(statSync(script).mode & 0o111, 'the script is executable').not.toBe(0);
+    const result = spawnSync('sh', [script], { encoding: 'utf8' });
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('usage:');
   });
 
   it.each(Object.entries(workflows))('%s keeps each channel in its own Rust cache', (_name, workflow) => {

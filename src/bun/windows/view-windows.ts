@@ -136,6 +136,11 @@ export class ViewWindows {
         entry?.window.activate();
         return Boolean(entry);
       },
+      attachViewWindow: ({ view, index }) => {
+        fromMain();
+        const entry = this.windowFor(view);
+        if (entry) this.attach(entry, index);
+      },
       reportTabStrip: layout => this.setLayout(fromMain(), layout),
       attachView: () => this.attach(fromViewWindow()),
       closeViewWindow: () => fromViewWindow().window.close(),

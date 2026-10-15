@@ -173,6 +173,7 @@ describe('ViewWindows', () => {
     );
     expect(() => window.requests.reportTabStrip(LAYOUT)).toThrow('Only the main window');
     expect(() => window.requests.focusViewWindow({ view: 'calendar' })).toThrow('Only the main window');
+    expect(() => window.requests.attachViewWindow({ view: 'calendar', index: 1 })).toThrow('Only the main window');
     expect(() => main.requests.attachView()).toThrow('Only a view window');
     expect(() => main.requests.closeViewWindow()).toThrow('Only a view window');
     expect(() => main.requests.openInMainWindow({ view: 'todo' })).toThrow('Only a view window');
@@ -350,6 +351,31 @@ describe('ViewWindows', () => {
     expect(main.send.viewAttached).toHaveBeenCalledWith({ view: 'calendar', index: undefined });
     expect(window.closed).toBe(true);
     expect(main.send.viewWindowClosed).not.toHaveBeenCalled();
+  });
+
+  describe('a view dropped on the tabs from its own window', () => {
+    // The system routes the drop, so no position on the screen is involved: the main window says which view and where.
+    it('closes that window and puts the view at the place it was dropped', async () => {
+      const calendar = await detach('calendar');
+      const settings = await detach('settings');
+
+      await main.requests.attachViewWindow({ view: 'calendar', index: 2 });
+
+      expect(main.send.viewAttached).toHaveBeenCalledWith({ view: 'calendar', index: 2 });
+      expect(calendar.closed).toBe(true);
+      expect(settings.closed).toBe(false);
+      expect(main.activations).toBe(1);
+      expect(main.send.viewWindowClosed).not.toHaveBeenCalled();
+    });
+
+    it('does nothing for a view that has no window', async () => {
+      const calendar = await detach('calendar');
+
+      await main.requests.attachViewWindow({ view: 'settings', index: 1 });
+
+      expect(main.send.viewAttached).not.toHaveBeenCalled();
+      expect(calendar.closed).toBe(false);
+    });
   });
 
   it('tells the main window when a view window closes with its view', async () => {

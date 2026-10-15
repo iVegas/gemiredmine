@@ -1309,12 +1309,15 @@ dependencies = [
 name = "gemiredmine"
 version = "0.0.0"
 dependencies = [
+ "gdk",
+ "gtk",
  "serde",
  "tauri",
  "tauri-build",
  "tauri-plugin-fs",
  "tauri-plugin-http",
  "tauri-plugin-opener",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

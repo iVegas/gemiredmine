@@ -4,10 +4,13 @@
 //! Keep it that way: anything about Redmine, diagnostics or the UI belongs in `src/`, where the
 //! unit tests and the Android build reach it.
 
+mod pointer;
+
 use std::ffi::OsString;
 use std::path::PathBuf;
 
 use serde::Serialize;
+use tauri::Manager;
 use tauri_plugin_fs::FsExt;
 
 /// The folder named by `GEMIREDMINE_DATA_DIR`, made absolute. Empty means unset.
@@ -46,13 +49,30 @@ fn app_environment() -> AppEnvironment {
     }
 }
 
+/// Whether the primary mouse button is held down anywhere on screen. The window layer needs it to follow a
+/// view window that the user drags by its title bar. A synchronous command, so it runs on the main thread,
+/// which GDK requires.
+#[tauri::command]
+fn primary_button_down(window: tauri::WebviewWindow) -> bool {
+    pointer::primary_button_down(&window)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![app_environment])
+        .invoke_handler(tauri::generate_handler![
+            app_environment,
+            primary_button_down
+        ])
+        .on_window_event(|window, event| {
+            // View windows belong to the main window: when it is gone the app ends, whatever else is open.
+            if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
+                window.app_handle().exit(0);
+            }
+        })
         .setup(|app| {
             // The capability files scope file access to the channel's own data folder. A folder chosen
             // with GEMIREDMINE_DATA_DIR is outside it, so allow that one explicitly.

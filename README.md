@@ -35,7 +35,7 @@ Android builds are not part of the current release pipeline.
 - **Cross-Platform Support:** Native-feeling applications for Ubuntu and Windows (via Tauri 2) and Android (via Capacitor).
 - **Multi-Server Management:** Easily connect to and switch between multiple independent Redmine backend servers.
 - **Dashboard and View Tabs:** The dashboard is pinned as the first tab and previews your calendar and to-do list. Select a preview to open the full view in its own tab; every tab except the dashboard can be closed.
-- **Movable Tabs and View Windows:** Drag a tab to put it in another place, or press Ctrl+Shift+Page Up or Ctrl+Shift+Page Down. In the desktop app, drag a tab out of the window to open the view in a window of its own. To put it back, drag that window by its title bar or its tab over the main window's tabs and release it where the tab should go, or select **Move to main window**. If your desktop does not report window positions (some Wayland sessions), use the button.
+- **Movable Tabs and View Windows:** Drag a tab to put it in another place, or press Ctrl+Shift+Page Up or Ctrl+Shift+Page Down. In the desktop app, drag a tab out of the window to open the view in a window of its own. To put it back, drag the tab in that window onto the main window's tabs and release it where the tab should go, or select **Move to main window**. Where the desktop reports window positions (Windows), you can also drag the window itself by its title bar onto the tabs. On Wayland your desktop decides where the new window opens, and the tab and the button are the ways back.
 - **Calendar:** Time you logged and open tasks due, by day, for any month.
 - **To-do List:** Every open task assigned to you across all projects, grouped by priority, with overdue tasks highlighted.
 - **Deep Gemini AI Integration:** A cloud-first, configurable integration with Gemini to manage routines such as time logging, reminders, task updates, and wiki editing.
@@ -84,7 +84,7 @@ We welcome contributions! Please review our [`CONTRIBUTING.md`](./CONTRIBUTING.m
    - Windows 11 MSIX (on Windows): `set TARGET_PLATFORM=windows` (PowerShell: `$env:TARGET_PLATFORM='windows'`), then `CHANNEL=<channel>` with `npm run build:desktop` and `node scripts/release/package-windows.mjs`. It needs the Windows SDK tools; without `WINDOWS_SIGNING` the package is unsigned.
    - Android (Capacitor): `npx cap sync android`
 
-Tabs cannot be dragged out into windows of their own in the Tauri shell yet; see [`docs/tauri-migration/`](./docs/tauri-migration/progress.md).
+On Linux the app runs natively on Wayland, and on X11 where that is the session, though X11 is not a target. The state of the Tauri migration is in [`docs/tauri-migration/`](./docs/tauri-migration/progress.md).
 
 The version is set only in `version` in `package.json`. The app's name, identifier, settings folder and
 version are derived from it at build time (see `scripts/release/channels.mjs`).

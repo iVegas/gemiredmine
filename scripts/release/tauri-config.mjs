@@ -7,14 +7,20 @@
 // The overlay never contains `null` (a merge patch deletes the key then) and never the CSP, which
 // every channel shares from the base file. Arrays are replaced whole, so `windows` is complete.
 
-/** The size of the main window, as before the move to Tauri. */
-const MAIN_WINDOW = Object.freeze({ label: 'main', width: 1024, height: 768 });
+/**
+ * The size of the main window, as before the move to Tauri. The app takes no files dropped on it, and Tauri's
+ * handling of them would stop a view's tab being dragged into this window from another one (on Windows).
+ */
+const MAIN_WINDOW = Object.freeze({ label: 'main', width: 1024, height: 768, dragDropEnabled: false });
+
+/** The capabilities of every channel: the backend in each window, the main window's own, and the view windows'. */
+const WINDOW_CAPABILITIES = Object.freeze(['backend', 'main', 'view-window']);
 
 /**
  * @param {ReturnType<typeof import('./channels.mjs').deriveBuildInfo>} info
  */
 export function tauriChannelConfig(info) {
-  const capabilities = info.devPreviewAvailable ? ['main', `dev-preview-${info.channel}`] : ['main'];
+  const capabilities = info.devPreviewAvailable ? [...WINDOW_CAPABILITIES, `dev-preview-${info.channel}`] : [...WINDOW_CAPABILITIES];
   return {
     productName: info.productName,
     mainBinaryName: info.appName,

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "view-window",
+  "description": "A window that shows one view may be dragged by its header. The main window does the rest.",
+  "windows": ["view-*"],
+  "permissions": ["core:window:allow-start-dragging"]
+}

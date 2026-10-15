@@ -86,11 +86,11 @@ describe('packageLinux', () => {
     );
   });
 
-  it('starts the executable on X11 from AppRun, and names it in the desktop entry', () => {
+  it('starts the executable from AppRun without choosing a display server, and names it in the desktop entry', () => {
     pack();
 
     expect(read('AppRun')).toContain('exec "$HERE/usr/bin/Gemiredmine-Unstable" "$@"');
-    expect(read('AppRun')).toContain('export GDK_BACKEND="${GDK_BACKEND:-x11}"');
+    expect(read('AppRun')).not.toContain('GDK_BACKEND');
     // The window class Tauri gives the window is the executable name, which the desktop entry has to match.
     expect(read('desktop')).toContain('StartupWMClass=Gemiredmine-Unstable');
     expect(read('desktop')).toContain('Exec=AppRun %U');
