@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { readdirSync, readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CHANNELS } from '../channels.mjs';
@@ -198,6 +199,27 @@ describe('the build workflows', () => {
     expect(workflow).toContain('run: npm run build:desktop');
     expect(workflow).toContain(`scripts/release/check-${name}-binary.mjs`);
     expect(workflow.toLowerCase()).not.toContain('electrobun');
+  });
+
+  it('smoke-tests the AppImage on a Wayland compositor as well as on X11', () => {
+    const smoke = read('scripts', 'release', 'smoke-test-wayland.sh');
+
+    expect(workflows.linux).toContain('weston');
+    expect(workflows.linux).toContain('xvfb-run');
+    expect(workflows.linux).toContain('scripts/release/smoke-test-wayland.sh "dist/linux/${CHANNEL}/${name}" --appimage-extract-and-run');
+    // No X server to fall back to, and the app's own request for a toplevel window is what proves a Wayland client.
+    expect(smoke).toContain('env -u DISPLAY');
+    expect(smoke).toContain('WAYLAND_DEBUG=1');
+    expect(smoke).toContain('xdg_toplevel@[0-9]*\\.set_app_id("Gemiredmine');
+  });
+
+  it('runs the Wayland smoke test script as a command and refuses to run without one', () => {
+    const script = join(ROOT, 'scripts', 'release', 'smoke-test-wayland.sh');
+
+    expect(statSync(script).mode & 0o111, 'the script is executable').not.toBe(0);
+    const result = spawnSync('sh', [script], { encoding: 'utf8' });
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('usage:');
   });
 
   it.each(Object.entries(workflows))('%s keeps each channel in its own Rust cache', (_name, workflow) => {

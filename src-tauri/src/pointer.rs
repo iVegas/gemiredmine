@@ -4,9 +4,10 @@
 //! from a move the window manager made on its own. Tauri has no API for the state of the mouse buttons,
 //! and the webview gets no pointer events while the system moves a window, so this asks the system.
 //!
-//! On Linux it reads the pointer through GDK, which needs an X11 session (the app runs on X11, through
-//! XWayland on a Wayland desktop, see AppRun). Wayland does not tell applications what the pointer is
-//! doing outside their own windows, so there the answer is always "not pressed".
+//! On Linux it reads the pointer through GDK. That is only meaningful where the app can see the whole
+//! screen (X11): Wayland does not tell an application what the pointer is doing outside its own windows, and
+//! a window cannot tell where it is, so the window layer never sees a window being dragged there and does
+//! not call this. Putting a view window back on a Wayland session is done with a drag and drop instead.
 
 /// The virtual key of the primary button on Windows: the right one when the user swapped the buttons.
 #[cfg(any(windows, test))]

@@ -49,16 +49,14 @@ export function desktopEntry({ productName, version, channel, identifier, appNam
 
 /**
  * Starts the bundled executable, `binary` being its path inside the AppImage, for example usr/bin/Gemiredmine.
- * The app runs on X11 (through XWayland on a Wayland desktop) unless the user sets GDK_BACKEND: windows
- * that follow each other across the screen need the pointer position, which Wayland does not give, and
- * the previous desktop shell forced X11 too.
+ * It does not choose a display server: GTK uses Wayland on a Wayland session and X11 on an X11 one, and a
+ * user can still set GDK_BACKEND. Wayland is the target on Linux, so nothing here may depend on X11.
  */
 export function appRunScript(binary) {
   return [
     '#!/bin/sh',
     '# Starts the app from the AppImage mount point.',
     'HERE="$(dirname "$(readlink -f "$0")")"',
-    'export GDK_BACKEND="${GDK_BACKEND:-x11}"',
     `exec "$HERE/${binary}" "$@"`,
     '',
   ].join('\n');
