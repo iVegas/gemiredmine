@@ -255,6 +255,67 @@ describe('developer preview', () => {
   });
 });
 
+describe('a preview owned by another window', () => {
+  const port = () => ({
+    status: vi.fn(async () => ({ available: true, enabled: true, dataDir: '/owner', logBytes: 5, pendingEntries: 1 })),
+    setEnabled: vi.fn(async (enabled: boolean) => ({ available: true, enabled, dataDir: '/owner', logBytes: 0, pendingEntries: 0 })),
+    record: vi.fn(),
+    createFeedback: vi.fn(async () => ({ issueUrl: 'https://github.com/x', reportPath: '/owner/feedback/a.md', logsIncluded: 'all' as const })),
+  });
+  const openSpy = () => vi.spyOn(DevPreview, 'open');
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('hands every preview request to it and opens nothing of its own', async () => {
+    const preview = port();
+    const open = openSpy();
+    const { backend, files } = setup({ preview });
+
+    expect((await backend.getDevPreviewStatus()).dataDir).toBe('/owner');
+    await backend.setDevPreviewEnabled(false);
+    await backend.recordDiagnostic('warn', 'webview', 'something');
+    await backend.createFeedback({ title: 'T', description: 'D', includeLogs: true });
+
+    expect(preview.setEnabled).toHaveBeenCalledWith(false);
+    expect(preview.record).toHaveBeenCalledWith({ level: 'warn', scope: 'webview', message: 'something' });
+    expect(preview.createFeedback).toHaveBeenCalledWith({ title: 'T', description: 'D', includeLogs: true });
+    expect(open).not.toHaveBeenCalled();
+    expect(files.files.size).toBe(0);
+  });
+
+  it('records a failed Redmine call there', async () => {
+    const preview = port();
+    const { backend, fetchMock } = setup({ preview });
+    fetchMock.mockResolvedValueOnce(failed(500, 'Server Error'));
+
+    await expect(backend.listAssignedTasks(access)).rejects.toThrow('500');
+
+    expect(preview.record).toHaveBeenCalledWith(expect.objectContaining({ level: 'error', scope: 'listAssignedTasks' }));
+  });
+
+  it('still reports the Redmine error when the owner cannot be reached', async () => {
+    const preview = port();
+    preview.record.mockImplementation(() => {
+      throw new Error('The main window is gone.');
+    });
+    const { backend, fetchMock } = setup({ preview });
+    fetchMock.mockResolvedValueOnce(failed(401, 'Unauthorized'));
+
+    await expect(backend.getCurrentUser(access)).rejects.toThrow('401');
+  });
+
+  it('is not used by a build without the developer preview', async () => {
+    const preview = port();
+    const { backend } = setup({ preview, devPreviewAvailable: false });
+
+    expect((await backend.getDevPreviewStatus()).available).toBe(false);
+    await backend.recordDiagnostic('error', 's', 'm');
+
+    expect(preview.status).not.toHaveBeenCalled();
+    expect(preview.record).not.toHaveBeenCalled();
+  });
+});
+
 describe('a build without the developer preview', () => {
   const unavailable = () => {
     const open = vi.fn();
