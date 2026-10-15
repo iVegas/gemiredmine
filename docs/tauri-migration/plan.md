@@ -50,7 +50,8 @@ process. Android runs on **Capacitor 8**.
 - **Docs:** README (mentions at lines 7, 35, 59, 75-77), RELEASE_POLICY (108-110, 145-158), PLAN.md:8, ROADMAP.md:4.
 - **Lockfiles:** `bun.lock` is unused.
 - **Android today:** every `redmineApi` call throws outside Electrobun, so the Android app cannot reach Redmine.
-  Servers and API keys are held in memory only (`src/mainview/lib/store.ts`), so a new webview origin loses no user data.
+  Servers and API keys were held in memory only (`src/mainview/lib/store.ts`), so a new webview origin lost no user data.
+  *Since 2026-10-15 the servers (not the API keys) are kept in the app's database; see `progress.md`, "Storage".*
 
 ## Invariants
 

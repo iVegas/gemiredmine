@@ -89,6 +89,26 @@ a real folder use `src/bun/diagnostics/__tests__/support/node-data-fs.ts`. A tes
 (`src/bun/__tests__/webview-safe.spec.ts`) fails when `node:` imports, `Buffer`, `process` or `Bun`
 appear in the files that have to stay portable. Put code that needs them next to `tauri-platform.ts`.
 
+## Storage
+
+What the app keeps between runs lives in one SQLite database, `gemiredmine.db`, in the channel's data folder (the
+folder the About screen names; `GEMIREDMINE_DATA_DIR` moves it). Today that is the settings and the Redmine servers
+the user added. It never holds an API key or a password: the user signs in again after a start. The history of the
+conversations with the language model goes in the same file, as new tables.
+
+- `src/bun/storage/` is portable like the rest of the backend. It needs only a `SqlDatabase` (`execute` and `select`).
+  The desktop shell supplies one from Tauri's SQL plugin (`openDatabase` in `src/mainview/lib/tauri-platform.ts`) and the
+  tests from `node:sqlite` (`src/bun/storage/__tests__/support/node-sql-database.ts`).
+- **A change to the schema is a new entry in `MIGRATIONS`** (`src/bun/storage/migrations.ts`), never an edit to one that
+  was released. Write each step so that it is harmless when it runs twice (`CREATE TABLE IF NOT EXISTS`): the database
+  has no transaction across calls, so an app that is closed in the middle of a migration starts it again. A test runs
+  every step twice. The data of a newer version is refused (`StorageTooNewError`), and the app carries on without saving.
+- The plugin binds every number as a float, so declare whole numbers INTEGER, and bind 0 and 1, not booleans. A change
+  that must be all or nothing has to be one statement; `AppStorage` runs its saves one at a time for the same reason.
+- Only the main window opens the database (`src-tauri/capabilities/storage.json`). A view window gets what it shows from
+  the main window. `src/mainview/lib/persistence.ts` loads the servers when the app starts and saves them when they change.
+- The webview picks the database's path (the plugin takes a connection string), so keep the permission off the other windows.
+
 ## The desktop shell
 
 The shell is Tauri 2: the webview plus a small Rust crate in `src-tauri/` that does nothing but wire up plugins.
@@ -96,7 +116,8 @@ Keep it that way; logic belongs in TypeScript, where the tests and the Android b
 
 - **Capabilities need review.** `src-tauri/capabilities/` says what the webview may do. `backend.json` lets the main window and
   the view windows (`view-*`) talk to any host over http(s) (the server is the user's own) and open web links. `main.json`
-  lets the main window open, focus and close view windows, and `view-window.json` lets a view window be dragged. Each
+  lets the main window open, focus and close view windows, `view-window.json` lets a view window be dragged, and
+  `storage.json` lets the main window read and write the app's database. Each
   `dev-preview-<channel>.json` gives that channel's developer preview file access to its own data folder, for the main
   window only (a view window hands its diagnostics to the main window), and stable gets none. A new permission is
   a security change: say why in the pull request.

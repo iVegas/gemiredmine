@@ -3,7 +3,7 @@
 **Start here.** This file says what is done, what is next, and how to check it. The reasoning and the full
 specification of the remaining work are in [`plan.md`](./plan.md).
 
-*Last updated 2026-10-15, after PR 2b and the move to Wayland first on `claude/tauri-window-layer`, stacked on PR 2. PR 0 and PR 1 are merged (`648fe5b`).*
+*Last updated 2026-10-15, after the app's database and the saved servers on `claude/sharp-pascal-qbz3f6`. PR 0 and PR 1 are merged (`648fe5b`), and so are pull requests #21, #22 and #23 (PR 2, PR 2b), as `main` shows (`3baf9a8`); the rows below for them were written before that.*
 
 **Keep this file current.** Whoever does a step updates this file in the same pull request: the status table, the
 commit SHAs, anything that went differently from the plan, and what you learned about the environment. Put a decision
@@ -18,6 +18,7 @@ that changes in `plan.md`, with the reason.
 | Merge of `main` | **done** | `7340021` | `main` gained `e9f36d1` (view tabs in their own windows) while the PR was open; see "Merge with main" |
 | PR 2: Tauri shell | **implemented, draft** | `27f8129` `d4be6ac` `7b7e677` `2681143` `63ee18b` and a docs commit | Branch `claude/tauri-2-shell`, pull request #21. One window only. CI gates G1 to G3 passed on the first run. Open: the hardware gates G4 to G6. SHAs are as first pushed |
 | PR 2b: window layer on Tauri, and native Wayland | **implemented, draft** | `49df48e` `e1cd3f9` `30ebcf9` `c4eceaa` `4af9cbf` `773f908` `47278ab` `5300d47` and a docs commit | Pull request #22, branch `claude/tauri-window-layer`, stacked on `claude/tauri-2-shell`. Verified on a Wayland compositor (sway, headless) and, for the title-bar drop, on X11 with metacity. Open: GNOME and KDE, an NVIDIA machine, Windows, mixed-DPI monitors. See "PR 2b" below |
+| Storage: the app's database, saved servers, certificate asset | **implemented** | `c8d26d9` `3b13a86` `061f2b2` `0fd5a93` and a docs commit | Branch `claude/sharp-pascal-qbz3f6`, from `main` at `3baf9a8`. After the owner's test of Windows unstable build 10. See "Storage" below |
 | PR 3: end-to-end tests, rename `src/bun` to `src/core` | optional | | Best at the start of the Android phase |
 | Android on Tauri, retire Capacitor | not started | | Outline in `plan.md` |
 
@@ -218,6 +219,82 @@ Notes for the next person:
 - Native Wayland has no NVIDIA problem here (no GPU in the sandbox). WebKitGTK can show a blank window with the proprietary NVIDIA
   driver (reported for several WebKitGTK versions); `WEBKIT_DISABLE_DMABUF_RENDERER=1` is the workaround people use. It is **not** set, because it is unverified here. G4 decides.
 
+### Storage: the app's database (2026-10-15, after the move)
+
+The owner tested the Windows unstable build 10 and reported that **multiple windows work well**, and that the one problem was that
+**nothing is kept for the next launch**. The history of the conversations with the language model will need a store too, so the owner
+asked for a storage for the application now, for the configuration and for that later use.
+
+**What was built**
+- One SQLite database per channel, `gemiredmine.db`, in the channel's data folder (the folder the developer preview already uses:
+  `$XDG_DATA_HOME/gemiredmine-<channel>`, `%LOCALAPPDATA%\gemiredmine-<channel>`, or `GEMIREDMINE_DATA_DIR`). Channels never share it.
+- `src/bun/storage/` (portable; `webview-safe.spec.ts` scans it): `SqlDatabase` (`execute`, `select`), `migrations.ts` (a list of
+  versioned steps), `app-storage.ts` (`AppStorage`: the servers, and a `settings` table for configuration as JSON).
+  The conversation history will be new tables in a new migration. No tables for it exist yet, because its shape is not known.
+- `GemiBackend.loadSavedServers` and `saveServers`. `src/mainview/lib/persistence.ts` loads the servers when the main window starts
+  (the app shows "Loading…" until then, so a returning user does not see the welcome screen) and saves them when they change.
+- Tauri: `tauri-plugin-sql` 2.5.0 with only the `sqlite` feature (bundled SQLite), `@tauri-apps/plugin-sql` 2.5.0, the `storage`
+  capability (windows: `main` only; `sql:allow-load`, `-select`, `-execute`), and one Rust command, `prepare_storage_dir(name)`, that makes
+  the channel's folder (0700) and returns its path. The plugin does not create folders, and a stable build has no file permissions.
+- The certificate: the `.cer` of canary and unstable is now attached to the build's own release (`unstable-v*`, `canary-v*`) as well as to
+  `unstable-latest` and `canary-latest`. It had been marked pointer-only, so only the latter had it, although the notes of the former named it.
+
+**Decided without the owner (change them if you disagree)**
+- **The API key is not saved, nor the password.** What is saved is the server's name and address, the order, which server is active, and
+  who signed in last (id, login, names), so the sign-in form starts with the user name. After a start the user types the password again.
+  `ROADMAP.md` says passwords are not stored by default and PLAN.md says connections are stored "securely"; a key in a plain file next to
+  the database would not be secure, and the secure places (Windows Credential Manager, the Secret Service on Linux) need native code that
+  nobody has tried yet. **Saving the API key is the likely next request**; the way is a Rust command on the OS credential store (the `keyring`
+  crate), with the key left out of the database as it is now. It is an owner decision because of the Linux sessions without a Secret Service.
+- **Migrations live in TypeScript, not in the plugin.** The plugin's own migrations are keyed by the exact connection string, which here
+  holds a path that depends on the channel and the user. Each step must be safe to run twice, and a test runs every step twice.
+- **Only the main window has the permission.** The plugin takes any path from the webview, so the permission stays off the other windows. A
+  view window gets its servers from the main window, as before. The LLM history will need a decision about who owns it.
+- A database from a newer app is refused (`StorageTooNewError`) and left as it is; the app runs without saving and says so on the welcome
+  screen and in Settings. When the saved servers cannot be read, nothing is saved in that run, so that the empty stores do not erase them.
+
+**Findings that cost time, and that the next person should know**
+- **The plugin binds every JS number as a 64-bit float** (`as_f64`), and a JS boolean as JSON text. Whole numbers must go in INTEGER columns
+  (SQLite then stores them as integers), and flags as 0 and 1. `node:sqlite`, which the tests use, binds numbers as floats as well, so the tests see what the plugin does.
+- **There is no transaction across calls**: the plugin works through a pool of up to 10 connections. A manual `BEGIN` that fails would leave a
+  connection in a transaction, so none is used; every step is a single statement, and `AppStorage` runs its saves one at a time.
+- sqlx does not create the folder around the file. sqlx reads `?` in a connection string as the start of options and decodes `%` escapes, so
+  `sqliteUrl` escapes both; checked in the real app with a folder called `we?ird%20dir`.
+- The database is in WAL mode (sqlx's default), so there are `-wal` and `-shm` files next to it, and a killed app loses nothing. The files are
+  created 0644 by the plugin; the folder is 0700, which is what keeps them private on Linux.
+- `Cargo.lock` gained 57 crates. It lists `sqlx-mysql`, `sqlx-postgres` and `rsa` too, which are **not compiled** (only `sqlite` is enabled),
+  but a scanner of the lock file will see them. No existing crate changed version.
+- The unstable binary grew from 12.5 MB to 15.4 MB. A cold `CHANNEL=unstable npm run build:desktop` took 5m18s here (a second channel 2m17s);
+  `cargo test --lib` 2m34s cold.
+- `check-linux-binary.mjs` fails in this sandbox (Ubuntu 24.04, glibc 2.39). That is the sandbox: CI builds on ubuntu-22.04.
+
+**Checked in the real app** (Xvfb, unstable and stable builds, mock Redmine, a private `XDG_DATA_HOME`)
+- First start: the folder is 0700, the database has `user_version` 1, both tables and WAL mode. The welcome screen shows.
+- Adding a server with sign-in writes one row (user id as an integer) and the active server; **no API key or password is in the database,
+  the WAL or anywhere else under the data folder** (grepped for the key and the password).
+- After a `SIGKILL` and a start: the dashboard asks to sign in to the server, with `alice` already in the user name field. Signing in works.
+  A second server, switching the active one, and removing a server are each written, and a clean restart brings back the same order and the active one.
+- A database marked `user_version` 99: the welcome screen explains that the saved data is from a newer version; adding a server in that
+  state leaves the database untouched (still 99, still the old server).
+- A data folder named `we?ird%20dir` through `GEMIREDMINE_DATA_DIR`: created, used, and the right folder.
+- The stable build (no file permissions, no developer preview) does all of this in `gemiredmine/`.
+- Tests: 59 files, 663 tests (one skipped) with the default channel and with `CHANNEL=stable`; `tsc`, `cargo fmt --check`, `cargo clippy -D warnings`
+  and `cargo test --lib` (8 tests) are clean. Mutations turned tests red: a failed save no longer forcing the next save (found a test that did not
+  catch it; fixed), no comparison with the newest saved state, a load applied after stopping, the old pointer-only flag of the certificate.
+
+**CI on `0fd5a93`** (dispatched on the branch, unstable channel, build only), both green: **Build Linux AppImage** (ubuntu-22.04, 9m35s: the
+glibc and library check with the bundled SQLite, the X11 and the Wayland smoke tests) and **Build Windows package** (7m48s: SQLite compiles and links
+under MSVC, the dependency check, the process still alive after 20 s, the MSIX built and signed). The smoke tests only prove that the app starts, so
+they do not prove that the database works on Windows.
+
+**Not verified**
+- **The database on Windows.** Whether it opens and keeps the servers, whether it survives an MSIX in-place upgrade, and where the packaged
+  app's `%LOCALAPPDATA%` writes go, have to be looked at on a Windows 11 machine. Please check, after installing the next unstable build, that
+  the servers are there after closing and opening the app, and after the next update.
+- Two copies of the same channel running at once: both write to the one database, and the last save wins (a copy that removes a server
+  deletes the rows it does not know). There is no single-instance guard in the app.
+- A view window never opens the database (it has no permission). The real app was not driven with a view window open after this change; the window code itself is unchanged.
+
 ## How it was verified
 
 - All suites pass with the default channel and with `CHANNEL=stable`; `tsc` and the webview build are clean. This was
@@ -262,7 +339,7 @@ AppImage 5.0 MB) and driven with `xdotool`:
   server link with a port) and the prefilled issue link reached `xdg-open` (a fake one logged them).
 - The webview profile lives in `<LocalData>/com.gemiredmine.app.unstable`.
 - A stable build, made after the unstable one in the same `target` folder, embeds `com.gemiredmine.app` and no
-  `dev-preview-*` capability, has no preview panel, and creates no data folder. So a shared build cache does not carry one
+  `dev-preview-*` capability, has no preview panel, and (before the app's database, see "Storage") created no data folder. So a shared build cache does not carry one
   channel's identity into another.
 - `package-linux.mjs` with the real, pinned `appimagetool` made a working AppImage; run with
   `--appimage-extract-and-run` it signed in to the mock (AppRun still set `GDK_BACKEND=x11` then).
@@ -368,6 +445,10 @@ clean Windows 11. That is gate G5. A runner has WebView2 and a desktop session, 
   window and turns dragging tabs into windows off on Tauri; PR 2b ports it. Unstable users lose the feature between the two.
 
 **Open questions for the project owner**
+- **Should the app keep the API key between runs?** Today it does not (see "Storage"): the user signs in with the password at every start, and
+  only the user name is remembered. Keeping it safely means the OS credential store (Windows Credential Manager, the Secret Service on Linux).
+- What will the history of the language model conversations be keyed by (server, user, project)? It decides the first tables, and whether view
+  windows need the `storage` permission.
 - Who runs gates G4 to G6, and when? They block taking pull request #21 out of draft. G4 and G5 now also cover the window layer
   (on Wayland, and on Windows 11).
 - Keep the title-bar drop on Windows? It needs the pointer command and the polling code. The tab drop (new) works on every
@@ -410,7 +491,9 @@ xdotool mousemove 512 362 click 1; xdotool type --delay 25 "text"
 - The window is 1024x768 at the top-left of the display. Layout changes move the coordinates, so take a screenshot first.
   On the empty start screen: server name (512, 362), URL (512, 440), user name (408, 585), password (616, 585) and
   "Add Server" (657, 764). Once signed in: the user menu (916, 32), then "About" (736, 318).
-- Servers and API keys are held in memory only, so every launch starts at the sign-in form.
+- Servers are kept in `<data folder>/gemiredmine.db` (below `$XDG_DATA_HOME/gemiredmine-unstable`, or `GEMIREDMINE_DATA_DIR`); API keys are
+  not. So a launch starts at a sign-in form for the active server, with the user name filled in. For a clean start use a new `XDG_DATA_HOME`.
+  To look at the data: `python3 -c "import sqlite3; ..."` on a copy, or on the file with the app stopped (`mode=ro` works while it runs).
 - Allow about 3 seconds after a click before taking a screenshot; software rendering repaints slowly.
 - Scroll with `xdotool click 5` (down) and `4` (up). The developer preview is at the bottom of About.
 - `GEMIREDMINE_DATA_DIR=<dir>` moves the preview's data; otherwise it is `$XDG_DATA_HOME/gemiredmine-unstable`. The
