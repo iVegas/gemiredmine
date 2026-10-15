@@ -6,10 +6,13 @@
     closeView,
     firstMovableIndex,
     isClosable,
+    isDetailView,
     moveView,
     openViews,
+    viewLabels,
     viewPanelId,
     viewTabId,
+    viewTitle,
     type ViewId,
   } from './lib/views';
   import { attachViewWindowAt, canDetachViews, detachView, detachedViews, reportTabStrip, windowDropTarget } from './lib/windows';
@@ -85,7 +88,7 @@
   function moveTo(view: ViewId, index: number) {
     moveView(view, index);
     const views = $openViews;
-    announcement = `${VIEW_TITLES[view]} tab moved to position ${views.indexOf(view) + 1} of ${views.length}`;
+    announcement = `${viewTitle(view)} tab moved to position ${views.indexOf(view) + 1} of ${views.length}`;
     // Moving the tab's element can take focus off it.
     focusTab(view);
   }
@@ -302,7 +305,7 @@
       aria-selected={selected}
       aria-keyshortcuts={keyShortcuts(view)}
       tabindex={selected ? 0 : -1}
-      title={isClosable(view) ? undefined : 'Pinned tab'}
+      title={isDetailView(view) ? viewTitle(view, $viewLabels) : isClosable(view) ? undefined : 'Pinned tab'}
       data-dragging={dragged ? (drag?.outside ? 'outside' : 'inside') : undefined}
       class="group relative flex shrink-0 items-center gap-2 rounded-t-md border border-b-0 px-3 py-2 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 {selected ? 'bg-gray-50 border-gray-200 text-gray-900' : 'bg-transparent border-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900'} {dragged ? 'cursor-grabbing opacity-60' : ''} {dragged && drag?.outside ? 'border-dashed border-blue-500' : ''}"
       draggable={dragsOut ? 'true' : undefined}
@@ -320,7 +323,7 @@
           <path d="M9.828.722a.5.5 0 0 1 .354.146l4.95 4.95a.5.5 0 0 1-.707.707c-.28-.28-.576-.316-.766-.29l-3.168 3.168c.09.513.068 1.093-.137 1.693-.246.722-.763 1.457-1.637 2.15a.5.5 0 0 1-.664-.039L5.95 11.06l-3.597 3.597a.5.5 0 1 1-.707-.707L5.243 10.35 3.142 8.25a.5.5 0 0 1-.038-.664c.692-.874 1.427-1.391 2.149-1.637.6-.205 1.18-.227 1.693-.137l3.168-3.168c.026-.19-.01-.486-.29-.766a.5.5 0 0 1 .354-.854z" />
         </svg>
       {/if}
-      <span>{VIEW_TITLES[view]}</span>
+      <span class="max-w-[14rem] truncate">{viewTitle(view, $viewLabels)}</span>
       {#if isClosable(view)}
         <!-- Pointer shortcut only: keyboard and screen reader users close the tab with Delete (aria-keyshortcuts). -->
         <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->

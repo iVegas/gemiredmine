@@ -3,6 +3,8 @@ import { render, fireEvent } from '@testing-library/svelte';
 import CalendarView from '../CalendarView.svelte';
 import { redmineApi } from '../lib/api';
 import { monthBounds, toDateKey } from '../lib/calendar';
+import { get } from 'svelte/store';
+import { activeView, openViews, resetViews } from '../lib/views';
 import type { RedmineIssue, RedmineTimeEntry } from '../../bun/redmine/types';
 
 vi.mock('../lib/api', () => ({
@@ -34,6 +36,7 @@ describe('CalendarView Component', () => {
     vi.resetAllMocks();
     api.listTimeEntries.mockResolvedValue(entries);
     api.listOpenTasks.mockResolvedValue(tasks);
+    resetViews();
   });
 
   it('loads the visible month for the server and summarises logged time', async () => {
@@ -94,5 +97,32 @@ describe('CalendarView Component', () => {
 
     expect(await view.findByText('#12 · 1.5 h')).toBeInTheDocument();
     expect(view.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('opens a log entry in a tab of its own when it is selected on its day', async () => {
+    const view = render(CalendarView, { props: { server } });
+
+    await fireEvent.click(await view.findByRole('button', { name: /Open log entry #1: task #12/ }));
+
+    expect(get(openViews)).toEqual(['dashboard', 'log:1:1']);
+    expect(get(activeView)).toBe('log:1:1');
+  });
+
+  it('opens an entry that was logged on a project, not on a task', async () => {
+    const view = render(CalendarView, { props: { server } });
+
+    await fireEvent.click(await view.findByRole('button', { name: /Open log entry #2: Internal/ }));
+
+    expect(get(openViews)).toContain('log:1:2');
+  });
+
+  it('opens a task in a tab of its own when it is selected on its due date', async () => {
+    const view = render(CalendarView, { props: { server } });
+    await view.findByRole('button', { name: /Open log entry #1/ });
+
+    await fireEvent.click(view.getByRole('button', { name: 'Tasks' }));
+    await fireEvent.click(view.getByRole('button', { name: 'Open task #42: Write report' }));
+
+    expect(get(openViews)).toEqual(['dashboard', 'task:1:42']);
   });
 });

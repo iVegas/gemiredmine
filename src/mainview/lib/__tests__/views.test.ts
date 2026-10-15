@@ -12,6 +12,17 @@ import {
   insertView,
   routeViews,
   firstMovableIndex,
+  canDetach,
+  closeViewsOfServer,
+  isDetailView,
+  logView,
+  openLogEntry,
+  openTask,
+  parseDetailView,
+  setViewLabel,
+  taskView,
+  viewLabels,
+  viewTitle,
 } from '../views';
 
 describe('view tabs', () => {
@@ -160,5 +171,75 @@ describe('view tabs', () => {
 
     expect(routed).toEqual(['calendar', 'todo']);
     expect(get(openViews)).toEqual(['dashboard', 'todo']);
+  });
+});
+
+describe('detail views', () => {
+  beforeEach(() => {
+    routeViews(null);
+    resetViews();
+    viewLabels.set({});
+  });
+
+  it('are named by what they show, the server and the number', () => {
+    expect(taskView('server-1', 42)).toBe('task:server-1:42');
+    expect(logView('server-1', 7)).toBe('log:server-1:7');
+    expect(parseDetailView('task:0b1c-2d:42')).toEqual({ kind: 'task', serverId: '0b1c-2d', id: 42 });
+    expect(parseDetailView('log:server_1:7')).toEqual({ kind: 'log', serverId: 'server_1', id: 7 });
+  });
+
+  it.each(['task', 'task:', 'task:s:', 'task:s:0', 'task:s:-1', 'task:s:1.5', 'task:s:abc', 'task::5', 'task:a b:5', 'task:s:5:6', 'issue:s:5', 'dashboard', '', 'task:s:1234567890123456'])(
+    'are not made of %j',
+    (view) => {
+      expect(parseDetailView(view)).toBeNull();
+      expect(isDetailView(view)).toBe(false);
+    }
+  );
+
+  it('have a title from the id alone until the view has loaded, then the one it chose', () => {
+    expect(viewTitle(taskView('s', 42))).toBe('Task #42');
+    expect(viewTitle(logView('s', 7))).toBe('Log #7');
+
+    setViewLabel(taskView('s', 42), '#42 Fix the login');
+
+    expect(viewTitle(taskView('s', 42))).toBe('#42 Fix the login');
+    expect(viewTitle('calendar')).toBe('Calendar');
+  });
+
+  it('open in a tab, once, and switch to the tab when they are open already', () => {
+    openTask('s', 42);
+    openLogEntry('s', 7);
+    openTask('s', 42);
+
+    expect(get(openViews)).toEqual(['dashboard', 'task:s:42', 'log:s:7']);
+    expect(get(activeView)).toBe('task:s:42');
+  });
+
+  it('are closable and movable like the other tabs, but do not get a window of their own', () => {
+    expect(isClosable(taskView('s', 1))).toBe(true);
+    expect(canDetach(taskView('s', 1))).toBe(false);
+    expect(canDetach(logView('s', 1))).toBe(false);
+    expect(canDetach('calendar')).toBe(true);
+    expect(canDetach('dashboard')).toBe(false);
+  });
+
+  it('forget their title when they are closed', () => {
+    openTask('s', 42);
+    setViewLabel(taskView('s', 42), '#42 Fix the login');
+
+    closeView(taskView('s', 42));
+
+    expect(get(viewLabels)).toEqual({});
+  });
+
+  it('close with their server, and only theirs', () => {
+    openTask('s1', 42);
+    openLogEntry('s1', 7);
+    openTask('s2', 42);
+    openView('calendar');
+
+    closeViewsOfServer('s1');
+
+    expect(get(openViews)).toEqual(['dashboard', 'task:s2:42', 'calendar']);
   });
 });

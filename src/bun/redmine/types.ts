@@ -86,6 +86,14 @@ export interface CurrentUserResponse {
   user: RedmineUser;
 }
 
+/** A custom field of an issue or a time entry, with the value it has there. */
+export interface RedmineCustomFieldValue {
+  id: number;
+  name: string;
+  value: string | string[] | null;
+  multiple?: boolean;
+}
+
 export interface RedmineTimeEntry {
   id: number;
   project: RedmineReference;
@@ -95,6 +103,13 @@ export interface RedmineTimeEntry {
   hours: number;
   comments?: string;
   spent_on: string;
+  created_on?: string;
+  updated_on?: string;
+  custom_fields?: RedmineCustomFieldValue[];
+}
+
+export interface TimeEntryResponse {
+  time_entry: RedmineTimeEntry;
 }
 
 export interface TimeEntriesResponse {
@@ -121,4 +136,75 @@ export interface IssuesResponse {
   total_count: number;
   offset: number;
   limit: number;
+}
+
+/** One change in the history of an issue. `name` is a field's key; `attr` values of fields that refer to something are its id. */
+export interface RedmineJournalDetail {
+  /** `attr` (a field of the issue), `cf` (a custom field, `name` is its id), `attachment` or `relation` */
+  property: string;
+  name: string;
+  old_value?: string | null;
+  new_value?: string | null;
+}
+
+/** An entry in the history of an issue: a comment, the changes made with it, or both. */
+export interface RedmineJournal {
+  id: number;
+  user: RedmineReference;
+  notes?: string;
+  created_on: string;
+  private_notes?: boolean;
+  details: RedmineJournalDetail[];
+}
+
+export interface RedmineAttachment {
+  id: number;
+  filename: string;
+  filesize: number;
+  content_type?: string;
+  description?: string;
+  content_url: string;
+  author: RedmineReference;
+  created_on: string;
+}
+
+export interface RedmineChildIssue {
+  id: number;
+  tracker: RedmineReference;
+  subject: string;
+}
+
+export interface RedmineRelation {
+  id: number;
+  issue_id: number;
+  issue_to_id: number;
+  relation_type: string;
+  delay?: number | null;
+}
+
+/** An issue as `GET /issues/<id>.json` returns it, with what `include` asked for. */
+export interface RedmineIssueDetails extends RedmineIssue {
+  description?: string;
+  author?: RedmineReference;
+  assigned_to?: RedmineReference;
+  category?: RedmineReference;
+  fixed_version?: RedmineReference;
+  parent?: { id: number };
+  is_private?: boolean;
+  estimated_hours?: number | null;
+  total_estimated_hours?: number | null;
+  spent_hours?: number;
+  total_spent_hours?: number;
+  created_on?: string;
+  updated_on?: string;
+  closed_on?: string | null;
+  custom_fields?: RedmineCustomFieldValue[];
+  journals?: RedmineJournal[];
+  attachments?: RedmineAttachment[];
+  children?: RedmineChildIssue[];
+  relations?: RedmineRelation[];
+}
+
+export interface IssueResponse {
+  issue: RedmineIssueDetails;
 }

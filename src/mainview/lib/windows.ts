@@ -6,6 +6,7 @@ import { activeServerId, servers } from './store';
 import {
   VIEW_TITLES,
   activeView,
+  canDetach,
   closeView,
   insertView,
   isClosable,
@@ -13,6 +14,7 @@ import {
   openViews,
   routeViews,
   type ViewId,
+  viewTitle,
 } from './views';
 
 // A view tab dragged out of the main window opens in a window of its own, which shows only that
@@ -169,9 +171,9 @@ export function startViewWindow(view: ViewId): () => void {
 
 /** Main window: moves a tab's view into a window of its own. Returns false when it cannot. */
 export async function detachView(view: ViewId): Promise<boolean> {
-  if (!canDetachViews() || !isClosable(view) || !get(openViews).includes(view)) return false;
+  if (!canDetachViews() || !canDetach(view) || !get(openViews).includes(view)) return false;
   const session = snapshot();
-  await windowBackend().detachView({ view, title: VIEW_TITLES[view], session });
+  await windowBackend().detachView({ view, title: viewTitle(view), session });
   lastShared = stableJson(session);
   detachedViews.update(views => [...views, view]);
   closeView(view);

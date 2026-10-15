@@ -162,3 +162,90 @@ describe('special servers', () => {
     expect((await response.json()).user.login).toBe('alice');
   });
 });
+
+
+describe('one issue and one time entry', () => {
+  const client = () => new RedmineClient({ baseUrl, apiKey: API_KEY });
+
+  it('gives an issue with its history, attachments, subtasks and relations', async () => {
+    const issue = await client().getIssue(21);
+
+    expect(issue).toMatchObject({ id: 21, subject: 'Task 21', author: { name: 'Bob Builder' }, assigned_to: { name: 'Alice Example' } });
+    expect(issue.description).toContain('Steps for task 21');
+    expect(issue.journals?.map((journal) => journal.id)).toEqual([211, 212, 213]);
+    expect(issue.journals?.[1].details).toContainEqual({ property: 'attr', name: 'status_id', old_value: '1', new_value: '2' });
+    expect(issue.children).toEqual([{ id: 22, tracker: expect.any(Object), subject: 'Task 22' }]);
+  });
+
+  it('has issues with none of the optional parts', async () => {
+    const issue = await client().getIssue(1);
+
+    expect(issue.journals).toEqual([]);
+    expect(issue.attachments).toEqual([]);
+    expect(issue.children).toEqual([]);
+    expect(issue.relations).toEqual([]);
+  });
+
+  it('adds the attachments of every fourth issue and the relations of every fifth', async () => {
+    expect((await client().getIssue(4)).attachments?.[0]).toMatchObject({ filename: 'screenshot.png', filesize: 48_213 });
+    expect((await client().getIssue(5)).relations?.[0]).toMatchObject({ issue_id: 5, issue_to_id: 7, relation_type: 'relates' });
+  });
+
+  it('leaves out what was not asked for', async () => {
+    const response = await fetch(`${baseUrl}/issues/21.json`, { headers: { 'X-Redmine-API-Key': API_KEY } });
+    const { issue } = (await response.json()) as { issue: Record<string, unknown> };
+
+    expect(issue.subject).toBe('Task 21');
+    for (const part of ['journals', 'attachments', 'children', 'relations']) expect(issue, part).not.toHaveProperty(part);
+  });
+
+  it('answers 404 for an issue that does not exist', async () => {
+    const error = await client().getIssue(ISSUE_COUNT + 1).catch((e) => e);
+
+    expect(error).toBeInstanceOf(RedmineApiError);
+    expect(error.status).toBe(404);
+  });
+
+  it('answers 401 to a request without a key', async () => {
+    const response = await fetch(`${baseUrl}/issues/1.json`);
+
+    expect(response.status).toBe(401);
+  });
+
+  it('gives one time entry, and 404 for one that does not exist', async () => {
+    const entry = await client().getTimeEntry(3);
+
+    expect(entry).toMatchObject({ id: 3, user: { name: 'Alice Example' }, activity: { name: expect.any(String) } });
+    expect(entry.created_on).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect((await client().getTimeEntry(100_000).catch((e) => e)).status).toBe(404);
+  });
+
+  it('gives the time entries of an issue, the latest day first', async () => {
+    const entries = await client().getIssueTimeEntries(1);
+
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.every((entry) => entry.issue?.id === 1)).toBe(true);
+    const days = entries.map((entry) => entry.spent_on);
+    expect(days).toEqual([...days].sort().reverse());
+  });
+
+  it('gives the names that the history refers to', async () => {
+    const [statuses, priorities, trackers] = await Promise.all([
+      client().getIssueStatuses(),
+      client().getIssuePriorities(),
+      client().getTrackers(),
+    ]);
+
+    expect(statuses.issue_statuses.find((status) => status.id === 2)?.name).toBe('In progress');
+    expect(priorities.issue_priorities.find((priority) => priority.id === 4)?.name).toBe('Urgent');
+    expect(trackers.trackers.map((tracker) => tracker.name)).toEqual(['Bug', 'Feature', 'Support']);
+  });
+
+  it('refuses an id that is not a whole number before it reaches the server', async () => {
+    for (const id of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      await expect(client().getIssue(id), String(id)).rejects.toThrow('is not a Redmine id');
+      await expect(client().getTimeEntry(id), String(id)).rejects.toThrow('is not a Redmine id');
+      await expect(client().getIssueTimeEntries(id), String(id)).rejects.toThrow('is not a Redmine id');
+    }
+  });
+});

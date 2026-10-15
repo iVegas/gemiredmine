@@ -11,6 +11,7 @@
     monthBounds,
     sumHours,
   } from './lib/calendar';
+  import { openLogEntry, openTask } from './lib/views';
 
   export let server: ServerConnection;
 
@@ -147,8 +148,16 @@
                   <p class="mt-1 text-xs font-semibold text-gray-900">{formatHours(logsByDay[day.key].hours)}</p>
                   <ul class="mt-1 space-y-0.5">
                     {#each logsByDay[day.key].entries.slice(0, MAX_ITEMS_PER_DAY) as item (item.id)}
-                      <li class="truncate text-xs text-gray-600" title={item.comments || item.activity.name}>
-                        {item.issue ? `#${item.issue.id}` : item.project.name} · {formatHours(item.hours)}
+                      <li>
+                        <button
+                          type="button"
+                          class="block w-full truncate rounded text-left text-xs text-gray-600 hover:text-blue-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                          title={item.comments || item.activity.name}
+                          aria-label="Open log entry #{item.id}: {item.issue ? `task #${item.issue.id}` : item.project.name}, {formatHours(item.hours)}"
+                          on:click={() => openLogEntry(server.id, item.id)}
+                        >
+                          {item.issue ? `#${item.issue.id}` : item.project.name} · {formatHours(item.hours)}
+                        </button>
                       </li>
                     {/each}
                     {#if logsByDay[day.key].entries.length > MAX_ITEMS_PER_DAY}
@@ -160,8 +169,16 @@
                 {#if view === 'tasks' && tasksByDay[day.key]}
                   <ul class="mt-1 space-y-0.5">
                     {#each tasksByDay[day.key].slice(0, MAX_ITEMS_PER_DAY) as task (task.id)}
-                      <li class="truncate text-xs text-gray-700" title={task.subject}>
-                        <span class="font-mono text-gray-500">#{task.id}</span> {task.subject}
+                      <li>
+                        <button
+                          type="button"
+                          class="block w-full truncate rounded text-left text-xs text-gray-700 hover:text-blue-700 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                          title={task.subject}
+                          aria-label="Open task #{task.id}: {task.subject}"
+                          on:click={() => openTask(server.id, task.id)}
+                        >
+                          <span class="font-mono text-gray-500">#{task.id}</span> {task.subject}
+                        </button>
                       </li>
                     {/each}
                     {#if tasksByDay[day.key].length > MAX_ITEMS_PER_DAY}

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { get } from 'svelte/store';
-import { servers, activeServerId, activeServer, addServer, updateServer, removeServer } from '../store';
+import { servers, activeServerId, activeServer, addServer, updateServer, removeServer, remembersSignIn } from '../store';
+import { openLogEntry, openTask, openViews, resetViews } from '../views';
 
 describe('Server Store', () => {
   beforeEach(() => {
@@ -84,5 +85,29 @@ describe('Server Store', () => {
     expect(get(activeServer)?.id).toBe(id);
     activeServerId.set(null);
     expect(get(activeServer)).toBeNull();
+  });
+
+  it('closes the tasks and log entries that were open of a server that is removed, and only of that one', () => {
+    resetViews();
+    const keep = addServer({ name: 'Keep', url: 'https://keep.com' });
+    const drop = addServer({ name: 'Drop', url: 'https://drop.com' });
+    openTask(drop, 1);
+    openLogEntry(drop, 2);
+    openTask(keep, 3);
+
+    removeServer(drop);
+
+    expect(get(openViews)).toEqual(['dashboard', `task:${keep}:3`]);
+  });
+
+  it('remembers the server by default, and keeps the choice not to', () => {
+    const id = addServer({ name: 'Test', url: 'https://t.com' });
+    expect(remembersSignIn(get(servers)[0])).toBe(true);
+
+    updateServer(id, { remember: false });
+    expect(remembersSignIn(get(servers)[0])).toBe(false);
+
+    updateServer(id, { remember: true });
+    expect(remembersSignIn(get(servers)[0])).toBe(true);
   });
 });

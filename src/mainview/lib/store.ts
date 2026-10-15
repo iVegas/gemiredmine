@@ -1,4 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
+import { closeViewsOfServer } from './views';
 
 export interface ServerUser {
   id: number;
@@ -55,6 +56,8 @@ export function updateServer(id: string, patch: Partial<Omit<ServerConnection, '
 /** Removes a server. If it was the active one, the first remaining server becomes active. */
 export function removeServer(id: string) {
   servers.update(current => current.filter(server => server.id !== id));
+  // What was open of this server has nothing to show any more.
+  closeViewsOfServer(id);
   activeServerId.update(currentId => {
     if (currentId !== id) return currentId;
     return get(servers)[0]?.id ?? null;
