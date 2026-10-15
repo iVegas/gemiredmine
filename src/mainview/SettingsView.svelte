@@ -1,8 +1,5 @@
 <script lang="ts">
   import AddServerForm from './AddServerForm.svelte';
-  import StorageNotice from './StorageNotice.svelte';
-  import { credentialProblem } from './lib/credentials';
-  import { storageProblem } from './lib/persistence';
   import { servers, activeServerId, removeServer, remembersSignIn, updateServer, type ServerConnection } from './lib/store';
   import { openView } from './lib/views';
 
@@ -38,10 +35,6 @@
         </button>
       {/if}
     </div>
-
-    {#if $storageProblem || $credentialProblem}
-      <div class="border-b border-gray-200 p-4"><StorageNotice /></div>
-    {/if}
 
     {#if adding}
       <div class="border-b border-gray-200 bg-gray-50 px-4 pb-6">

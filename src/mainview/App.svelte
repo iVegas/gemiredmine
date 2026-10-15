@@ -10,8 +10,9 @@
   import SettingsView from './SettingsView.svelte';
   import AboutView from './AboutView.svelte';
   import RecordPanel from './RecordPanel.svelte';
-  import { credentialsRestoring } from './lib/credentials';
-  import { serversRestored, startPersistence } from './lib/persistence';
+  import StorageNotice from './StorageNotice.svelte';
+  import { credentialProblem, credentialsRestoring } from './lib/credentials';
+  import { serversRestored, startPersistence, storageProblem } from './lib/persistence';
   import { servers, activeServer } from './lib/store';
   import { activeView, closeView, isDetailView, needsServer, openViews, viewPanelId, viewTabId } from './lib/views';
   import { attachToMainWindow, sessionReady, startMainWindow, startViewWindow, viewWindowFromLocation } from './lib/windows';
@@ -52,6 +53,11 @@
         {/if}
       </div>
     </header>
+
+    <!-- Whatever goes wrong with keeping the servers or the sign-ins is told on every tab, where the user is working. -->
+    {#if !windowView && ($storageProblem || $credentialProblem)}
+      <div class="space-y-2 border-b border-gray-200 bg-white px-4 py-2"><StorageNotice /></div>
+    {/if}
 
     <main class="flex-1 overflow-auto">
       <!-- Open tabs stay mounted, so a view keeps its state (such as the calendar month) while hidden. -->

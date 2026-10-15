@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
 import App from '../App.svelte';
 import { servers, activeServerId } from '../lib/store';
+import { get } from 'svelte/store';
 import { openTask, openView, resetViews } from '../lib/views';
 import { redmineApi } from '../lib/api';
 import { credentialProblem, credentialsRestoring } from '../lib/credentials';
@@ -171,6 +172,62 @@ describe('App', () => {
 
     expect(await view.findByRole('heading', { name: 'Sign in to Prod' })).toBeInTheDocument();
     expect(view.getByLabelText('Username')).toHaveValue('');
+  });
+
+  describe('when keeping the servers or the sign-ins fails', () => {
+    beforeEach(() => {
+      servers.set([signedIn]);
+      activeServerId.set('1');
+    });
+
+    it('says nothing while all is well', async () => {
+      const view = render(App);
+      await view.findByRole('tab', { name: 'Dashboard' });
+
+      expect(view.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('tells it above whichever tab the user is on, so a sign-in that could not be remembered is not found out at the next start', async () => {
+      const view = render(App);
+      await view.findByRole('tab', { name: 'Dashboard' });
+
+      credentialProblem.set('Your sign-in could not be remembered, so you stay signed in only until the app is closed. The Secret Service could not be reached.');
+
+      expect(await view.findByRole('alert')).toHaveTextContent('could not be remembered');
+      openView('settings');
+      expect(await view.findByRole('heading', { name: 'Settings' })).toBeInTheDocument();
+      expect(view.getAllByRole('alert')).toHaveLength(1);
+    });
+
+    it('tells of both problems when there are two', async () => {
+      storageProblem.set('Your servers could not be saved.');
+      credentialProblem.set('A saved sign-in could not be removed.');
+      const view = render(App);
+
+      expect(await view.findAllByRole('alert')).toHaveLength(2);
+    });
+
+    it('lets the user put a problem away, and only that one', async () => {
+      storageProblem.set('Your servers could not be saved.');
+      credentialProblem.set('A saved sign-in could not be removed.');
+      const view = render(App);
+      const [first] = await view.findAllByRole('button', { name: 'Dismiss' });
+
+      await fireEvent.click(first);
+
+      expect(get(storageProblem)).toBeNull();
+      expect(get(credentialProblem)).toBe('A saved sign-in could not be removed.');
+      expect(view.getAllByRole('alert')).toHaveLength(1);
+    });
+
+    it('is not told in a window with a view of its own, which keeps nothing', async () => {
+      window.location.hash = '#view=calendar';
+      credentialProblem.set('Your sign-in could not be remembered.');
+      const view = render(App);
+      await vi.waitFor(() => expect(view.queryByText('Loading…')).not.toBeInTheDocument());
+
+      expect(view.queryByRole('alert')).not.toBeInTheDocument();
+    });
   });
 
   it('tells a new user when the servers cannot be kept', () => {
