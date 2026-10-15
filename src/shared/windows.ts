@@ -39,6 +39,18 @@ export function containsPoint(rect: Rect, point: Point, margin = 0): boolean {
   );
 }
 
+/**
+ * The data type of a view that is dragged from its own window onto the main window's tabs. It is a drag and
+ * drop between two windows of the app, which the system routes, so it needs no position on screen: that is
+ * what a Wayland session does not give an application.
+ */
+export const VIEW_DRAG_TYPE = 'application/x-gemiredmine-view';
+
+/** The view id in dropped data, or null when the data is not a plain view id. */
+export function viewFromDragData(data: string): string | null {
+  return /^[a-z]+$/.test(data) ? data : null;
+}
+
 const VIEW_PARAM = 'view';
 
 /** The URL fragment that makes the webview show one view in a window of its own. */
@@ -49,4 +61,16 @@ export function viewWindowHash(view: string): string {
 /** The view named by a view window's URL fragment, or null in the main window. */
 export function viewFromHash(hash: string): string | null {
   return new URLSearchParams(hash.replace(/^#/, '')).get(VIEW_PARAM);
+}
+
+/**
+ * JSON with the keys of every object in alphabetical order, so that two values that mean the same thing
+ * give the same text. Windows compare what they have with what they were sent, and the events that carry
+ * the data between windows do not keep the order of an object's keys.
+ */
+export function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, item: unknown) => {
+    if (item === null || typeof item !== 'object' || Array.isArray(item)) return item;
+    return Object.fromEntries(Object.entries(item).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+  });
 }

@@ -54,9 +54,10 @@ jobs:
       - name: Install system packages
         run: |
           sudo apt-get update
-          # Tauri's build dependencies, zsync for the AppImage update file, xvfb for the smoke test.
+          # Tauri's build dependencies, zsync for the AppImage update file, xvfb and weston (a headless Wayland
+          # compositor) for the smoke tests.
           sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev \
-            libayatana-appindicator3-dev librsvg2-dev zsync xvfb
+            libayatana-appindicator3-dev librsvg2-dev zsync xvfb weston
 
       - name: Install Rust
         # The same version as rust-toolchain.toml, which tauri-setup.test.ts checks.
@@ -99,6 +100,15 @@ jobs:
             echo "::error title=Smoke test::The app exited with status $status within 20 seconds."
             exit 1
           fi
+
+      - name: Smoke test the AppImage on Wayland
+        env:
+          GEMIREDMINE_DATA_DIR: ${{ runner.temp }}/smoke-data-wayland
+        run: |
+          # Wayland is the target on Linux, so the packaged app also has to open a window as a Wayland client, on a
+          # compositor with no X11 behind it. The script explains how it tells.
+          name="$(node -p "JSON.parse(require('fs').readFileSync('dist/linux/${CHANNEL}/release.json', 'utf8')).assets[0].name")"
+          scripts/release/smoke-test-wayland.sh "dist/linux/${CHANNEL}/${name}" --appimage-extract-and-run
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

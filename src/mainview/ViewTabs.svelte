@@ -12,8 +12,8 @@
     viewTabId,
     type ViewId,
   } from './lib/views';
-  import { canDetachViews, detachView, detachedViews, reportTabStrip, windowDropTarget } from './lib/windows';
-  import { dropGap, type Point, type TabEdges } from '../shared/windows';
+  import { attachViewWindowAt, canDetachViews, detachView, detachedViews, reportTabStrip, windowDropTarget } from './lib/windows';
+  import { VIEW_DRAG_TYPE, dropGap, viewFromDragData, type Point, type TabEdges } from '../shared/windows';
 
   /**
    * Whether tabs can be dragged to a new place, or out of the window into one of their own.
@@ -51,6 +51,9 @@
   $: indicator = drag?.moving ? movedGap(drag, $openViews) : ($windowDropTarget?.index ?? null);
   // While views have windows of their own, the backend needs to know where the tabs are.
   $: tracking = movable && $detachedViews.length > 0;
+  // A view window's tab can be dragged onto the main window's tabs, and the main window takes the drop.
+  $: dragsOut = !movable && canDetachViews();
+  $: takesDrops = movable && canDetachViews();
   $: if (tracking) reportAfterRender($openViews);
 
   function movableTab(view: ViewId) {
@@ -226,6 +229,42 @@
     drag = null;
   }
 
+  // Dragging a view window's tab onto the main window's tabs is a drag and drop between two windows of the app. The
+  // system routes it, so it works where the app cannot read positions on the screen (a Wayland session).
+  function handleDragStart(event: DragEvent, view: ViewId) {
+    if (!dragsOut || !event.dataTransfer) return;
+    event.dataTransfer.setData(VIEW_DRAG_TYPE, view);
+    event.dataTransfer.effectAllowed = 'move';
+  }
+
+  function isViewDrag(event: DragEvent) {
+    return takesDrops && Boolean(event.dataTransfer?.types.includes(VIEW_DRAG_TYPE));
+  }
+
+  function handleDragOver(event: DragEvent) {
+    if (!isViewDrag(event)) return;
+    // Allows the drop.
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+    windowDropTarget.set({ index: dropGap(event.clientX, tabEdges(), firstMovable) });
+  }
+
+  function handleDragLeave(event: DragEvent) {
+    // Moving from one tab to the next also leaves an element; only leaving the strip counts.
+    if (event.relatedTarget instanceof Node && strip.contains(event.relatedTarget)) return;
+    windowDropTarget.set(null);
+  }
+
+  function handleDrop(event: DragEvent) {
+    if (!isViewDrag(event)) return;
+    event.preventDefault();
+    windowDropTarget.set(null);
+    // What arrives is data from another window: only the ids of views that can have a window are accepted.
+    const view = viewFromDragData(event.dataTransfer?.getData(VIEW_DRAG_TYPE) ?? '');
+    if (!view || !(view in VIEW_TITLES) || !isClosable(view as ViewId)) return;
+    void attachViewWindowAt(view as ViewId, dropGap(event.clientX, tabEdges(), firstMovable));
+  }
+
   function handleClick(view: ViewId) {
     if (dragEnded) return;
     activeView.set(view);
@@ -246,7 +285,11 @@
   aria-label="Views"
   class="flex min-w-0 flex-1 items-end gap-1 overflow-x-auto"
   bind:this={strip}
+  data-tauri-drag-region={movable ? undefined : ''}
   on:scroll={() => report()}
+  on:dragover={handleDragOver}
+  on:dragleave={handleDragLeave}
+  on:drop={handleDrop}
 >
   {#each $openViews as view, index (view)}
     {@const selected = view === $activeView}
@@ -262,7 +305,9 @@
       title={isClosable(view) ? undefined : 'Pinned tab'}
       data-dragging={dragged ? (drag?.outside ? 'outside' : 'inside') : undefined}
       class="group relative flex shrink-0 items-center gap-2 rounded-t-md border border-b-0 px-3 py-2 text-sm font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500 {selected ? 'bg-gray-50 border-gray-200 text-gray-900' : 'bg-transparent border-transparent text-gray-600 hover:bg-gray-100 hover:text-gray-900'} {dragged ? 'cursor-grabbing opacity-60' : ''} {dragged && drag?.outside ? 'border-dashed border-blue-500' : ''}"
+      draggable={dragsOut ? 'true' : undefined}
       bind:this={tabs[view]}
+      on:dragstart={(event) => handleDragStart(event, view)}
       on:pointerdown={(event) => handlePointerDown(event, view)}
       on:click={() => handleClick(view)}
       on:keydown={(event) => handleKeydown(event, view)}
@@ -284,7 +329,7 @@
           title="Close tab (Delete)"
           data-testid="close-{view}"
           data-tab-close
-          class="electrobun-webkit-app-region-no-drag -mr-1 rounded px-1 leading-none text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+          class="-mr-1 rounded px-1 leading-none text-gray-400 hover:bg-gray-200 hover:text-gray-700"
           on:click|stopPropagation={() => close(view)}
         >
           ✕

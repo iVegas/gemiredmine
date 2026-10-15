@@ -193,6 +193,21 @@ describe('view windows', () => {
       expect(desktop.requests.shareSession).not.toHaveBeenCalled();
     });
 
+    it('does not send a session back because its keys arrive in another order', async () => {
+      await detachView('calendar');
+
+      // Tauri's events carry objects with their keys sorted, so the session comes back from another window looking
+      // different as text, though it is the same. Sending it back would start an endless exchange between the windows.
+      receive('sessionChanged', {
+        activeServerId: 's2',
+        servers: [{ url: prod.url, name: prod.name, id: prod.id }],
+      });
+      await settle();
+
+      expect(get(servers)).toEqual([prod]);
+      expect(desktop.requests.shareSession).not.toHaveBeenCalled();
+    });
+
     it('reports where the tabs are only while views have windows of their own', async () => {
       const layout: TabStripLayout = {
         strip: { x: 0, y: 8, width: 600, height: 38 },

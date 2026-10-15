@@ -48,12 +48,15 @@ describe.each(Object.entries(CHANNELS))('tauriChannelConfig for %s', (channel, c
   });
 
   it('describes the whole main window, because arrays are replaced whole', () => {
-    expect(overlay.app.windows).toEqual([{ label: 'main', title: channelConfig.productName, width: 1024, height: 768 }]);
+    expect(overlay.app.windows).toEqual([
+      { label: 'main', title: channelConfig.productName, width: 1024, height: 768, dragDropEnabled: false },
+    ]);
   });
 
   it('enables the developer preview capability only where the preview exists', () => {
+    const windowCapabilities = ['backend', 'main', 'view-window'];
     expect(overlay.app.security.capabilities).toEqual(
-      channelConfig.devPreviewAvailable ? ['main', `dev-preview-${channel}`] : ['main']
+      channelConfig.devPreviewAvailable ? [...windowCapabilities, `dev-preview-${channel}`] : windowCapabilities
     );
   });
 

@@ -32,6 +32,13 @@ export interface BackendPlatform {
   environment(): Promise<{ platform: string; arch: string; runtime: string }>;
 }
 
+/**
+ * What the backend needs from a developer preview. By default it opens its own. A second window of the app
+ * passes the one that the first window owns instead: the preview aggregates in memory and rotates its files,
+ * so it must have a single owner.
+ */
+export type PreviewPort = Pick<DevPreview, 'status' | 'setEnabled' | 'record' | 'createFeedback'>;
+
 export interface BackendOptions {
   /** Defaults to the metadata generated for this build */
   buildInfo?: BuildInfo;
@@ -39,6 +46,8 @@ export interface BackendOptions {
   devPreviewAvailable?: boolean;
   /** The DevPreview class. Defaults to the generated entry, which is a stub in builds without the preview. */
   DevPreviewImpl?: typeof DevPreview;
+  /** Uses this preview instead of opening one. Nothing is read or written for it here. */
+  preview?: PreviewPort;
   timeoutMs?: number;
 }
 
@@ -67,9 +76,10 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
   }
 
   // One instance, even when the first calls arrive together. A failed start can be tried again.
-  let preview: Promise<DevPreview> | undefined;
-  function devPreview(): Promise<DevPreview> {
+  let preview: Promise<PreviewPort> | undefined;
+  function devPreview(): Promise<PreviewPort> {
     if (!previewAvailable) return Promise.reject(new Error(NOT_AVAILABLE));
+    if (options.preview) return Promise.resolve(options.preview);
     preview ??= openPreview().catch((error) => {
       preview = undefined;
       throw error;

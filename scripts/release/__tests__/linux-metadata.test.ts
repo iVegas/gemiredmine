@@ -59,9 +59,10 @@ describe('appRunScript', () => {
     expect(script).not.toContain('cd ');
   });
 
-  it('runs on X11 unless the user chose a backend', () => {
-    expect(script).toContain('export GDK_BACKEND="${GDK_BACKEND:-x11}"');
-    expect(script.indexOf('GDK_BACKEND')).toBeLessThan(script.indexOf('exec '));
+  it('leaves the display server to GTK, so that a Wayland session runs natively', () => {
+    // Forcing X11 here would put every Wayland user on XWayland. A user can still set GDK_BACKEND themselves.
+    expect(script).not.toContain('GDK_BACKEND');
+    expect(script).not.toContain('DISPLAY');
   });
 });
 

@@ -29,6 +29,14 @@ tauri-plugin-http = { version = "~2.8.3", default-features = false, features = [
 ] }
 serde = { version = "1", features = ["derive"] }
 
+# Read the state of the mouse buttons, which Tauri has no API for (src/pointer.rs).
+[target.'cfg(target_os = "linux")'.dependencies]
+gdk = "0.18"
+gtk = "0.18"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_Input_KeyboardAndMouse", "Win32_UI_WindowsAndMessaging"] }
+
 [features]
 # Developer tools in the webview. The build script enables it for every channel except stable.
 devtools = ["tauri/devtools"]

@@ -94,7 +94,7 @@ The rest of this file is what is still ahead.
 Open it as a draft. Each commit keeps `npm test` green, because the husky pre-commit hook runs it.
 Start from `main` once PR 0 and PR 1 are merged.
 
-**Status:** implemented as six commits on `claude/tauri-2-shell`, open as a draft. `progress.md` says what was built, where it
+**Status:** implemented as six commits on `claude/tauri-2-shell`, open as a draft; the window layer (PR 2b) is stacked on it. `progress.md` says what was built, where it
 differs from the text below (marked *As built* where it matters), what was verified, and which gates are still open.
 
 ### Window layer (new on `main`: `e9f36d1`, "drag view tabs ... into windows of their own")
@@ -109,7 +109,7 @@ backend. Read it before estimating PR 2.
   close events, and `send` for messages to that window's webview). It follows a dragged view window by polling the
   pointer and the mouse button every 40 ms, and puts the view back into a tab when the window is dropped on the main
   window's tab strip. Its spec (`__tests__/view-windows.spec.ts`) runs against a fake host.
-- `src/bun/windows/electrobun-host.ts` is the only Electrobun part: `BrowserWindow`, `Screen.getCursorScreenPoint()`,
+- `src/bun/windows/electrobun-host.ts` (removed in PR 2; `src/mainview/lib/tauri-windows.ts` replaces it) was the only Electrobun part: `BrowserWindow`, `Screen.getCursorScreenPoint()`,
   `Screen.getMouseButtons()`, `Screen.getAllDisplays()`.
 - `src/bun/rpc.ts` `createRpc(windowRequests)` builds one RPC per window, so a request is answered knowing which window
   sent it. The requests and messages are typed in `src/shared/rpc.ts` (`WindowRequests`, `WindowMessages`).
@@ -130,10 +130,11 @@ backend. Read it before estimating PR 2.
    `primaryButtonDown()` to tell a drag by the user from a move by the window manager. That takes a small Rust
    command: on Linux through GDK, which Tauri already links; on Windows `GetAsyncKeyState`. It is the one place this
    plan needs more Rust than wiring.
-5. **Wayland.** Applications cannot read the global pointer position or set window positions on native Wayland. Today the
-   feature works there because Electrobun forces X11 (through XWayland), and the README already says some Wayland
-   sessions do not report window positions. So `GDK_BACKEND=x11` in AppRun is a requirement for dragging windows back
-   into the tab strip, not only parity. Verify on a Wayland session (gate G4).
+5. **Wayland.** Applications cannot read the global pointer position, learn where their windows are, or place them on
+   native Wayland. The feature worked there only because Electrobun forces X11 (through XWayland). *Superseded 2026-10-15:
+   the owner made Wayland the first-class Linux target and expects no X11 (see below). The title-bar drop cannot work
+   there, so a view's tab is also a drag source that the main window's tab strip accepts (a drag and drop between two
+   windows, which the system routes without any position). Everything else was verified on a Wayland compositor.*
 6. **Each webview has its own JavaScript context**, so each window would create its own `createBackend`. The developer
    preview must have a single owner, because its aggregation lives in memory and its files are rotated. View windows
    should hand their diagnostics to the main window's preview (an event), or the preview should move to Rust.
@@ -144,12 +145,23 @@ backend. Read it before estimating PR 2.
    window parts move to a Tauri window bridge that `lib/windows.ts` calls. Add `view-windows.ts` and the new
    host to `webview-safe.spec.ts` when `ViewWindows` moves into the webview.
 
+**As built (PR 2b):** points 1 to 8 held, with these differences. The preview owner is the main window, and a view window's
+backend hands its diagnostics over through a `PreviewPort` (`createBackend`'s `preview` option). Messages are Tauri events
+with a request and response layer. The label pattern is `view-<view>`, so the same view always gets the same window.
+Capabilities: `backend.json` (the main and view windows), `main.json` (window management) and `view-window.json`
+(`start-dragging`). `core:window:allow-destroy` is not granted: there is no `onCloseRequested` handler, because its wrapper
+calls `destroy()`, and a Rust `on_window_event` ends the app when the main window is destroyed instead. The Windows branch of the pointer command is written but was not run. See `progress.md`,
+"PR 2b", for the findings (event targets, key order, close handling, window managers).
+
 **Decided by the project owner, 2026-10-14: split** ("I allow a regression, the goal is to migrate"). PR 2 swaps the
 shell with one window, and `canDetachViews()` is false on Tauri. A follow-up, **PR 2b**, ports the window layer as
 described above. The feature is already on `main`, so Unstable users lose dragging tabs into windows between the two.
-- **Still open:** whether Canary and Stable may ship between PR 2 and PR 2b. Until the owner says so, they wait.
-- **X11 only on Linux** for as long as the feature depends on global pointer access. PR 2 keeps `GDK_BACKEND=x11` for
-  parity; PR 2b needs it.
+- **Answered 2026-10-15:** it does not matter whether Canary and Stable ship between PR 2 and PR 2b ("It does not matter to
+  ship in mid pr or not"). So the channels are not held back: merge as soon as the gates the owner cares about have run.
+- ~~**X11 only on Linux** for as long as the feature depends on global pointer access.~~ **Reversed 2026-10-15: Wayland
+  first, no X11 expected** ("For linux we need support wayland first, no x11 support expected"). AppRun no longer sets
+  `GDK_BACKEND`; the window layer does not need a screen position to put a view back (drag and drop of the tab), and
+  places no window itself on Wayland (the compositor does). The title-bar drop remains where positions exist.
 
 ### Commit 1: `build(tauri): add the Tauri 2 shell`
 
@@ -253,9 +265,9 @@ described above. The feature is already on `main`, so Unstable users lose draggi
 
 - **`scripts/release/build-output.mjs`:** `findAppBinary(root, appName, platform, env)` returns
   `<CARGO_TARGET_DIR or src-tauri/target>/release/<appName>[.exe]`. Pass the injected `env` at the call sites.
-- **`linux-metadata.mjs` `appRunScript(binPath)`:** `HERE=...`, then `export GDK_BACKEND="${GDK_BACKEND:-x11}"`
-  (Electrobun 1.18.1 forces X11, so this keeps parity; native Wayland is a later, deliberate choice), then
-  `exec "$HERE/usr/bin/<App>" "$@"`. No `cd`.
+- **`linux-metadata.mjs` `appRunScript(binPath)`:** `HERE=...`, then `exec "$HERE/usr/bin/<App>" "$@"`. No `cd`.
+  *As first built it also exported `GDK_BACKEND="${GDK_BACKEND:-x11}"`, for parity with Electrobun 1.18.1, which forces
+  X11. Removed 2026-10-15 (Wayland first): GTK now picks the session's display server.*
 - **`package-linux.mjs`:** `findAppBinary(..., 'linux', env)`; copy the binary to `usr/bin/<App>` with mode 0755
   instead of `cp -a` into `usr/lib`; add an injectable `appimagetool` path (like `makeappx` in `package-windows.mjs`).
   Unchanged: the pinned, checksum-verified appimagetool, the `-u` update information, zsyncmake, checksums and `release.json`.
@@ -306,7 +318,7 @@ described above. The feature is already on `main`, so Unstable users lose draggi
   `rust-toolchain.toml`, the apt list, the Visual Studio C++ build tools, `npm run tauri dev`, `build:desktop`).
 - **RELEASE_POLICY:** the Dependencies paragraph (Tauri 2.12.x; the npm packages and crates move together in one
   `chore(deps)` commit and stay on matching major.minor; Tauri 3 is a separate decision); the Linux host requirements
-  (GTK 3, WebKitGTK 4.1 at least 2.40, XWayland; AppIndicator is no longer needed); the data-folder paragraph (webview
+  (GTK 3, WebKitGTK 4.1 at least 2.40; Wayland or X11, no XWayland needed; AppIndicator is no longer needed); the data-folder paragraph (webview
   storage lives under `<LocalData>/<identifier>`); the "not covered yet" list once gate G5 has run.
 - **CONTRIBUTING:** a "Desktop shell" section: capabilities need review, Rust stays wiring, channel identity comes
   only from `tauri-config.mjs`.
@@ -322,7 +334,7 @@ All run on the PR branch. Workflow-dispatch runs publish nothing.
 | G1 | `npm test && npm run typecheck`, with `CHANNEL` unset and with `CHANNEL=stable` |
 | G2 | Dispatch the Linux build (unstable): build, ldd and glibc check, packaging and the xvfb smoke test are green |
 | G3 | Dispatch the Windows build (unstable, self-signed): the `cli-win32-x64-msvc` package installs, the `dumpbin` and launch smoke checks pass, the MSIX is signed |
-| G4 | The Linux checklist below on Ubuntu 22.04 (updated) and 24.04, on X11 and on a **GNOME Wayland session (one NVIDIA machine)**; launch and sign-in on Debian 12 and Fedora |
+| G4 | The Linux checklist below on Ubuntu 22.04 (updated) and 24.04 **on Wayland (GNOME, and one NVIDIA machine; KDE if available)**, including the window layer: drag a tab out, drag the new window's tab back onto the main window's tabs, **Move to main window**; launch and sign-in on Debian 12 and Fedora. X11 is not a target and needs no run. |
 | G5 | Windows 11, on a **clean VM** or with the published unstable uninstalled first: install the Electrobun build, enable the preview, upgrade in place to the Tauri build, run the checklist, record where the preview files really land under MSIX, and check that there is no console window. Repeat the upgrade through the real `.appinstaller` feed on the first unstable build after merge. |
 | G6 | Data continuity: a folder from the Electrobun era (preview on, rotated logs, ten or more reports) is read by the Tauri build; `logBytes` matches and rotation continues |
 
@@ -355,11 +367,11 @@ from the Electrobun canary, then stable. Do not run Stable from a Tauri `main` b
 | MSIX file virtualization against the file plugin's real-path scope check | G5 records the real path | Canonicalize in Rust, then `allow_directory` |
 | A hand-made AppImage around the raw binary is not a layout Tauri documents | xvfb smoke test, distro matrix | `WEBKIT_DISABLE_DMABUF_RENDERER=1` in AppRun |
 | WebKitGTK at least 2.40, and the glibc floor | `ubuntu-22.04` runner, CI glibc check, policy text | A container base image when that runner retires |
-| Wayland and NVIDIA rendering, `WM_CLASS` | `GDK_BACKEND=x11` by default (parity), G4 | Adjust `desktopEntry`, or `enableGTKAppId` |
+| Wayland and NVIDIA rendering (WebKitGTK can show a blank window with the proprietary driver), `app_id` against the desktop entry | Native Wayland is the default; a headless-compositor smoke test in CI; G4 on one NVIDIA machine | `WEBKIT_DISABLE_DMABUF_RENDERER=1` in AppRun (not added: unverified); adjust `desktopEntry`, or `enableGTKAppId` |
 | `tauri.localhost` as a secure context (`randomUUID`) on Windows | Checklist 2 on Windows | `useHttpsScheme: true` on the window |
 | A larger webview attack surface (http to any host) | CSP in PR 2, no `{@html}` or `innerHTML` today, TypeScript guards, a per-channel file scope | none |
 | Rust build time against the job timeouts | A per-channel cache; record the times (locally: 4m23s for a cold release build of the crate and its dependencies, 1m42s for one more channel; on the runners, cold: 7m32s on Linux and 12m01s on Windows) | Raise the timeout |
-| Dragging view windows needs global pointer position and button state (no mouse-button API in Tauri; unavailable on native Wayland) | A small Rust command, `GDK_BACKEND=x11`, G4 on Wayland | Disable `canDetachViews()` on Tauri; the "Move to main window" button remains |
+| Dragging a view window by its title bar needs global pointer position and button state (no mouse-button API in Tauri; unavailable on native Wayland) | A small Rust command where positions exist; **on Wayland the tab is dragged instead (drag and drop between windows, no positions)**; G4 | The "Move to main window" button always works. *PR 2b: built; the tab drop, detach, header drag and the button were verified on a Wayland compositor (sway); the title-bar drop on X11 with metacity; Windows and GNOME/KDE not run* |
 | Several windows each own a backend, so several developer previews | One owner for the preview, in the main window | Move the preview to Rust |
 | Tauri 3 | Exact pins, no `text-file` permissions | A planned migration |
 

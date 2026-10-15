@@ -159,12 +159,18 @@ library is needed. For example on Ubuntu 24.04:
 sudo apt install libwebkit2gtk-4.1-0 libsoup-3.0-0 libjavascriptcoregtk-4.1-0
 ```
 
-The app runs on X11, through XWayland on a Wayland desktop. Set `GDK_BACKEND=wayland` to override.
+The app runs natively on Wayland, and on X11 where that is the session. Wayland is the supported Linux session; X11 is not tested
+and is not a target. The AppImage does not choose between them (it sets no `GDK_BACKEND`), and a user can still set it.
 
 ## Not covered yet
 
 - Android builds are not part of this pipeline.
-- Tabs cannot be dragged out into windows of their own yet; the Tauri shell has one window.
+- Putting a view window back in the main window: dragging the window's **tab** onto the main window's tabs, and **Move to main
+  window**, work on a Wayland compositor (checked on a headless sway only; GNOME, KDE and NVIDIA machines are not checked). Dropping
+  the window by its **title bar** needs screen positions, which Wayland does not give; it is for Windows, where it has not been tried.
+  On Wayland the desktop decides where a new window opens.
+- WebKitGTK can show a blank window on some systems with the proprietary NVIDIA driver. `WEBKIT_DISABLE_DMABUF_RENDERER=1` is the
+  usual workaround; it is not set by the AppImage and has not been tried here.
 - AppImages are not code-signed. Windows packages need signing secrets for their channel (see above).
 - The Linux update path has not been tested with a published release yet, and the Windows packages have not been
   installed on a Windows machine by the pipeline (see the verification notes in the pull request).
