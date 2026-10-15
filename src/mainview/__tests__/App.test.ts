@@ -4,6 +4,7 @@ import App from '../App.svelte';
 import { servers, activeServerId } from '../lib/store';
 import { openView, resetViews } from '../lib/views';
 import { redmineApi } from '../lib/api';
+import { credentialProblem, credentialsRestoring } from '../lib/credentials';
 import { serversRestored, storageProblem } from '../lib/persistence';
 
 vi.mock('../lib/api', () => ({
@@ -31,6 +32,8 @@ describe('App', () => {
     activeServerId.set(null);
     serversRestored.set(true);
     storageProblem.set(null);
+    credentialProblem.set(null);
+    credentialsRestoring.set(false);
     resetViews();
   });
 
@@ -70,6 +73,37 @@ describe('App', () => {
     expect(await view.findByRole('heading', { name: 'Sign in to Dev' })).toBeInTheDocument();
     expect(view.getByLabelText('Username')).toHaveValue('ana');
     expect(view.getByLabelText('Password')).toHaveValue('');
+  });
+
+  it('does not show the sign-in form while the saved sign-ins are being read', async () => {
+    servers.set([{ id: '1', name: 'Dev', url: 'https://dev.local', user: signedIn.user }]);
+    activeServerId.set('1');
+    credentialsRestoring.set(true);
+    const view = render(App);
+
+    expect(await view.findByText('Reading your saved sign-ins…')).toBeInTheDocument();
+    expect(view.queryByLabelText('Password')).not.toBeInTheDocument();
+
+    servers.set([{ id: '1', name: 'Dev', url: 'https://dev.local', user: signedIn.user, apiToken: 'saved-key' }]);
+    credentialsRestoring.set(false);
+
+    expect(await view.findByRole('tab', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(view.queryByText('Reading your saved sign-ins…')).not.toBeInTheDocument();
+    expect(view.queryByLabelText('Password')).not.toBeInTheDocument();
+  });
+
+  it('shows the sign-in form again, with the reason, once the saved sign-ins could not be read', async () => {
+    servers.set([{ id: '1', name: 'Dev', url: 'https://dev.local', user: signedIn.user }]);
+    activeServerId.set('1');
+    credentialsRestoring.set(true);
+    const view = render(App);
+    await view.findByText('Reading your saved sign-ins…');
+
+    credentialProblem.set('The saved sign-ins could not be read, so you have to sign in. The keyring is locked.');
+    credentialsRestoring.set(false);
+
+    expect(await view.findByLabelText('Password')).toBeInTheDocument();
+    expect(view.getByText(/keyring is locked/)).toBeInTheDocument();
   });
 
   it('offers the other server an empty form, not the user name of the one before', async () => {

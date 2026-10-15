@@ -21,7 +21,8 @@ export interface AppStorage {
 const text = (value: SqlValue | undefined) => (typeof value === 'string' ? value : '');
 
 function serverFrom(row: SqlRow): SavedServer {
-  const server: SavedServer = { id: text(row.id), name: text(row.name), url: text(row.url) };
+  // Anything but an explicit 0 means remembered, which is the default.
+  const server: SavedServer = { id: text(row.id), name: text(row.name), url: text(row.url), remember: row.remember !== 0 };
   if (typeof row.user_id === 'number' && typeof row.user_login === 'string') {
     server.user = {
       id: row.user_id,
@@ -83,10 +84,10 @@ export async function openAppStorage(db: SqlDatabase): Promise<AppStorage> {
         // Servers go in before the others come out, so an interrupted save loses nothing the user wanted kept.
         for (const [position, server] of servers.entries()) {
           await db.execute(
-            `INSERT INTO servers (id, position, name, url, user_id, user_login, user_firstname, user_lastname)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `INSERT INTO servers (id, position, name, url, remember, user_id, user_login, user_firstname, user_lastname)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
              ON CONFLICT(id) DO UPDATE SET
-               position = excluded.position, name = excluded.name, url = excluded.url,
+               position = excluded.position, name = excluded.name, url = excluded.url, remember = excluded.remember,
                user_id = excluded.user_id, user_login = excluded.user_login,
                user_firstname = excluded.user_firstname, user_lastname = excluded.user_lastname`,
             [
@@ -94,6 +95,7 @@ export async function openAppStorage(db: SqlDatabase): Promise<AppStorage> {
               position,
               server.name,
               server.url,
+              server.remember === false ? 0 : 1,
               server.user?.id ?? null,
               server.user?.login ?? null,
               server.user?.firstname ?? null,

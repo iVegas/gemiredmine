@@ -39,11 +39,13 @@ export interface SignInResponse {
 
 export type CurrentUserSummary = Pick<RedmineUser, 'id' | 'login' | 'firstname' | 'lastname'>;
 
-/** A Redmine server as it is kept between runs of the app. The API key is deliberately not part of it. */
+/** A Redmine server as it is kept between runs of the app. The API key is deliberately not part of it: see `GemiBackend.saveCredential`. */
 export interface SavedServer {
   id: string;
   name: string;
   url: string;
+  /** Whether the user chose to be remembered: the API key is kept in the system's credential store, not with the server. */
+  remember: boolean;
   /** Who signed in last, so that the sign-in form can start with the user name. */
   user?: CurrentUserSummary;
 }
@@ -52,6 +54,13 @@ export interface SavedServers {
   /** In the order the user sees them */
   servers: SavedServer[];
   activeServerId: string | null;
+}
+
+export interface LoadedCredentials {
+  /** By server id */
+  apiKeys: Record<string, string>;
+  /** Why the store could not be read, in words for the user, or null. Keys found before the problem are in `apiKeys`. */
+  problem: string | null;
 }
 
 export interface GemiBackend {
@@ -69,4 +78,10 @@ export interface GemiBackend {
   loadSavedServers(): Promise<SavedServers>;
   /** Makes the saved servers equal to `saved`: servers that are not in it are forgotten. */
   saveServers(saved: SavedServers): Promise<void>;
+  /** The API keys that the system's credential store holds for these servers. Servers that have none are left out. */
+  loadCredentials(serverIds: string[]): Promise<LoadedCredentials>;
+  /** Keeps the API key of a server in the system's credential store. Rejects when the store cannot be used. */
+  saveCredential(serverId: string, apiKey: string): Promise<void>;
+  /** Forgets the API key of a server. A server that has none is fine. */
+  deleteCredential(serverId: string): Promise<void>;
 }

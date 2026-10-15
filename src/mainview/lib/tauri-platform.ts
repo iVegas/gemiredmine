@@ -5,7 +5,7 @@ import { fetch as pluginFetch } from '@tauri-apps/plugin-http';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import Database from '@tauri-apps/plugin-sql';
 import { buildInfo } from '../../shared/build-info.generated';
-import type { BackendPlatform } from '../../bun/backend';
+import type { BackendPlatform, CredentialStore } from '../../bun/backend';
 import type { DataFs } from '../../bun/diagnostics/fs';
 import type { FetchLike } from '../../bun/redmine/client';
 import type { SqlDatabase, SqlRow } from '../../bun/storage/database';
@@ -149,6 +149,36 @@ export async function openDatabase(): Promise<SqlDatabase> {
   }
 }
 
+/**
+ * The system's credential store, through the Rust side (src-tauri/src/credentials.rs): Windows Credential Manager, or
+ * the Secret Service on Linux. The Rust side answers with a message when the store cannot be used.
+ */
+export const tauriCredentials: CredentialStore = {
+  async get(serverId) {
+    try {
+      return await invoke<string | null>('credential_load', { serverId });
+    } catch (error) {
+      throw toError(error);
+    }
+  },
+
+  async set(serverId, apiKey) {
+    try {
+      await invoke('credential_save', { serverId, token: apiKey });
+    } catch (error) {
+      throw toError(error);
+    }
+  },
+
+  async remove(serverId) {
+    try {
+      await invoke('credential_delete', { serverId });
+    } catch (error) {
+      throw toError(error);
+    }
+  },
+};
+
 /** The backend's platform inside the Tauri webview. */
 export function tauriPlatform(): BackendPlatform {
   return {
@@ -156,6 +186,7 @@ export function tauriPlatform(): BackendPlatform {
     fs: tauriDataFs,
     dataDir,
     database: openDatabase,
+    credentials: tauriCredentials,
     openUrl: (url) => openUrl(url),
     environment: async () => toEnvironment(await readAppEnvironment()),
   };

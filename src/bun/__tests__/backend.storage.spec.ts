@@ -23,8 +23,8 @@ const info: BuildInfo = {
 
 const saved = {
   servers: [
-    { id: 's1', name: 'Work', url: 'https://redmine.example.com', user: { id: 1, login: 'alice', firstname: 'Alice', lastname: 'Example' } },
-    { id: 's2', name: 'Home', url: 'http://localhost:3000' },
+    { id: 's1', name: 'Work', url: 'https://redmine.example.com', remember: true, user: { id: 1, login: 'alice', firstname: 'Alice', lastname: 'Example' } },
+    { id: 's2', name: 'Home', url: 'http://localhost:3000', remember: false },
   ],
   activeServerId: 's2',
 };

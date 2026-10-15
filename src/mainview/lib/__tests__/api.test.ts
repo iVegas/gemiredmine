@@ -16,6 +16,9 @@ const fake = vi.hoisted(() => {
     'openIssueLink',
     'loadSavedServers',
     'saveServers',
+    'loadCredentials',
+    'saveCredential',
+    'deleteCredential',
   ] as const;
   return {
     methods,
@@ -69,7 +72,7 @@ describe('in the desktop app', () => {
     await redmineApi.getDevPreviewStatus();
 
     expect(createBackend).toHaveBeenCalledTimes(1);
-    expect(createBackend).toHaveBeenCalledWith(fake.platform, {});
+    expect(createBackend).toHaveBeenCalledWith(fake.platform, { onUnauthorized: expect.any(Function) });
   });
 
   it('hands every call to the backend with the same arguments', async () => {
@@ -87,7 +90,10 @@ describe('in the desktop app', () => {
       createFeedback: [{ title: 't', description: 'd', includeLogs: true }],
       openIssueLink: ['https://github.com/iVegas/gemiredmine/issues/new'],
       loadSavedServers: [],
-      saveServers: [{ servers: [{ id: 's1', name: 'Work', url: 'https://r' }], activeServerId: 's1' }],
+      saveServers: [{ servers: [{ id: 's1', name: 'Work', url: 'https://r', remember: true }], activeServerId: 's1' }],
+      loadCredentials: [['s1', 's2']],
+      saveCredential: ['s1', 'key'],
+      deleteCredential: ['s1'],
     };
 
     for (const name of fake.methods) {
@@ -160,13 +166,19 @@ describe('the backend of each window', () => {
     const [platform, options] = await backendOfWindow('main');
 
     expect(platform).toBe(fake.platform);
-    expect(options).toEqual({});
+    expect(options).toEqual({ onUnauthorized: expect.any(Function) });
   });
 
   it('hands its diagnostics to the main window in a view window', async () => {
     const [platform, options] = await backendOfWindow('view-calendar');
 
     expect(platform).toBe(fake.platform);
-    expect(options).toEqual({ preview: fake.preview });
+    expect(options).toEqual({ preview: fake.preview, onUnauthorized: expect.any(Function) });
+  });
+
+  it.each(['main', 'view-todo'])('signs the user out of a server that rejects the API key, in %s too', async (label) => {
+    const [, options] = await backendOfWindow(label);
+
+    expect(options?.onUnauthorized?.name).toBe('expireSignIn');
   });
 });
