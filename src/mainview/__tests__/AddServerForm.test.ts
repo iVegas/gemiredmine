@@ -46,6 +46,60 @@ describe('AddServerForm Component', () => {
     expect(currentServers[0].url).toBe('https://my.redmine.com');
   });
 
+  describe('Remember me', () => {
+    const fill = async (view: { getByLabelText: (text: string) => HTMLElement }) => {
+      await fireEvent.input(view.getByLabelText('Server Name'), { target: { value: 'My Redmine' } });
+      await fireEvent.input(view.getByLabelText('URL'), { target: { value: 'https://my.redmine.com' } });
+    };
+
+    it('is checked by default, and the server is remembered', async () => {
+      const view = render(AddServerForm, { props: { onSuccess: vi.fn() } });
+
+      expect(view.getByLabelText(/Remember me on this computer/)).toBeChecked();
+      await fill(view);
+      await fireEvent.click(view.getByText('Add Server'));
+
+      expect(get(servers)[0].remember).toBe(true);
+    });
+
+    it('is respected for the server when it is unchecked', async () => {
+      const view = render(AddServerForm, { props: { onSuccess: vi.fn() } });
+      await fill(view);
+
+      await fireEvent.click(view.getByLabelText(/Remember me on this computer/));
+      await fireEvent.click(view.getByText('Add Server'));
+
+      expect(get(servers)[0].remember).toBe(false);
+    });
+
+    it('goes with the API key that signing in fetched, and the password is not kept', async () => {
+      api.signIn.mockResolvedValueOnce({ apiKey: 'fetched-key', user: { id: 1, login: 'alice', firstname: 'A', lastname: 'E' } });
+      const view = render(AddServerForm, { props: { onSuccess: vi.fn() } });
+      await fill(view);
+      await fireEvent.input(view.getByLabelText('Username'), { target: { value: 'alice' } });
+      await fireEvent.input(view.getByLabelText('Password'), { target: { value: 'secret-password' } });
+
+      await fireEvent.click(view.getByText('Add Server'));
+
+      await vi.waitFor(() => expect(get(servers)).toHaveLength(1));
+      expect(get(servers)[0]).toMatchObject({ apiToken: 'fetched-key', remember: true });
+      expect(JSON.stringify(get(servers))).not.toContain('secret-password');
+    });
+
+    it('goes with an API key that was entered', async () => {
+      api.getCurrentUser.mockResolvedValueOnce({ id: 1, login: 'alice', firstname: 'A', lastname: 'E' });
+      const view = render(AddServerForm, { props: { onSuccess: vi.fn() } });
+      await fill(view);
+      await fireEvent.input(view.getByLabelText('API Token'), { target: { value: 'typed-key' } });
+      await fireEvent.click(view.getByLabelText(/Remember me on this computer/));
+
+      await fireEvent.click(view.getByText('Add Server'));
+
+      await vi.waitFor(() => expect(get(servers)).toHaveLength(1));
+      expect(get(servers)[0]).toMatchObject({ apiToken: 'typed-key', remember: false });
+    });
+  });
+
   it('calls onCancel when cancel button is clicked', async () => {
     const onSuccess = vi.fn();
     const onCancel = vi.fn();

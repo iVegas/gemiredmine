@@ -1,22 +1,33 @@
 import type { SqlDatabase } from './database';
 
+/** One statement, or a function for what a statement cannot say, such as `addColumn`. */
+export type MigrationStep = string | ((db: SqlDatabase) => Promise<void>);
+
 /**
  * One step of the schema. `version` counts up from 1 without gaps, and a released migration is never edited:
  * a change to the schema is a new migration.
  *
- * Every step has to be harmless when it runs twice (`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`).
- * The database has no transaction across calls, so an app that is closed in the middle of a migration leaves
- * it half done, and it starts again from its first step the next time.
+ * Every step has to be harmless when it runs twice (`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`,
+ * `addColumn`). The database has no transaction across calls, so an app that is closed in the middle of a migration
+ * leaves it half done, and it starts again from its first step the next time.
  */
 export interface Migration {
   version: number;
-  steps: readonly string[];
+  steps: readonly MigrationStep[];
+}
+
+/** Adds a column unless the table has it already: SQLite has no `ADD COLUMN IF NOT EXISTS`. The names come from code. */
+export function addColumn(table: string, column: string, definition: string): MigrationStep {
+  if (!/^[a-z_]+$/.test(table) || !/^[a-z_]+$/.test(column)) throw new Error(`Not a table and column name: ${table}.${column}`);
+  return async (db) => {
+    const [row] = await db.select('SELECT COUNT(*) AS found FROM pragma_table_info(?) WHERE name = ?', [table, column]);
+    if (Number(row?.found) === 0) await db.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  };
 }
 
 export const MIGRATIONS: readonly Migration[] = [
   {
-    // Application settings, and the Redmine servers the user has added. A server's API key is not kept: the
-    // user signs in again, and the password is never stored.
+    // Application settings, and the Redmine servers the user has added. A server's API key is never kept here (see 2).
     version: 1,
     steps: [
       `CREATE TABLE IF NOT EXISTS settings (
@@ -34,6 +45,12 @@ export const MIGRATIONS: readonly Migration[] = [
         user_lastname TEXT
       )`,
     ],
+  },
+  {
+    // Whether the user chose to be remembered at this server: its API key is kept in the system's credential store, not
+    // here. A server that was saved before the choice existed is remembered, as the choice is by default.
+    version: 2,
+    steps: [addColumn('servers', 'remember', 'INTEGER NOT NULL DEFAULT 1')],
   },
 ];
 
@@ -66,7 +83,7 @@ export async function migrate(db: SqlDatabase, migrations: readonly Migration[] 
 
   for (const migration of migrations) {
     if (migration.version <= found) continue;
-    for (const step of migration.steps) await db.execute(step);
+    for (const step of migration.steps) await (typeof step === 'string' ? db.execute(step) : step(db));
     // PRAGMA takes no parameters, and the version is a number that this file wrote.
     await db.execute(`PRAGMA user_version = ${migration.version}`);
   }

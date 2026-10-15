@@ -12,6 +12,7 @@ import {
   dataDir,
   openDatabase,
   sqliteUrl,
+  tauriCredentials,
   tauriDataFs,
   tauriFetch,
   tauriPlatform,
@@ -229,6 +230,43 @@ describe('openDatabase', () => {
   });
 });
 
+describe('tauriCredentials', () => {
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset().mockResolvedValue(undefined);
+  });
+
+  it('asks the Rust side for the key of a server, which may be none', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce('0123456789abcdef');
+    expect(await tauriCredentials.get('server-1')).toBe('0123456789abcdef');
+    expect(invoke).toHaveBeenLastCalledWith('credential_load', { serverId: 'server-1' });
+
+    vi.mocked(invoke).mockResolvedValueOnce(null);
+    expect(await tauriCredentials.get('server-2')).toBeNull();
+  });
+
+  it('hands the key to the Rust side to keep, by server', async () => {
+    await tauriCredentials.set('server-1', 'the-key');
+
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('credential_save', { serverId: 'server-1', token: 'the-key' });
+  });
+
+  it('has the Rust side forget the key of a server', async () => {
+    await tauriCredentials.remove('server-1');
+
+    expect(invoke).toHaveBeenCalledExactlyOnceWith('credential_delete', { serverId: 'server-1' });
+  });
+
+  it('rejects with an Error, carrying the reason the Rust side gave', async () => {
+    vi.mocked(invoke).mockRejectedValue("The system's credential store (the Secret Service) could not be reached: no D-Bus");
+
+    for (const call of [() => tauriCredentials.get('s'), () => tauriCredentials.set('s', 'k'), () => tauriCredentials.remove('s')]) {
+      const failure = await call().catch((error: unknown) => error);
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).message).toContain('Secret Service');
+    }
+  });
+});
+
 describe('toEnvironment', () => {
   it('names the platform and CPU the way Node does and describes the webview', () => {
     expect(toEnvironment(linuxEnvironment)).toEqual({
@@ -311,5 +349,6 @@ describe('tauriPlatform', () => {
     expect(platform.fetch).toBe(tauriFetch);
     expect(platform.fs).toBe(tauriDataFs);
     expect(platform.database).toBe(openDatabase);
+    expect(platform.credentials).toBe(tauriCredentials);
   });
 });

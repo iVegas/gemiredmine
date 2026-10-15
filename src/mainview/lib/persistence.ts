@@ -3,7 +3,8 @@ import type { SavedServers } from '../../shared/backend';
 import { stableJson } from '../../shared/windows';
 import { redmineApi } from './api';
 import { hasDesktopBackend } from './bridge';
-import { activeServerId, servers, type ServerConnection } from './store';
+import { startCredentials } from './credentials';
+import { activeServerId, remembersSignIn, servers, type ServerConnection } from './store';
 
 // The servers the user adds are kept in the app's database, so that the next start has them again. The main
 // window does this for the whole app: a window with a view of its own gets its servers from the main window, and
@@ -23,10 +24,11 @@ const describe = (error: unknown) => (error instanceof Error ? error.message : S
 /** What of the servers is saved. The picking is explicit, so that the API key cannot slip into it. */
 export function toSavedServers(list: readonly ServerConnection[], activeId: string | null): SavedServers {
   return {
-    servers: list.map(({ id, name, url, user }) => ({
+    servers: list.map(({ id, name, url, user, remember }) => ({
       id,
       name,
       url,
+      remember: remembersSignIn({ remember }),
       ...(user ? { user: { id: user.id, login: user.login, firstname: user.firstname, lastname: user.lastname } } : {}),
     })),
     activeServerId: activeId,
@@ -97,6 +99,7 @@ export function startPersistence(): () => void {
 
   let stopped = false;
   let stopSaving = () => {};
+  let stopCredentials = () => {};
   serversRestored.set(false);
   redmineApi
     .loadSavedServers()
@@ -105,6 +108,8 @@ export function startPersistence(): () => void {
       servers.set(saved.servers);
       activeServerId.set(saved.activeServerId);
       stopSaving = saveChanges(saved);
+      // The keys come after the servers, and without holding the app back.
+      stopCredentials = startCredentials();
     })
     .catch((error: unknown) => {
       storageProblem.set(
@@ -118,5 +123,6 @@ export function startPersistence(): () => void {
   return () => {
     stopped = true;
     stopSaving();
+    stopCredentials();
   };
 }

@@ -1,4 +1,4 @@
-import type { GemiBackend, ServerAccess } from '../shared/backend';
+import type { GemiBackend, LoadedCredentials, ServerAccess } from '../shared/backend';
 import type { BuildInfo } from '../shared/build-info';
 import { buildInfo as generatedBuildInfo, DEV_PREVIEW_AVAILABLE } from '../shared/build-info.generated';
 import { DevPreview as GeneratedDevPreview } from './dev-preview.generated';
@@ -6,7 +6,7 @@ import { isAllowedIssueUrl } from './diagnostics/feedback';
 import type { DataFs } from './diagnostics/fs';
 import type { DevPreview } from './diagnostics/service';
 import { signInWithPassword } from './redmine/auth';
-import { RedmineClient, assertHttpUrl, type FetchLike } from './redmine/client';
+import { RedmineApiError, RedmineClient, assertHttpUrl, type FetchLike } from './redmine/client';
 import { openAppStorage, type AppStorage } from './storage/app-storage';
 import type { SqlDatabase } from './storage/database';
 import { withTimeout } from './timeout';
@@ -16,6 +16,19 @@ export const REDMINE_TIMEOUT_MS = 30_000;
 
 const NOT_AVAILABLE = 'The developer preview is not available in this build.';
 const NO_STORAGE = 'This build cannot save data between runs.';
+const NO_CREDENTIALS = 'This build has no credential store to remember a sign-in in.';
+
+/**
+ * Where the API keys of the user's servers are kept: the system's credential store, such as Windows Credential
+ * Manager or the Secret Service. A key is kept per server id, and only when the user chose to be remembered.
+ */
+export interface CredentialStore {
+  /** The key kept for the server, or null when there is none. */
+  get(serverId: string): Promise<string | null>;
+  set(serverId: string, apiKey: string): Promise<void>;
+  /** Forgets the key. A server that has none is fine. */
+  remove(serverId: string): Promise<void>;
+}
 
 /**
  * What the backend needs from the place it runs in. The desktop shell supplies Bun's fetch and
@@ -34,6 +47,8 @@ export interface BackendPlatform {
    * the window that owns the app's configuration calls it. A platform without one cannot save anything.
    */
   database?(): Promise<SqlDatabase>;
+  /** The system's credential store. A platform without one cannot remember a sign-in. */
+  credentials?: CredentialStore;
   /** Opens a link in the system browser */
   openUrl(url: string): Promise<void>;
   /** Describes the machine and runtime, for feedback reports */
@@ -57,6 +72,11 @@ export interface BackendOptions {
   /** Uses this preview instead of opening one. Nothing is read or written for it here. */
   preview?: PreviewPort;
   timeoutMs?: number;
+  /**
+   * Called when a server answers 401 to an API key, which is no longer valid (the user may have reset it). The
+   * request still fails. The callback must not throw; one that does is ignored.
+   */
+  onUnauthorized?: (access: ServerAccess) => void;
 }
 
 export function createBackend(platform: BackendPlatform, options: BackendOptions = {}): GemiBackend {
@@ -139,6 +159,30 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
     return withTimeout(timeoutMs, (signal) => run({ fetch: platform.fetch, signal }));
   }
 
+  /** A Redmine call made with a server's API key. When the server rejects the key, the app is told. */
+  async function authorized<R>(
+    access: ServerAccess,
+    run: (transport: { fetch: FetchLike; signal: AbortSignal }) => Promise<R>
+  ): Promise<R> {
+    try {
+      return await redmine(run);
+    } catch (error) {
+      if (error instanceof RedmineApiError && error.status === 401) {
+        try {
+          options.onUnauthorized?.(access);
+        } catch {
+          // Telling the app is best effort. The error being reported is the one that matters.
+        }
+      }
+      throw error;
+    }
+  }
+
+  function credentialStore(): CredentialStore {
+    if (!platform.credentials) throw new Error(NO_CREDENTIALS);
+    return platform.credentials;
+  }
+
   // Redmine servers do not send CORS headers, so a webview could not call them itself.
   function clientFor({ baseUrl, apiKey }: ServerAccess, transport: { fetch: FetchLike; signal: AbortSignal }) {
     return new RedmineClient({ baseUrl: assertHttpUrl(baseUrl), apiKey, ...transport });
@@ -150,22 +194,22 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
     ),
 
     getCurrentUser: traced('getCurrentUser', (access) =>
-      redmine(async (transport) => {
+      authorized(access, async (transport) => {
         const { user } = await clientFor(access, transport).getCurrentUser();
         return { id: user.id, login: user.login, firstname: user.firstname, lastname: user.lastname };
       })
     ),
 
     listTimeEntries: traced('listTimeEntries', (access, { from, to }) =>
-      redmine((transport) => clientFor(access, transport).getTimeEntries({ from, to }))
+      authorized(access, (transport) => clientFor(access, transport).getTimeEntries({ from, to }))
     ),
 
     listOpenTasks: traced('listOpenTasks', (access, { dueFrom, dueTo }) =>
-      redmine((transport) => clientFor(access, transport).getAssignedOpenIssues({ dueFrom, dueTo }))
+      authorized(access, (transport) => clientFor(access, transport).getAssignedOpenIssues({ dueFrom, dueTo }))
     ),
 
     listAssignedTasks: traced('listAssignedTasks', (access) =>
-      redmine((transport) => clientFor(access, transport).getAssignedTasks())
+      authorized(access, (transport) => clientFor(access, transport).getAssignedTasks())
     ),
 
     async getDevPreviewStatus() {
@@ -191,6 +235,27 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
     loadSavedServers: traced('loadSavedServers', async () => (await appStorage()).loadServers()),
 
     saveServers: traced('saveServers', async (saved) => (await appStorage()).saveServers(saved)),
+
+    async loadCredentials(serverIds): Promise<LoadedCredentials> {
+      const apiKeys: Record<string, string> = {};
+      let problem: string | null = null;
+      try {
+        const store = credentialStore();
+        // One at a time: a locked keyring asks the user once, not once for every server.
+        for (const id of serverIds) {
+          const key = await store.get(id);
+          if (key) apiKeys[id] = key;
+        }
+      } catch (error) {
+        problem = error instanceof Error ? error.message : String(error);
+        await traceFailure('loadCredentials', error);
+      }
+      return { apiKeys, problem };
+    },
+
+    saveCredential: traced('saveCredential', async (serverId, apiKey) => credentialStore().set(serverId, apiKey)),
+
+    deleteCredential: traced('deleteCredential', async (serverId) => credentialStore().remove(serverId)),
 
     async openIssueLink(url) {
       if (!previewAvailable) throw new Error(NOT_AVAILABLE);

@@ -8,8 +8,8 @@ export interface ServerUser {
 }
 
 /**
- * A configured Redmine server. The API key lives only in memory for this session;
- * passwords are never stored.
+ * A configured Redmine server. Passwords are never stored. The API key lives in memory; when the user chose to be
+ * remembered, it is also kept in the system's credential store (see credentials.ts), and nowhere else.
  */
 export interface ServerConnection {
   id: string;
@@ -17,7 +17,14 @@ export interface ServerConnection {
   url: string;
   apiToken?: string;
   user?: ServerUser;
+  /** Whether the user chose to be remembered at this server. Missing means yes, which is the default. */
+  remember?: boolean;
+  /** Why the user has to sign in again, when the server rejected the API key. Shown with the sign-in form. */
+  signInNotice?: string;
 }
+
+/** Whether the API key of this server is kept in the credential store. It is, unless the user chose otherwise. */
+export const remembersSignIn = (server: Pick<ServerConnection, 'remember'>): boolean => server.remember !== false;
 
 export const servers = writable<ServerConnection[]>([]);
 export const activeServerId = writable<string | null>(null);

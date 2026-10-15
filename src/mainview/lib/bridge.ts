@@ -2,6 +2,7 @@ import { isTauri } from '@tauri-apps/api/core';
 import { createBackend } from '../../bun/backend';
 import type { GemiBackend } from '../../shared/backend';
 import type { WindowMessages } from '../../shared/window-contract';
+import { expireSignIn } from './sign-in';
 import { tauriPlatform } from './tauri-platform';
 import { remotePreview, remoteWindowApi, startMainLayer, type WindowApi } from './window-layer';
 import { MAIN_LABEL, currentLabel, isViewLabel, receiveMessages } from './window-transport';
@@ -26,7 +27,11 @@ export function backend(): GemiBackend {
   if (!hasDesktopBackend()) {
     throw new Error('The desktop backend is not available in this environment.');
   }
-  return (desktopBackend ??= createBackend(tauriPlatform(), isViewLabel(currentLabel()) ? { preview: remotePreview() } : {}));
+  return (desktopBackend ??= createBackend(tauriPlatform(), {
+    // A server that rejects an API key signs the user out of it, in whichever window the request was made.
+    onUnauthorized: expireSignIn,
+    ...(isViewLabel(currentLabel()) ? { preview: remotePreview() } : {}),
+  }));
 }
 
 /** Whether view tabs can open in windows of their own: in the desktop app's main window and in those windows. */

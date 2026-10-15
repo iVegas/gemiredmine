@@ -9,6 +9,7 @@
   import TodoView from './TodoView.svelte';
   import SettingsView from './SettingsView.svelte';
   import AboutView from './AboutView.svelte';
+  import { credentialsRestoring } from './lib/credentials';
   import { serversRestored, startPersistence } from './lib/persistence';
   import { servers, activeServer } from './lib/store';
   import { activeView, closeView, needsServer, openViews, viewPanelId, viewTabId } from './lib/views';
@@ -66,10 +67,15 @@
           {:else if needsServer(view) && !$activeServer?.apiToken}
             <!-- One sign-in form at a time, in whichever server view is showing. -->
             {#if view === $activeView && $activeServer}
-              <!-- Another server gets a fresh form, so one server's user name is not offered to the next. -->
-              {#key $activeServer.id}
-                <ServerLogin server={$activeServer} />
-              {/key}
+              {#if $credentialsRestoring}
+                <!-- The saved sign-ins are being read, so the form would only flash up. -->
+                <p role="status" class="text-gray-600">Reading your saved sign-ins…</p>
+              {:else}
+                <!-- Another server gets a fresh form, so one server's user name is not offered to the next. -->
+                {#key $activeServer.id}
+                  <ServerLogin server={$activeServer} />
+                {/key}
+              {/if}
             {/if}
           {:else if view === 'dashboard' && $activeServer}
             <DashboardView server={$activeServer} />

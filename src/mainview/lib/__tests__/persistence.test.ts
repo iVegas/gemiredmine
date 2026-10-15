@@ -4,9 +4,11 @@ import type { SavedServers } from '../../../shared/backend';
 
 vi.mock('../api', () => ({ redmineApi: { loadSavedServers: vi.fn(), saveServers: vi.fn() } }));
 vi.mock('../bridge', () => ({ hasDesktopBackend: vi.fn() }));
+vi.mock('../credentials', () => ({ startCredentials: vi.fn() }));
 
 import { redmineApi } from '../api';
 import { hasDesktopBackend } from '../bridge';
+import { startCredentials } from '../credentials';
 import { serversRestored, startPersistence, storageProblem, toSavedServers } from '../persistence';
 import { activeServerId, addServer, removeServer, servers, updateServer, type ServerConnection } from '../store';
 
@@ -14,8 +16,8 @@ const api = vi.mocked(redmineApi);
 const user = { id: 17, login: 'alice', firstname: 'Alice', lastname: 'Example' };
 const saved: SavedServers = {
   servers: [
-    { id: 'a1', name: 'Work', url: 'https://redmine.example.com', user },
-    { id: 'b2', name: 'Home', url: 'http://localhost:3000' },
+    { id: 'a1', name: 'Work', url: 'https://redmine.example.com', remember: true, user },
+    { id: 'b2', name: 'Home', url: 'http://localhost:3000', remember: true },
   ],
   activeServerId: 'b2',
 };
@@ -33,10 +35,13 @@ const deferred = <T = void>() => {
 };
 
 let stop: () => void = () => {};
+const stopCredentials = vi.fn();
 
 beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(hasDesktopBackend).mockReturnValue(true);
+  stopCredentials.mockReset();
+  vi.mocked(startCredentials).mockReturnValue(stopCredentials);
   api.loadSavedServers.mockResolvedValue({ servers: [], activeServerId: null });
   api.saveServers.mockResolvedValue(undefined);
   servers.set([]);
@@ -53,12 +58,18 @@ describe('toSavedServers', () => {
 
     const result = toSavedServers(list, 'a1');
 
-    expect(result).toEqual({ servers: [{ id: 'a1', name: 'Work', url: 'https://r', user }], activeServerId: 'a1' });
+    expect(result).toEqual({ servers: [{ id: 'a1', name: 'Work', url: 'https://r', remember: true, user }], activeServerId: 'a1' });
     expect(JSON.stringify(result)).not.toContain('sekret');
   });
 
   it('leaves out the user of a server nobody signed in to', () => {
-    expect(toSavedServers([{ id: 'a1', name: 'Work', url: 'https://r' }], null).servers[0]).toEqual({ id: 'a1', name: 'Work', url: 'https://r' });
+    expect(toSavedServers([{ id: 'a1', name: 'Work', url: 'https://r' }], null).servers[0]).toEqual({ id: 'a1', name: 'Work', url: 'https://r', remember: true });
+  });
+
+  it('keeps the choice not to be remembered, and a notice never', () => {
+    const [server] = toSavedServers([{ id: 'a1', name: 'Work', url: 'https://r', remember: false, signInNotice: 'Sign in again.' }], null).servers;
+
+    expect(server).toEqual({ id: 'a1', name: 'Work', url: 'https://r', remember: false });
   });
 });
 
@@ -125,6 +136,28 @@ describe('restoring the saved servers', () => {
     expect(get(serversRestored)).toBe(false);
   });
 
+  it('reads the saved API keys once the servers are in the stores, and stops reading them when it stops', async () => {
+    api.loadSavedServers.mockResolvedValue(saved);
+
+    stop = startPersistence();
+    expect(startCredentials).not.toHaveBeenCalled();
+    await settle();
+
+    expect(startCredentials).toHaveBeenCalledTimes(1);
+    expect(get(servers).map((server) => server.id)).toEqual(['a1', 'b2']);
+    stop();
+    expect(stopCredentials).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads no API keys when the saved servers cannot be loaded', async () => {
+    api.loadSavedServers.mockRejectedValue(new Error('unable to open database file'));
+
+    stop = startPersistence();
+    await settle();
+
+    expect(startCredentials).not.toHaveBeenCalled();
+  });
+
   it('carries on without saving when the saved servers cannot be loaded, so that they are not erased', async () => {
     api.loadSavedServers.mockRejectedValue(new Error('The saved data is from a newer version of Gemiredmine.'));
 
@@ -152,7 +185,7 @@ describe('saving the changes', () => {
     await settle();
 
     expect(api.saveServers).toHaveBeenCalledExactlyOnceWith({
-      servers: [...saved.servers, { id, name: 'Dev', url: 'https://dev.local', user }],
+      servers: [...saved.servers, { id, name: 'Dev', url: 'https://dev.local', remember: true, user }],
       activeServerId: 'b2',
     });
     expect(JSON.stringify(api.saveServers.mock.calls)).not.toContain('sekret-key');
@@ -187,7 +220,7 @@ describe('saving the changes', () => {
 
     expect(api.saveServers).toHaveBeenCalledTimes(2);
     expect(api.saveServers.mock.calls[0][0].servers[1].user).toEqual(user);
-    expect(api.saveServers.mock.calls[1][0].servers[1]).toEqual({ id: 'b2', name: 'Home', url: 'http://localhost:3000' });
+    expect(api.saveServers.mock.calls[1][0].servers[1]).toEqual({ id: 'b2', name: 'Home', url: 'http://localhost:3000', remember: true });
   });
 
   it('saves once for changes that happen together', async () => {

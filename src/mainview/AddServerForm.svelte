@@ -12,6 +12,8 @@
   let username = '';
   let password = '';
   let apiToken = '';
+  // Kept with the server, so the choice is respected the next time its sign-in is asked for.
+  let remember = true;
   let error = '';
   let busy = false;
 
@@ -38,7 +40,7 @@
         auth = { apiToken, user };
       }
 
-      addServer({ name, url: baseUrl, ...auth });
+      addServer({ name, url: baseUrl, remember, ...auth });
       onSuccess();
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
@@ -83,6 +85,14 @@
         <div>
           <label for="apiToken" class="block text-sm text-gray-600">API Token</label>
           <input type="password" id="apiToken" autocomplete="off" bind:value={apiToken} class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border">
+        </div>
+
+        <div class="flex items-start gap-2">
+          <input type="checkbox" id="remember" bind:checked={remember} class="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+          <label for="remember" class="text-sm text-gray-700">
+            Remember me on this computer
+            <span class="block text-xs text-gray-500">Keeps the API key in the system's credential store, so you do not sign in at every start. The password is never kept.</span>
+          </label>
         </div>
       </div>
     </div>

@@ -16,4 +16,7 @@ export const redmineApi: GemiBackend = {
   openIssueLink: (url) => backend().openIssueLink(url),
   loadSavedServers: () => backend().loadSavedServers(),
   saveServers: (saved) => backend().saveServers(saved),
+  loadCredentials: (serverIds) => backend().loadCredentials(serverIds),
+  saveCredential: (serverId, apiKey) => backend().saveCredential(serverId, apiKey),
+  deleteCredential: (serverId) => backend().deleteCredential(serverId),
 };

@@ -1,8 +1,9 @@
 <script lang="ts">
   import AddServerForm from './AddServerForm.svelte';
   import StorageNotice from './StorageNotice.svelte';
+  import { credentialProblem } from './lib/credentials';
   import { storageProblem } from './lib/persistence';
-  import { servers, activeServerId, removeServer, updateServer, type ServerConnection } from './lib/store';
+  import { servers, activeServerId, removeServer, remembersSignIn, updateServer, type ServerConnection } from './lib/store';
   import { openView } from './lib/views';
 
   let adding = false;
@@ -14,7 +15,7 @@
   }
 
   function signOut(server: ServerConnection) {
-    updateServer(server.id, { apiToken: undefined, user: undefined });
+    updateServer(server.id, { apiToken: undefined, user: undefined, signInNotice: undefined });
   }
 </script>
 
@@ -25,7 +26,7 @@
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 p-4">
       <div>
         <h3 id="settings-servers-heading" class="text-lg font-semibold text-gray-900">Servers</h3>
-        <p class="text-sm text-gray-500">Add, switch between and remove your Redmine servers. The servers are kept for the next start; passwords and API keys are not, so you sign in again.</p>
+        <p class="text-sm text-gray-500">Add, switch between and remove your Redmine servers. The servers are kept for the next start. Passwords are never kept; with Remember me, the API key is kept in the system's credential store.</p>
       </div>
       {#if !adding}
         <button
@@ -38,7 +39,7 @@
       {/if}
     </div>
 
-    {#if $storageProblem}
+    {#if $storageProblem || $credentialProblem}
       <div class="border-b border-gray-200 p-4"><StorageNotice /></div>
     {/if}
 
@@ -65,6 +66,16 @@
             {:else}
               <p class="text-xs text-amber-700 mt-1">Not signed in</p>
             {/if}
+            <label class="mt-1 flex items-center gap-1.5 text-xs text-gray-600">
+              <input
+                type="checkbox"
+                aria-label="Remember me on this computer for {server.name}"
+                checked={remembersSignIn(server)}
+                class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                on:change={(event) => updateServer(server.id, { remember: event.currentTarget.checked })}
+              >
+              Remember me on this computer
+            </label>
           </div>
 
           <div class="flex flex-wrap gap-2">

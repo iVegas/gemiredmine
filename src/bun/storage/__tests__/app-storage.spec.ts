@@ -25,9 +25,10 @@ const alice: SavedServer = {
   id: 'a1',
   name: 'Work',
   url: 'https://redmine.example.com',
+  remember: true,
   user: { id: 17, login: 'alice', firstname: 'Alice', lastname: 'Example' },
 };
-const bob: SavedServer = { id: 'b2', name: 'Home', url: 'http://localhost:3000' };
+const bob: SavedServer = { id: 'b2', name: 'Home', url: 'http://localhost:3000', remember: false };
 
 describe('AppStorage servers', () => {
   it('starts with no servers', async () => {
@@ -42,6 +43,16 @@ describe('AppStorage servers', () => {
     await storage.saveServers({ servers: [bob, alice], activeServerId: 'a1' });
 
     expect(await storage.loadServers()).toEqual({ servers: [bob, alice], activeServerId: 'a1' });
+  });
+
+  it('keeps whether the user chose to be remembered, for each server', async () => {
+    const storage = await openAppStorage(open());
+
+    await storage.saveServers({ servers: [alice, bob], activeServerId: 'a1' });
+    expect((await storage.loadServers()).servers.map((server) => server.remember)).toEqual([true, false]);
+
+    await storage.saveServers({ servers: [{ ...alice, remember: false }, { ...bob, remember: true }], activeServerId: 'a1' });
+    expect((await storage.loadServers()).servers.map((server) => server.remember)).toEqual([false, true]);
   });
 
   it('gives the user id back as a number, although the database is given floating point numbers', async () => {
@@ -62,7 +73,7 @@ describe('AppStorage servers', () => {
     await storage.saveServers({ servers: [bob, { ...alice, name: 'Office', user: undefined }], activeServerId: 'b2' });
 
     expect(await storage.loadServers()).toEqual({
-      servers: [bob, { id: 'a1', name: 'Office', url: alice.url }],
+      servers: [bob, { id: 'a1', name: 'Office', url: alice.url, remember: true }],
       activeServerId: 'b2',
     });
     expect(await db.select('SELECT id FROM servers')).toHaveLength(2);
@@ -89,7 +100,7 @@ describe('AppStorage servers', () => {
 
   it('keeps names and addresses exactly, whatever characters they have', async () => {
     const storage = await openAppStorage(open());
-    const odd: SavedServer = { id: "x'; DROP TABLE servers; --", name: `O'Brien "Redmine" \\ ünï 日本語`, url: 'https://r.example/?a=1&b=%20' };
+    const odd: SavedServer = { id: "x'; DROP TABLE servers; --", name: `O'Brien "Redmine" \\ ünï 日本語`, url: 'https://r.example/?a=1&b=%20', remember: true };
 
     await storage.saveServers({ servers: [odd], activeServerId: odd.id });
 

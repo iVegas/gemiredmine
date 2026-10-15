@@ -1,11 +1,16 @@
 <script lang="ts">
-  import { updateServer, type ServerConnection } from './lib/store';
+  import StorageNotice from './StorageNotice.svelte';
+  import { credentialProblem } from './lib/credentials';
+  import { storageProblem } from './lib/persistence';
+  import { remembersSignIn, updateServer, type ServerConnection } from './lib/store';
   import { redmineApi } from './lib/api';
 
   export let server: ServerConnection;
 
   // The user who signed in to this server last time, kept with the server. The password never is.
   let username = server.user?.login ?? '';
+  // What the user chose at this server before.
+  let remember = remembersSignIn(server);
   let password = '';
   let error = '';
   let busy = false;
@@ -16,7 +21,7 @@
     try {
       const result = await redmineApi.signIn({ baseUrl: server.url, username, password });
       password = '';
-      updateServer(server.id, { apiToken: result.apiKey, user: result.user });
+      updateServer(server.id, { apiToken: result.apiKey, user: result.user, remember, signInNotice: undefined });
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -29,6 +34,15 @@
   <h2 class="text-xl font-semibold mb-1 text-gray-800">Sign in to {server.name}</h2>
   <p class="text-sm text-gray-500 mb-6">Your password is used once to fetch an API key. It is not stored.</p>
 
+  <!-- The saved sign-ins that could not be read are the reason this form is here. -->
+  {#if $storageProblem || $credentialProblem}
+    <div class="mb-4 space-y-2"><StorageNotice /></div>
+  {/if}
+
+  {#if server.signInNotice}
+    <p role="alert" class="mb-4 text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded p-3">{server.signInNotice}</p>
+  {/if}
+
   <form on:submit|preventDefault={handleSubmit} class="space-y-4">
     <div>
       <label for="login-username" class="block text-sm font-medium text-gray-700">Username</label>
@@ -38,6 +52,14 @@
     <div>
       <label for="login-password" class="block text-sm font-medium text-gray-700">Password</label>
       <input type="password" id="login-password" autocomplete="current-password" required bind:value={password} class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border">
+    </div>
+
+    <div class="flex items-start gap-2">
+      <input type="checkbox" id="login-remember" bind:checked={remember} class="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+      <label for="login-remember" class="text-sm text-gray-700">
+        Remember me on this computer
+        <span class="block text-xs text-gray-500">Keeps the API key in the system's credential store, so you do not sign in at every start.</span>
+      </label>
     </div>
 
     {#if error}
