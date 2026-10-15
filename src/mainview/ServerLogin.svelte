@@ -4,7 +4,8 @@
 
   export let server: ServerConnection;
 
-  let username = '';
+  // The user who signed in to this server last time, kept with the server. The password never is.
+  let username = server.user?.login ?? '';
   let password = '';
   let error = '';
   let busy = false;

@@ -39,6 +39,21 @@ describe('ServerLogin Component', () => {
     expect(get(servers)[0].user?.login).toBe('cy');
   });
 
+  it('starts with the user name that was used last time, never with a password', () => {
+    const remembered = { ...server, user: { id: 2, login: 'cy', firstname: 'Cy', lastname: 'M' } };
+
+    const view = render(ServerLogin, { props: { server: remembered } });
+
+    expect(view.getByLabelText('Username')).toHaveValue('cy');
+    expect(view.getByLabelText('Password')).toHaveValue('');
+  });
+
+  it('starts with an empty user name for a server nobody has signed in to', () => {
+    const view = render(ServerLogin, { props: { server } });
+
+    expect(view.getByLabelText('Username')).toHaveValue('');
+  });
+
   it('shows the error and leaves the server signed out when sign-in fails', async () => {
     api.signIn.mockRejectedValueOnce(new Error('Invalid username or password.'));
     const view = render(ServerLogin, { props: { server } });

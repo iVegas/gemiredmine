@@ -1,5 +1,6 @@
 <script lang="ts">
   import AddServerForm from './AddServerForm.svelte';
+  import StorageNotice from './StorageNotice.svelte';
   import { resetViews } from './lib/views';
 </script>
 
@@ -13,6 +14,8 @@
       To get started, add the Redmine server you work with. You can add more servers later in Settings.
     </p>
   </header>
+
+  <div class="mx-auto mt-6 max-w-xl"><StorageNotice /></div>
 
   <!-- A fresh start opens on the dashboard, even if tabs were left open before the last server was removed. -->
   <AddServerForm title="Add your first server" onSuccess={resetViews} />

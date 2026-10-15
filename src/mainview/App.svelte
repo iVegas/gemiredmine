@@ -9,6 +9,7 @@
   import TodoView from './TodoView.svelte';
   import SettingsView from './SettingsView.svelte';
   import AboutView from './AboutView.svelte';
+  import { serversRestored, startPersistence } from './lib/persistence';
   import { servers, activeServer } from './lib/store';
   import { activeView, closeView, needsServer, openViews, viewPanelId, viewTabId } from './lib/views';
   import { attachToMainWindow, sessionReady, startMainWindow, startViewWindow, viewWindowFromLocation } from './lib/windows';
@@ -17,9 +18,11 @@
   // A tab dragged out of the main window opens in a window of its own, which shows only that view.
   const windowView = viewWindowFromLocation();
   onDestroy(windowView ? startViewWindow(windowView) : startMainWindow());
+  // The servers of an earlier run are loaded by the main window only; a view window gets them from it.
+  onDestroy(windowView ? () => {} : startPersistence());
 </script>
 
-{#if windowView && !$sessionReady}
+{#if (windowView && !$sessionReady) || (!windowView && !$serversRestored)}
   <p role="status" class="p-6 text-gray-600">Loading…</p>
 {:else if !windowView && $servers.length === 0}
   <WelcomeScreen />
@@ -63,7 +66,10 @@
           {:else if needsServer(view) && !$activeServer?.apiToken}
             <!-- One sign-in form at a time, in whichever server view is showing. -->
             {#if view === $activeView && $activeServer}
-              <ServerLogin server={$activeServer} />
+              <!-- Another server gets a fresh form, so one server's user name is not offered to the next. -->
+              {#key $activeServer.id}
+                <ServerLogin server={$activeServer} />
+              {/key}
             {/if}
           {:else if view === 'dashboard' && $activeServer}
             <DashboardView server={$activeServer} />

@@ -1,5 +1,7 @@
 <script lang="ts">
   import AddServerForm from './AddServerForm.svelte';
+  import StorageNotice from './StorageNotice.svelte';
+  import { storageProblem } from './lib/persistence';
   import { servers, activeServerId, removeServer, updateServer, type ServerConnection } from './lib/store';
   import { openView } from './lib/views';
 
@@ -23,7 +25,7 @@
     <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 p-4">
       <div>
         <h3 id="settings-servers-heading" class="text-lg font-semibold text-gray-900">Servers</h3>
-        <p class="text-sm text-gray-500">Add, switch between and remove your Redmine servers. Passwords are never stored.</p>
+        <p class="text-sm text-gray-500">Add, switch between and remove your Redmine servers. The servers are kept for the next start; passwords and API keys are not, so you sign in again.</p>
       </div>
       {#if !adding}
         <button
@@ -35,6 +37,10 @@
         </button>
       {/if}
     </div>
+
+    {#if $storageProblem}
+      <div class="border-b border-gray-200 p-4"><StorageNotice /></div>
+    {/if}
 
     {#if adding}
       <div class="border-b border-gray-200 bg-gray-50 px-4 pb-6">
