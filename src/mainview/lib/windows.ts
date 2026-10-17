@@ -4,12 +4,13 @@ import { stableJson, viewFromHash } from '../../shared/windows';
 import { hasWindowLayer, onBackendMessage, windowBackend } from './bridge';
 import { activeServerId, servers } from './store';
 import {
-  VIEW_TITLES,
   activeView,
   canDetach,
   closeView,
   insertView,
   isClosable,
+  isDetailView,
+  isViewId,
   openView,
   openViews,
   routeViews,
@@ -31,7 +32,7 @@ export const sessionReady = writable(true);
 /** The view this window is dedicated to, from its URL, or null in the main window. */
 export function viewWindowFromLocation(hash = typeof location === 'undefined' ? '' : location.hash): ViewId | null {
   const view = viewFromHash(hash);
-  return view && view in VIEW_TITLES && isClosable(view as ViewId) ? (view as ViewId) : null;
+  return view && isViewId(view) && isClosable(view) ? view : null;
 }
 
 /** Tabs open in windows of their own only where the app has a window layer. */
@@ -136,8 +137,9 @@ export function startViewWindow(view: ViewId): () => void {
   activeView.set(view);
   if (!hasWindowLayer()) return () => {};
 
-  // Other views open in the main window.
+  // A task or a log entry opens in this window, where it was asked for. Other views open in the main window.
   routeViews(other => {
+    if (isDetailView(other)) return false;
     if (other !== view) void windowBackend().openInMainWindow({ view: other });
     return true;
   });

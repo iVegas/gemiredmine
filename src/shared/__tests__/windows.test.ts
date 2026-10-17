@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { containsPoint, dropGap, stableJson, viewFromHash, viewWindowHash } from '../windows';
+import { containsPoint, dropGap, stableJson, viewFromDragData, viewFromHash, viewWindowHash } from '../windows';
 
 const tabs = [
   { left: 0, right: 100 },
@@ -44,6 +44,15 @@ describe('view window URLs', () => {
   it('names no view in the main window', () => {
     expect(viewFromHash('')).toBeNull();
     expect(viewFromHash('#other=1')).toBeNull();
+  });
+
+  it('accepts the ids of tasks and log entries, and nothing else, as view ids from another window', () => {
+    expect(viewFromDragData('calendar')).toBe('calendar');
+    expect(viewFromDragData('task:srv-1:42')).toBe('task:srv-1:42');
+    expect(viewFromDragData('log:srv-1:7')).toBe('log:srv-1:7');
+    for (const other of ['', 'Calendar', 'task:srv-1', 'task:srv-1:0', 'task:a b:1', 'task:a:1:2', 'view-calendar']) {
+      expect(viewFromDragData(other), other).toBeNull();
+    }
   });
 });
 

@@ -43,7 +43,8 @@ describe('labels', () => {
   it('gives each view the same window label, and recognises only those labels', () => {
     expect(viewLabel('calendar')).toBe('view-calendar');
     expect(isViewLabel('view-calendar')).toBe(true);
-    for (const other of ['main', 'view-', 'view-Calendar', 'view-a/b', 'viewcalendar', 'settings']) {
+    expect(isViewLabel(viewLabel('task:srv-1:42'))).toBe(true);
+    for (const other of ['main', 'view-', 'view-Calendar', 'view-a/b', 'viewcalendar', 'settings', 'view-task:srv-1:0']) {
       expect(isViewLabel(other), other).toBe(false);
     }
   });

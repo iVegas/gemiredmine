@@ -3,7 +3,7 @@
 **Start here.** This file says what is done, what is next, and how to check it. The reasoning and the full
 specification of the remaining work are in [`plan.md`](./plan.md).
 
-*Last updated 2026-10-15, after one instance of the app, remembering the sign-in, and the task and log entry views on `claude/sharp-pascal-qbz3f6`. PR 0 and PR 1 are merged (`648fe5b`), and so are pull requests #21, #22 and #23 (PR 2, PR 2b), as `main` shows (`3baf9a8`); the rows below for them were written before that.*
+*Last updated 2026-10-17 (issue #25: user menu layer, task and log tabs in windows, logging time from a task, Secret Service retry). Before: 2026-10-15, after one instance of the app, remembering the sign-in, and the task and log entry views on `claude/sharp-pascal-qbz3f6`. PR 0 and PR 1 are merged (`648fe5b`), and so are pull requests #21, #22 and #23 (PR 2, PR 2b), as `main` shows (`3baf9a8`); the rows below for them were written before that.*
 
 **Keep this file current.** Whoever does a step updates this file in the same pull request: the status table, the
 commit SHAs, anything that went differently from the plan, and what you learned about the environment. Put a decision
@@ -334,7 +334,8 @@ username/pass login flow. Add task details view, and log entry view."
   task and the comment. Both link to Redmine in the browser.
 - **A tab belongs to its server**: the view id is `task:<server id>:<number>` or `log:<server id>:<number>` (`lib/views.ts`), so the tab keeps working
   when another server is in use, asks for the sign-in of its own server, and closes when that server is removed. The tab's title is the task's number
-  and subject once it has loaded. **These tabs cannot be dragged into a window of their own** (`canDetach`), which keeps the window layer unchanged.
+  and subject once it has loaded. These tabs can be dragged into a window of their own, like the others (issue #25). A task or a log entry
+  opened from a view window opens in that window, not in the main one.
 - Descriptions and comments are shown **as typed**: Redmine's markup (Textile or Markdown) is not rendered and nothing in it runs. Rendering it
   safely is a separate piece of work.
 - Redmine's API gives the old and new status, priority and tracker of a change as ids; the backend fetches the lists the history needs, and only
@@ -349,6 +350,9 @@ username/pass login flow. Add task details view, and log entry view."
   why the timeouts exist. A session with no bus at all fails at once with "Failed to connect to address", which the banner shows.
 - `pgrep -x` cannot match a name of more than 15 characters (`Gemiredmine-Unstable` has 20): use an anchored `pgrep -f '^/path/to/binary$'`.
 - Tauri applies its permission check to every custom command as soon as the app defines an ACL manifest, so restricting one command means listing all.
+- **The Secret Service sometimes refuses the session key** ("Client public key size is invalid"). secret-service 5.2 sends the client's public key
+  without padding, so about one key in 256 (a leading zero byte) is one byte short. The store opens one connection per start, so
+  `native_store()` now tries again for that error only (`retry_session`, five tries). A user saw it once after a restart (issue #25 comment, 2026-10-17).
 - `libdbus` was already linked (by the window library); the credential crates added 18 crates and no system library. The unstable binary is
   16.5 MB (15.4 MB before this round, 12.5 MB before the database).
 
@@ -538,8 +542,9 @@ clean Windows 11. That is gate G5. A runner has WebView2 and a desktop session, 
   window and turns dragging tabs into windows off on Tauri; PR 2b ports it. Unstable users lose the feature between the two.
 
 **Open questions for the project owner**
-- Should task and log entry tabs be draggable into windows of their own, like the other views? They are not now. It needs the window layer to
-  carry a server with the view (the id has it already) and the hash and drag checks to accept the longer id.
+- Should a view window's other tabs survive when its own tab is dragged back into the main window? Task and log entry tabs can be dragged
+  into windows of their own now (issue #25), but a window that shows a task opened inside it loses those tabs when its first tab goes back
+  to the main window. Their data is not lost, only the open tabs. Keeping them means moving one tab instead of closing the window.
 - Should Redmine's markup (Textile, Markdown) be rendered in descriptions and comments? They are shown as typed now. Rendering needs a parser and a
   sanitiser; it is the one place where the app would put server text into HTML.
 - Where Linux has no Secret Service, "Remember me" cannot work. Should the app offer an encrypted file protected by a password instead, or leave it?

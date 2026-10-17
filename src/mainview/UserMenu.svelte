@@ -58,11 +58,12 @@
   </button>
 
   {#if open}
+    <!-- Above the dashboard's cards: their task rows are z-20 and come later in the page, so an equal layer would cover the menu. -->
     <div
       id="user-menu-panel"
       role="region"
       aria-label="Account and servers"
-      class="absolute right-0 z-20 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-gray-200 bg-white p-4 shadow-lg space-y-4"
+      class="absolute right-0 z-50 mt-2 w-80 max-w-[calc(100vw-2rem)] rounded-lg border border-gray-200 bg-white p-4 shadow-lg space-y-4"
     >
       {#if $activeServer}
         <section aria-labelledby="user-menu-server-heading" class="space-y-1">

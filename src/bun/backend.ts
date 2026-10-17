@@ -260,6 +260,25 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
       authorized(access, (transport) => clientFor(access, transport).getTimeEntry(entryId))
     ),
 
+    listTimeActivities: traced('listTimeActivities', (access) =>
+      authorized(access, async (transport) => {
+        const { time_entry_activities } = await clientFor(access, transport).getTimeEntryActivities();
+        return time_entry_activities.map(({ id, name }) => ({ id, name }));
+      })
+    ),
+
+    createLogEntry: traced('createLogEntry', (access, entry) =>
+      authorized(access, (transport) =>
+        clientFor(access, transport).createTimeEntry({
+          issue_id: entry.taskId,
+          spent_on: entry.spentOn,
+          hours: entry.hours,
+          activity_id: entry.activityId,
+          comments: entry.comments,
+        })
+      )
+    ),
+
     async getDevPreviewStatus() {
       if (!previewAvailable) {
         return { available: false, enabled: false, dataDir: '', logBytes: 0, pendingEntries: 0 };

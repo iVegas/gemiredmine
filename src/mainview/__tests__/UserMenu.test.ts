@@ -30,6 +30,14 @@ describe('UserMenu Component', () => {
     expect(trigger()).toHaveAttribute('aria-expanded', 'false');
   });
 
+  it('opens above the cards of the dashboard, whose task rows are layered too', async () => {
+    render(UserMenu);
+
+    await fireEvent.click(trigger());
+
+    expect(screen.getByRole('region', { name: 'Account and servers' })).toHaveClass('z-50');
+  });
+
   it('shows that the active server is not signed in', () => {
     activeServerId.set('2');
     const view = render(UserMenu);

@@ -90,6 +90,8 @@ describe('in the desktop app', () => {
       getTask: [access, 42],
       listTaskLogEntries: [access, 42],
       getLogEntry: [access, 7],
+      listTimeActivities: [access],
+      createLogEntry: [access, { taskId: 42, spentOn: '2026-10-17', hours: 1.5, activityId: 8, comments: 'Review' }],
       getDevPreviewStatus: [],
       setDevPreviewEnabled: [true],
       recordDiagnostic: ['error', 'scope', 'message'],

@@ -315,7 +315,7 @@ describe('ViewTabs Component', () => {
       expect(get(detachedViews)).toEqual(['calendar']);
     });
 
-    it('does not open a task or a log entry in a window of its own, but moves it like another tab', async () => {
+    it('opens a task dropped outside the window in a window of its own, with its id', async () => {
       desktop.available = true;
       openTask('srv', 42);
       const view = render(ViewTabs);
@@ -325,9 +325,9 @@ describe('ViewTabs Component', () => {
       await dragTab(task, 150, -40);
       await fireEvent.pointerUp(task, { pointerId: 1, button: 0, clientX: 150, clientY: -40 });
 
-      expect(desktop.requests.detachView).not.toHaveBeenCalled();
-      expect(get(detachedViews)).toEqual([]);
-      expect(get(openViews)).toContain('task:srv:42');
+      expect(desktop.requests.detachView).toHaveBeenCalledWith(expect.objectContaining({ view: 'task:srv:42', title: 'Task #42' }));
+      await vi.waitFor(() => expect(get(openViews)).not.toContain('task:srv:42'));
+      expect(get(detachedViews)).toEqual(['task:srv:42']);
     });
 
     it('only moves tabs outside the desktop app', async () => {

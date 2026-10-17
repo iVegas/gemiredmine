@@ -1,6 +1,7 @@
 import { emitTo, listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { PreviewRequests, WindowMessages, WindowRequests } from '../../shared/window-contract';
+import { VIEW_ID_PATTERN } from '../../shared/windows';
 
 // Every window of the app has its own JavaScript, so the windows talk through Tauri events. A view window asks
 // the main window (which owns the window layer and the developer preview) for something and waits for the
@@ -14,7 +15,8 @@ const VIEW_LABEL_PREFIX = 'view-';
 
 /** The label of the window that shows `view`: the same view always gets the same window. */
 export const viewLabel = (view: string) => `${VIEW_LABEL_PREFIX}${view}`;
-export const isViewLabel = (label: string) => /^view-[a-z]+$/.test(label);
+export const isViewLabel = (label: string) =>
+  label.startsWith(VIEW_LABEL_PREFIX) && VIEW_ID_PATTERN.test(label.slice(VIEW_LABEL_PREFIX.length));
 
 export const currentLabel = (): string => getCurrentWindow().label;
 

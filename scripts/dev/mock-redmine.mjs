@@ -10,7 +10,9 @@
 //   GET /time_entries.json    the user's time entries of the last 60 days; limit/offset paging, from/to and issue_id filters
 //   GET /issues/<id>.json     one issue, with ?include=journals,attachments,children,relations; 404 for an id that does not exist
 //   GET /time_entries/<id>.json   one time entry; 404 for an id that does not exist
-//   GET /issue_statuses.json, /trackers.json, /enumerations/issue_priorities.json   the names that journals refer to by id
+//   POST /time_entries.json   logs time: {"time_entry": {issue_id, spent_on, hours, activity_id, comments}}; 201 with the entry, 422 with errors
+//   GET /issue_statuses.json, /trackers.json, /enumerations/issue_priorities.json, /enumerations/time_entry_activities.json
+//     the names that journals refer to by id, and the activities that time can be logged under
 //
 // Path prefixes turn the same server into a special one, so a base URL such as
 // http://127.0.0.1:8123/moved selects the behaviour:
@@ -202,6 +204,12 @@ function authenticated(request) {
   return Buffer.from(header.slice('Basic '.length), 'base64').toString('utf8') === `${USERNAME}:${PASSWORD}`;
 }
 
+async function readBody(request) {
+  let text = '';
+  for await (const chunk of request) text += chunk;
+  return text;
+}
+
 function sendJson(response, status, body) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   response.end(JSON.stringify(body));
@@ -228,13 +236,19 @@ export function createMockRedmine({ delayMs = 31_000, today = new Date().toISOSt
   const issues = buildIssues(today);
   const timeEntries = buildTimeEntries(today);
 
-  function handle(request, response, pathname, query) {
-    if (request.method !== 'GET') {
+  function handle(request, response, pathname, query, body) {
+    const logsTime = request.method === 'POST' && pathname === '/time_entries.json';
+    if (request.method !== 'GET' && !logsTime) {
       response.writeHead(405).end();
       return;
     }
     if (!authenticated(request)) {
       response.writeHead(401, { 'WWW-Authenticate': 'Basic realm="Redmine API"' }).end();
+      return;
+    }
+
+    if (logsTime) {
+      createTimeEntry(response, body);
       return;
     }
 
@@ -273,15 +287,52 @@ export function createMockRedmine({ delayMs = 31_000, today = new Date().toISOSt
       sendJson(response, 200, { trackers: TRACKERS });
     } else if (pathname === '/enumerations/issue_priorities.json') {
       sendJson(response, 200, { issue_priorities: PRIORITIES.map((priority) => ({ ...priority, is_default: priority.id === 2, active: true })) });
+    } else if (pathname === '/enumerations/time_entry_activities.json') {
+      sendJson(response, 200, { time_entry_activities: ACTIVITIES.map((activity) => ({ ...activity, is_default: activity.id === 8, active: true })) });
     } else {
       response.writeHead(404).end();
     }
   }
 
-  return createServer((request, response) => {
+  /** Adds a time entry as Redmine does: the issue must exist, and so must the activity. */
+  function createTimeEntry(response, body) {
+    let input;
+    try {
+      input = JSON.parse(body).time_entry;
+    } catch {
+      return void sendJson(response, 422, { errors: ['Request body is not JSON'] });
+    }
+    const errors = [];
+    const issue = issues.find((candidate) => candidate.id === Number(input?.issue_id));
+    const activity = ACTIVITIES.find((candidate) => candidate.id === Number(input?.activity_id));
+    if (!issue) errors.push('Issue is invalid');
+    if (!activity) errors.push('Activity cannot be blank');
+    if (!(Number(input?.hours) > 0)) errors.push('Hours is invalid');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input?.spent_on ?? '')) errors.push('Spent on is invalid');
+    if (errors.length > 0) return void sendJson(response, 422, { errors });
+
+    const entry = {
+      id: Math.max(0, ...timeEntries.map((candidate) => candidate.id)) + 1,
+      project: issue.project,
+      issue: { id: issue.id },
+      user: { id: USER.id, name: `${USER.firstname} ${USER.lastname}` },
+      activity,
+      hours: Number(input.hours),
+      comments: String(input.comments ?? ''),
+      spent_on: input.spent_on,
+      created_on: `${input.spent_on}T17:00:00Z`,
+      updated_on: `${input.spent_on}T17:00:00Z`,
+    };
+    timeEntries.push(entry);
+    response.setHeader('Location', `/time_entries/${entry.id}.json`);
+    sendJson(response, 201, { time_entry: entry });
+  }
+
+  return createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://mock-redmine.invalid');
     const prefixed = /^\/(moved|sso|slow)(\/.*)$/.exec(url.pathname);
     const [, prefix, rest] = prefixed ?? [];
+    const body = request.method === 'POST' ? await readBody(request) : '';
 
     if (prefix === 'moved') {
       response.writeHead(301, { Location: `https://elsewhere.example${rest}${url.search}` }).end();
@@ -289,10 +340,10 @@ export function createMockRedmine({ delayMs = 31_000, today = new Date().toISOSt
       response.writeHead(302, { Location: `https://sso.example/auth?next=${encodeURIComponent('/')}` }).end();
     } else if (prefix === 'slow') {
       // Stop waiting when the client gives up, so a timed-out request does not keep the server busy.
-      const timer = setTimeout(() => handle(request, response, rest, url.searchParams), delayMs);
+      const timer = setTimeout(() => handle(request, response, rest, url.searchParams, body), delayMs);
       response.on('close', () => clearTimeout(timer));
     } else {
-      handle(request, response, url.pathname, url.searchParams);
+      handle(request, response, url.pathname, url.searchParams, body);
     }
   });
 }

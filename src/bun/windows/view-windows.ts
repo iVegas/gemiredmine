@@ -5,7 +5,7 @@ import type {
   WindowRequestHandlers,
 } from '../../shared/window-contract';
 import type { ViewId } from '../../mainview/lib/views';
-import { containsPoint, dropGap, type Point, type Rect } from '../../shared/windows';
+import { VIEW_ID_PATTERN, containsPoint, dropGap, type Point, type Rect } from '../../shared/windows';
 
 /** How often the pointer is checked while a view window is being dragged. */
 export const DRAG_POLL_MS = 40;
@@ -155,8 +155,8 @@ export class ViewWindows {
   }
 
   private detach(main: AppWindow, view: ViewId, title: string, session: SessionSnapshot) {
-    // The view becomes part of a URL, so only plain view ids are accepted.
-    if (!/^[a-z]+$/.test(view)) throw new Error(`Unknown view: ${view}`);
+    // The view becomes part of a URL and a window label, so only view ids of the expected shape are accepted.
+    if (!VIEW_ID_PATTERN.test(view)) throw new Error(`Unknown view: ${view}`);
     this.session = session;
 
     const existing = this.windowFor(view);

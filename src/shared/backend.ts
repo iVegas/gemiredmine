@@ -67,6 +67,22 @@ export interface TaskDetails {
   names: HistoryNames;
 }
 
+/** An activity that time can be logged under, such as "Development". */
+export interface TimeActivity {
+  id: number;
+  name: string;
+}
+
+/** A log entry the user is adding to a task. */
+export interface NewLogEntry {
+  taskId: number;
+  /** YYYY-MM-DD */
+  spentOn: string;
+  hours: number;
+  activityId: number;
+  comments: string;
+}
+
 export interface LoadedCredentials {
   /** By server id */
   apiKeys: Record<string, string>;
@@ -86,6 +102,10 @@ export interface GemiBackend {
   listTaskLogEntries(access: ServerAccess, taskId: number): Promise<RedmineTimeEntry[]>;
   /** One log entry, which is one time entry. */
   getLogEntry(access: ServerAccess, entryId: number): Promise<RedmineTimeEntry>;
+  /** The activities that time can be logged under on this server. */
+  listTimeActivities(access: ServerAccess): Promise<TimeActivity[]>;
+  /** Logs time on a task. Rejects when the server refuses it, such as for a user without the right to log time. */
+  createLogEntry(access: ServerAccess, entry: NewLogEntry): Promise<void>;
   getDevPreviewStatus(): Promise<DevPreviewStatus>;
   setDevPreviewEnabled(enabled: boolean): Promise<DevPreviewStatus>;
   recordDiagnostic(level: LogLevel, scope: string, message: string): Promise<void>;

@@ -7,6 +7,7 @@ import {
   closeView,
   resetViews,
   isClosable,
+  isViewId,
   needsServer,
   moveView,
   insertView,
@@ -215,12 +216,19 @@ describe('detail views', () => {
     expect(get(activeView)).toBe('task:s:42');
   });
 
-  it('are closable and movable like the other tabs, but do not get a window of their own', () => {
+  it('are closable, movable and detachable like the other tabs', () => {
     expect(isClosable(taskView('s', 1))).toBe(true);
-    expect(canDetach(taskView('s', 1))).toBe(false);
-    expect(canDetach(logView('s', 1))).toBe(false);
+    expect(canDetach(taskView('s', 1))).toBe(true);
+    expect(canDetach(logView('s', 1))).toBe(true);
     expect(canDetach('calendar')).toBe(true);
     expect(canDetach('dashboard')).toBe(false);
+  });
+
+  it('are recognised as view ids that arrive from another window, and nothing else is', () => {
+    expect(isViewId(taskView('s', 1))).toBe(true);
+    expect(isViewId('calendar')).toBe(true);
+    expect(isViewId('constructor')).toBe(false);
+    expect(isViewId('task:s')).toBe(false);
   });
 
   it('forget their title when they are closed', () => {

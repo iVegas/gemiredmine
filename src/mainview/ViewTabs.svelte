@@ -1,12 +1,12 @@
 <script lang="ts">
   import { tick } from 'svelte';
   import {
-    VIEW_TITLES,
     activeView,
     closeView,
     firstMovableIndex,
     isClosable,
     isDetailView,
+    isViewId,
     moveView,
     openViews,
     viewLabels,
@@ -264,8 +264,8 @@
     windowDropTarget.set(null);
     // What arrives is data from another window: only the ids of views that can have a window are accepted.
     const view = viewFromDragData(event.dataTransfer?.getData(VIEW_DRAG_TYPE) ?? '');
-    if (!view || !(view in VIEW_TITLES) || !isClosable(view as ViewId)) return;
-    void attachViewWindowAt(view as ViewId, dropGap(event.clientX, tabEdges(), firstMovable));
+    if (!view || !isViewId(view) || !isClosable(view)) return;
+    void attachViewWindowAt(view, dropGap(event.clientX, tabEdges(), firstMovable));
   }
 
   function handleClick(view: ViewId) {

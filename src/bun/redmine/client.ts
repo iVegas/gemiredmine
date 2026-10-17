@@ -26,7 +26,8 @@ import type {
   RedmineIssue,
   IssuesResponse,
   IssueResponse,
-  RedmineIssueDetails
+  RedmineIssueDetails,
+  NewTimeEntry
 } from './types';
 
 // Redmine caps list endpoints at 100 items per page; the cap keeps a runaway total from looping forever.
@@ -274,6 +275,14 @@ export class RedmineClient {
   async getTimeEntry(id: number): Promise<RedmineTimeEntry> {
     const { time_entry } = await this.request<TimeEntryResponse>(`/time_entries/${recordId(id)}.json`);
     return time_entry;
+  }
+
+  /** Logs time on an issue. Redmine answers 201 with the new entry, which nothing here needs. */
+  async createTimeEntry(entry: NewTimeEntry): Promise<void> {
+    await this.request<unknown>('/time_entries.json', {
+      method: 'POST',
+      body: JSON.stringify({ time_entry: { ...entry, issue_id: recordId(entry.issue_id) } })
+    });
   }
 
   /** The time entries logged on an issue, by anyone the user may see, the latest day first. */
