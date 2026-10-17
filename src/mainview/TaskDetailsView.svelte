@@ -1,9 +1,9 @@
 <script lang="ts">
   import type { ServerConnection } from './lib/store';
-  import type { TaskDetails } from '../shared/backend';
+  import type { TaskDetails, TimeActivity } from '../shared/backend';
   import type { RedmineTimeEntry } from '../bun/redmine/types';
   import { redmineApi } from './lib/api';
-  import { formatHours, sumHours } from './lib/calendar';
+  import { formatHours, sumHours, toDateKey } from './lib/calendar';
   import { formatDueDate, isOverdue } from './lib/todo';
   import {
     attachmentLink,
@@ -68,6 +68,56 @@
   }
 
   const reload = () => load(server.url, server.apiToken, taskId);
+
+  // The form for a new log entry, shown above the entries already logged on the task. The activities are fetched
+  // the first time the form is opened.
+  let logForm = false;
+  let activities: TimeActivity[] = [];
+  let activitiesError = '';
+  let draft = { hours: null as number | null, spentOn: toDateKey(new Date()), activityId: null as number | null, comments: '' };
+  let saving = false;
+  let saveError = '';
+  let saved = '';
+
+  async function showLogForm() {
+    logForm = true;
+    saved = '';
+    if (activities.length > 0 || !server.apiToken) return;
+    activitiesError = '';
+    try {
+      activities = await redmineApi.listTimeActivities({ baseUrl: server.url, apiKey: server.apiToken });
+      draft.activityId ??= activities[0]?.id ?? null;
+    } catch (err) {
+      activitiesError = describe(err);
+    }
+  }
+
+  async function logTime() {
+    const hours = Number(draft.hours);
+    if (!server.apiToken || saving) return;
+    if (!(hours > 0) || !draft.spentOn || draft.activityId === null) {
+      saveError = 'Enter the hours, the date and an activity.';
+      return;
+    }
+
+    saving = true;
+    saveError = '';
+    saved = '';
+    try {
+      await redmineApi.createLogEntry(
+        { baseUrl: server.url, apiKey: server.apiToken },
+        { taskId, spentOn: draft.spentOn, hours, activityId: draft.activityId, comments: draft.comments.trim() }
+      );
+      saved = `Logged ${formatHours(hours)} on ${formatDueDate(draft.spentOn)}.`;
+      draft = { ...draft, hours: null, comments: '' };
+      // The entries and the spent time of the task are fetched again, so the new entry is in the list at once.
+      await reload();
+    } catch (err) {
+      saveError = `The time could not be logged: ${describe(err)}`;
+    } finally {
+      saving = false;
+    }
+  }
 
   $: issue = details?.issue ?? null;
   $: overdue = issue !== null && !issue.closed_on && isOverdue(issue);
@@ -233,10 +283,73 @@
     {/if}
 
     <section aria-labelledby="task-{taskId}-logged" class="rounded-lg border border-gray-200 bg-white p-4 shadow">
-      <h3 id="task-{taskId}-logged" class="mb-2 flex items-baseline justify-between gap-2 font-semibold text-gray-900">
-        <span>Time logged</span>
-        {#if logEntries.length > 0}<span class="text-sm font-normal text-gray-500">{formatHours(loggedHours)} in {logEntries.length} {logEntries.length === 1 ? 'entry' : 'entries'}</span>{/if}
-      </h3>
+      <div class="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <h3 id="task-{taskId}-logged" class="font-semibold text-gray-900">Time logged</h3>
+        <div class="flex flex-wrap items-baseline gap-3">
+          {#if logEntries.length > 0}<span class="text-sm text-gray-500">{formatHours(loggedHours)} in {logEntries.length} {logEntries.length === 1 ? 'entry' : 'entries'}</span>{/if}
+          {#if !logForm}
+            <button
+              type="button"
+              disabled={!server.apiToken}
+              class="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+              on:click={showLogForm}
+            >
+              Log time
+            </button>
+          {/if}
+        </div>
+      </div>
+
+      {#if logForm}
+        <form
+          aria-label="Log time on #{taskId}"
+          class="mb-4 space-y-3 rounded-md border border-gray-200 bg-gray-50 p-3"
+          on:submit|preventDefault={logTime}
+        >
+          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+              Hours
+              <input type="number" min="0.01" step="0.25" required bind:value={draft.hours} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+              Date
+              <input type="date" required bind:value={draft.spentOn} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </label>
+            <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+              Activity
+              <select required disabled={activities.length === 0} bind:value={draft.activityId} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60">
+                {#each activities as activity (activity.id)}
+                  <option value={activity.id}>{activity.name}</option>
+                {/each}
+              </select>
+            </label>
+          </div>
+          <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+            Comment
+            <input type="text" bind:value={draft.comments} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </label>
+
+          {#if activitiesError}<p role="alert" class="text-sm text-red-700">The activities cannot be loaded: {activitiesError}</p>{/if}
+          {#if saveError}<p role="alert" class="text-sm text-red-700">{saveError}</p>{/if}
+
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <p role="status" class="text-sm text-green-700">{saved}</p>
+            <div class="flex gap-2">
+              <button type="button" class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" on:click={() => (logForm = false)}>
+                Close
+              </button>
+              <button
+                type="submit"
+                disabled={saving || activities.length === 0}
+                class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+              >
+                {saving ? 'Logging…' : 'Log time'}
+              </button>
+            </div>
+          </div>
+        </form>
+      {/if}
+
       {#if logsError}
         <p class="text-sm text-gray-600">The time logged on this task cannot be shown: {logsError}</p>
       {:else if logEntries.length === 0}

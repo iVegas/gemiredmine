@@ -38,6 +38,10 @@ export function parseDetailView(view: string): DetailViewTarget | null {
 
 export const isDetailView = (view: string): view is DetailViewId => DETAIL_VIEW.test(view);
 
+/** Whether a string names a view the app has: a view of the tabs, or a task or log entry. Ids from another window are checked with it. */
+export const isViewId = (value: string): value is ViewId =>
+  isDetailView(value) || Object.prototype.hasOwnProperty.call(VIEW_TITLES, value);
+
 export const taskView = (serverId: string, taskId: number) => `task:${serverId}:${taskId}` as DetailViewId;
 export const logView = (serverId: string, entryId: number) => `log:${serverId}:${entryId}` as DetailViewId;
 
@@ -56,9 +60,9 @@ export function viewTitle(view: ViewId, labels: Record<string, string> = get(vie
   return VIEW_TITLES[view as StaticViewId];
 }
 
-/** Whether a view can have a window of its own. Detail views are tabs of the main window. */
+/** Whether a view can have a window of its own: every tab but the pinned one. */
 export function canDetach(view: ViewId): boolean {
-  return isClosable(view) && !isDetailView(view);
+  return isClosable(view);
 }
 
 /** The dashboard is pinned: it is always the first tab and cannot be closed. */

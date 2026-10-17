@@ -3,11 +3,14 @@ import { fireEvent, render } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import TaskDetailsView from '../TaskDetailsView.svelte';
 import { redmineApi } from '../lib/api';
+import { toDateKey } from '../lib/calendar';
 import { activeView, openViews, resetViews, viewLabels } from '../lib/views';
 import type { RedmineIssueDetails, RedmineTimeEntry } from '../../bun/redmine/types';
 import type { TaskDetails } from '../../shared/backend';
 
-vi.mock('../lib/api', () => ({ redmineApi: { getTask: vi.fn(), listTaskLogEntries: vi.fn() } }));
+vi.mock('../lib/api', () => ({
+  redmineApi: { getTask: vi.fn(), listTaskLogEntries: vi.fn(), listTimeActivities: vi.fn(), createLogEntry: vi.fn() },
+}));
 
 const api = vi.mocked(redmineApi);
 const server = { id: 'srv-1', name: 'Work', url: 'https://redmine.example.com', apiToken: 'key-1' };
@@ -232,6 +235,82 @@ describe('TaskDetailsView', () => {
       expect(await view.findByText(/cannot be shown: Redmine API request failed: 403 Forbidden/)).toBeInTheDocument();
       expect(view.getByRole('heading', { name: '#42 Fix the login' })).toBeInTheDocument();
       expect(view.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    describe('logging time', () => {
+      const activities = [
+        { id: 8, name: 'Development' },
+        { id: 9, name: 'Design' },
+      ];
+
+      beforeEach(() => api.listTimeActivities.mockResolvedValue(activities));
+
+      it('opens a form above the entries already logged on the task', async () => {
+        api.listTaskLogEntries.mockResolvedValue([entry(9, '2026-10-02', 2.5, 'Pairing')]);
+        const view = render(TaskDetailsView, { props: { server, taskId: 42 } });
+        await view.findByText('Pairing');
+
+        await fireEvent.click(view.getByRole('button', { name: 'Log time' }));
+
+        expect(await view.findByRole('form', { name: 'Log time on #42' })).toBeInTheDocument();
+        expect(await view.findByRole('option', { name: 'Development' })).toBeInTheDocument();
+        expect(view.getByLabelText('Activity')).toHaveValue('8');
+        expect(view.getByText('Pairing')).toBeInTheDocument();
+        expect(api.listTimeActivities).toHaveBeenCalledExactlyOnceWith(access);
+      });
+
+      it('logs the time on the task, and shows the new entry among the others', async () => {
+        const today = toDateKey(new Date());
+        api.createLogEntry.mockResolvedValue(undefined);
+        api.listTaskLogEntries
+          .mockResolvedValueOnce([])
+          .mockResolvedValue([entry(10, today, 1.5, 'Review')]);
+        const view = render(TaskDetailsView, { props: { server, taskId: 42 } });
+        await view.findByText('No time has been logged on this task.');
+        await fireEvent.click(view.getByRole('button', { name: 'Log time' }));
+        await view.findByRole('option', { name: 'Development' });
+
+        await fireEvent.input(view.getByLabelText('Hours'), { target: { value: '1.5' } });
+        await fireEvent.input(view.getByLabelText('Comment'), { target: { value: ' Review ' } });
+        await fireEvent.submit(view.getByRole('form', { name: 'Log time on #42' }));
+
+        expect(api.createLogEntry).toHaveBeenCalledExactlyOnceWith(access, {
+          taskId: 42,
+          spentOn: today,
+          hours: 1.5,
+          activityId: 8,
+          comments: 'Review',
+        });
+        expect(await view.findByText('Review')).toBeInTheDocument();
+        expect(view.getByRole('status')).toHaveTextContent('Logged 1.5 h');
+        expect(view.getByLabelText('Hours')).toHaveValue(null);
+      });
+
+      it('does not send a log entry without hours, and says what is missing', async () => {
+        const view = render(TaskDetailsView, { props: { server, taskId: 42 } });
+        await view.findByText('No time has been logged on this task.');
+        await fireEvent.click(view.getByRole('button', { name: 'Log time' }));
+        await view.findByRole('option', { name: 'Development' });
+
+        await fireEvent.submit(view.getByRole('form', { name: 'Log time on #42' }));
+
+        expect(api.createLogEntry).not.toHaveBeenCalled();
+        expect(view.getByRole('alert')).toHaveTextContent('Enter the hours, the date and an activity.');
+      });
+
+      it('says why the time could not be logged, and keeps what was typed', async () => {
+        api.createLogEntry.mockRejectedValue(new Error('Redmine API request failed: 403 Forbidden'));
+        const view = render(TaskDetailsView, { props: { server, taskId: 42 } });
+        await view.findByText('No time has been logged on this task.');
+        await fireEvent.click(view.getByRole('button', { name: 'Log time' }));
+        await view.findByRole('option', { name: 'Development' });
+        await fireEvent.input(view.getByLabelText('Hours'), { target: { value: '2' } });
+
+        await fireEvent.submit(view.getByRole('form', { name: 'Log time on #42' }));
+
+        expect(await view.findByText(/could not be logged: Redmine API request failed: 403 Forbidden/)).toBeInTheDocument();
+        expect(view.getByLabelText('Hours')).toHaveValue(2);
+      });
     });
   });
 

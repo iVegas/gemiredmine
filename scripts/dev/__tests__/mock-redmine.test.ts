@@ -249,3 +249,32 @@ describe('one issue and one time entry', () => {
     }
   });
 });
+
+describe('logging time', () => {
+  const client = () => new RedmineClient({ baseUrl, apiKey: API_KEY });
+  const entry = { issue_id: 5, spent_on: TODAY, hours: 1.5, activity_id: 9, comments: 'Written by the test' };
+
+  it('lists the activities that time can be logged under', async () => {
+    const { time_entry_activities } = await client().getTimeEntryActivities();
+
+    expect(time_entry_activities.map((activity) => activity.name)).toEqual(['Development', 'Design', 'Testing']);
+  });
+
+  it('adds the entry to the time logged on the task', async () => {
+    const before = await client().getIssueTimeEntries(5);
+
+    await client().createTimeEntry(entry);
+
+    const after = await client().getIssueTimeEntries(5);
+    expect(after).toHaveLength(before.length + 1);
+    const added = after.find((candidate) => candidate.comments === 'Written by the test');
+    expect(added).toMatchObject({ hours: 1.5, spent_on: TODAY, activity: { id: 9, name: 'Design' }, issue: { id: 5 } });
+  });
+
+  it('refuses an entry that Redmine would refuse, with the status', async () => {
+    const error = await client().createTimeEntry({ ...entry, activity_id: 999 }).catch((e) => e);
+
+    expect(error).toBeInstanceOf(RedmineApiError);
+    expect(error.status).toBe(422);
+  });
+});

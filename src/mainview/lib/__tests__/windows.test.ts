@@ -81,6 +81,12 @@ describe('view windows', () => {
       expect(viewWindowFromLocation('#view=nothing')).toBeNull();
       expect(viewWindowFromLocation('#view=dashboard')).toBeNull();
     });
+
+    it('finds a task or a log entry, which is what a window of its own shows after it was detached', () => {
+      expect(viewWindowFromLocation('#view=task%3Asrv-1%3A42')).toBe('task:srv-1:42');
+      expect(viewWindowFromLocation('#view=log%3Asrv-1%3A7')).toBe('log:srv-1:7');
+      expect(viewWindowFromLocation('#view=task%3Asrv-1%3A0')).toBeNull();
+    });
   });
 
   describe('main window', () => {
@@ -285,6 +291,16 @@ describe('view windows', () => {
 
       expect(desktop.requests.openInMainWindow).toHaveBeenCalledWith({ view: 'dashboard' });
       expect(get(openViews)).toEqual(['settings']);
+    });
+
+    it('opens a task or a log entry in this window, where it was asked for', () => {
+      stop = startViewWindow('calendar');
+
+      openView('task:srv:42');
+
+      expect(desktop.requests.openInMainWindow).not.toHaveBeenCalled();
+      expect(get(openViews)).toEqual(['calendar', 'task:srv:42']);
+      expect(get(activeView)).toBe('task:srv:42');
     });
 
     it('closes when its view is closed', () => {

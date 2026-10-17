@@ -27,10 +27,43 @@ fn describe(error: Error) -> String {
     format!("The system's credential store did not accept the request: {error}")
 }
 
+/// The text the Secret Service gives when it refuses the session key of a connection. secret-service 5.2 sends the
+/// client's public key without padding, so a key whose leading byte is zero (about one in 256) is one byte short.
+/// Every connection makes a new key, so trying again nearly always works.
+#[cfg(any(target_os = "linux", test))]
+const KEY_SIZE_REFUSED: &str = "Client public key size is invalid";
+
+/// How many connections to make when the Secret Service refuses the key. Each try fails with probability 1/256 or so,
+/// so five in a row is not worth designing for.
+#[cfg(any(target_os = "linux", test))]
+const SESSION_ATTEMPTS: usize = 5;
+
+/// Runs `open` until it succeeds, it fails with an error that `retryable` does not accept, or `attempts` tries are
+/// used up. The last error is returned.
+#[cfg(any(target_os = "linux", test))]
+fn retry_session<T, E>(
+    attempts: usize,
+    mut open: impl FnMut() -> Result<T, E>,
+    retryable: impl Fn(&E) -> bool,
+) -> Result<T, E> {
+    let mut tries = 1;
+    loop {
+        match open() {
+            Err(error) if tries < attempts && retryable(&error) => tries += 1,
+            result => return result,
+        }
+    }
+}
+
 /// Opens the credential store of this system.
 #[cfg(target_os = "linux")]
 pub fn native_store() -> Result<Arc<CredentialStore>, String> {
-    let store = zbus_secret_service_keyring_store::Store::new().map_err(|error| {
+    let store = retry_session(
+        SESSION_ATTEMPTS,
+        zbus_secret_service_keyring_store::Store::new,
+        |error| error.to_string().contains(KEY_SIZE_REFUSED),
+    )
+    .map_err(|error| {
         format!("The system's credential store (the Secret Service) could not be reached: {error}")
     })?;
     Ok(store)
@@ -145,6 +178,53 @@ mod tests {
             credentials.load(ID),
             Ok(Some("0123456789abcdef".to_string()))
         );
+    }
+
+    #[test]
+    fn a_refused_session_key_is_tried_again_until_it_is_accepted() {
+        let mut calls = 0;
+        let result = retry_session(
+            5,
+            || {
+                calls += 1;
+                if calls < 3 {
+                    Err(KEY_SIZE_REFUSED)
+                } else {
+                    Ok(calls)
+                }
+            },
+            |error| *error == KEY_SIZE_REFUSED,
+        );
+
+        assert_eq!(result, Ok(3));
+        assert_eq!(calls, 3);
+    }
+
+    #[test]
+    fn other_failures_are_not_tried_again_and_the_last_error_is_kept() {
+        let mut calls = 0;
+        let other: Result<(), &str> = retry_session(
+            5,
+            || {
+                calls += 1;
+                Err("no bus")
+            },
+            |error| *error == KEY_SIZE_REFUSED,
+        );
+        assert_eq!(other, Err("no bus"));
+        assert_eq!(calls, 1);
+
+        calls = 0;
+        let exhausted: Result<(), &str> = retry_session(
+            5,
+            || {
+                calls += 1;
+                Err(KEY_SIZE_REFUSED)
+            },
+            |error| *error == KEY_SIZE_REFUSED,
+        );
+        assert_eq!(exhausted, Err(KEY_SIZE_REFUSED));
+        assert_eq!(calls, 5);
     }
 
     #[test]

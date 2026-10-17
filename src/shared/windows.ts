@@ -46,9 +46,16 @@ export function containsPoint(rect: Rect, point: Point, margin = 0): boolean {
  */
 export const VIEW_DRAG_TYPE = 'application/x-gemiredmine-view';
 
-/** The view id in dropped data, or null when the data is not a plain view id. */
+/**
+ * A view id as it travels between windows: a view of the tabs (a plain word), or a task or log entry as
+ * `kind:server id:number`. The same shape as the detail view ids in mainview/lib/views.ts, which keeps the
+ * parsing there; this one only has to say what may be sent to a window or named in a URL, label or drop.
+ */
+export const VIEW_ID_PATTERN = /^(?:[a-z]+|(?:task|log):[A-Za-z0-9_-]{1,64}:[1-9]\d{0,14})$/;
+
+/** The view id in dropped data, or null when the data is not a view id. */
 export function viewFromDragData(data: string): string | null {
-  return /^[a-z]+$/.test(data) ? data : null;
+  return VIEW_ID_PATTERN.test(data) ? data : null;
 }
 
 const VIEW_PARAM = 'view';

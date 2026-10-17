@@ -94,6 +94,16 @@ export interface RedmineCustomFieldValue {
   multiple?: boolean;
 }
 
+/** What Redmine takes to create a time entry: the names of its fields, so the request body is this object. */
+export interface NewTimeEntry {
+  issue_id: number;
+  /** YYYY-MM-DD */
+  spent_on: string;
+  hours: number;
+  activity_id: number;
+  comments: string;
+}
+
 export interface RedmineTimeEntry {
   id: number;
   project: RedmineReference;
