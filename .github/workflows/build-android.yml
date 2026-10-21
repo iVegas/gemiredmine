@@ -1,0 +1,65 @@
+# Android release APK, signed with the release keystore. Build only: nothing is published from here.
+# The keystore comes from two secrets. Losing or changing the keystore stops every installed copy from updating,
+# so keep a backup of ANDROID_KEYSTORE_B64 and ANDROID_KEYSTORE_PROPERTIES somewhere safe.
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    # The image builds the SDK, the NDK and the Rust toolchain from scratch, so the first run is slow.
+    timeout-minutes: 120
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Write the signing secrets
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KEYSTORE_PROPERTIES: ${{ secrets.ANDROID_KEYSTORE_PROPERTIES }}
+        run: |
+          set -eu
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PROPERTIES" ]; then
+            echo "::error title=Signing::ANDROID_KEYSTORE_B64 and ANDROID_KEYSTORE_PROPERTIES must be set."
+            exit 1
+          fi
+          # Outside the checkout, so the keystore is never inside the build context.
+          mkdir -p "$RUNNER_TEMP/signing"
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$RUNNER_TEMP/signing/android_keystore"
+          printf '%s\n' "$KEYSTORE_PROPERTIES" > "$RUNNER_TEMP/signing/android_keystore_properties"
+          chmod 600 "$RUNNER_TEMP/signing/"*
+
+      - name: Build the signed APK
+        run: |
+          # The Dockerfile signs the release APK when both secrets are given. The build runs in the container only.
+          docker buildx build \
+            -f docker/android/Dockerfile \
+            --secret "id=android_keystore,src=$RUNNER_TEMP/signing/android_keystore" \
+            --secret "id=android_keystore_properties,src=$RUNNER_TEMP/signing/android_keystore_properties" \
+            --output type=local,dest=dist/android \
+            .
+
+      - name: Check the APK is signed
+        run: |
+          apk="$(find dist/android -name '*.apk' | head -n 1)"
+          if [ -z "$apk" ]; then
+            echo "::error title=Build::No APK was produced."
+            exit 1
+          fi
+          case "$apk" in
+            *unsigned*) echo "::error title=Signing::The APK is unsigned: $apk"; exit 1 ;;
+          esac
+          python3 scripts/release/check-android-signature.py "$apk"
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-release
+          path: dist/android/
+          if-no-files-found: error
+          retention-days: 30

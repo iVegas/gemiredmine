@@ -50,10 +50,19 @@ COPY . .
 ARG CHANNEL=stable
 ENV CHANNEL=$CHANNEL
 # Generates src-tauri/gen/android, then builds the release APK for the device architecture. The overlay sets the one
-# Android identifier, so the generated project and the build agree. Without a keystore the APK is unsigned.
+# Android identifier, so the generated project and the build agree.
+#
+# The signing secrets are optional. Given `android_keystore_properties` (the keystore.properties file, whose storeFile
+# points at /run/secrets/android_keystore) and `android_keystore`, the APK is signed. Without them it is unsigned.
 RUN --mount=type=cache,target=/opt/cargo/registry \
     --mount=type=cache,target=/root/.gradle \
+    --mount=type=secret,id=android_keystore \
+    --mount=type=secret,id=android_keystore_properties \
     npx tauri android init --ci --config "$(node scripts/release/android-config.mjs)" \
+ && python3 scripts/release/patch-android-signing.py src-tauri/gen/android/app/build.gradle.kts \
+ && if [ -f /run/secrets/android_keystore_properties ]; then \
+      cp /run/secrets/android_keystore_properties src-tauri/gen/android/keystore.properties; \
+    fi \
  && npx tauri android build --apk --target aarch64 --config "$(node scripts/release/android-config.mjs)"
 
 FROM scratch AS artifact
