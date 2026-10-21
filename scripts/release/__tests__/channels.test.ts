@@ -91,4 +91,10 @@ describe('deriveBuildInfo', () => {
   it('rejects unknown channels', () => {
     expect(() => deriveBuildInfo({ packageVersion: '1.0.0', channel: 'nightly', buildDate })).toThrow('Unknown channel');
   });
+
+  it('names the Android platform, and rejects platforms that are not built', () => {
+    const info = deriveBuildInfo({ packageVersion: '1.0.0', channel: 'unstable', buildNumber: 12, platform: 'android', buildDate });
+    expect(info.platform).toBe('android');
+    expect(() => deriveBuildInfo({ packageVersion: '1.0.0', channel: 'stable', platform: 'macos', buildDate })).toThrow('Unknown platform');
+  });
 });

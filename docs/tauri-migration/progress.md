@@ -21,7 +21,7 @@ that changes in `plan.md`, with the reason.
 | Storage: the app's database, saved servers, certificate asset | **implemented** | `c8d26d9` `3b13a86` `061f2b2` `0fd5a93` and a docs commit | Branch `claude/sharp-pascal-qbz3f6`, from `main` at `3baf9a8`. After the owner's test of Windows unstable build 10. See "Storage" below |
 | One instance, remember me, task and log entry views | **implemented** | `7792380` `57b6b66` `f0b593e` `6d676c4` and a docs commit | Same branch, after the owner's request of 2026-10-15. See "Single instance, remembering the sign-in, task and log entry views" below |
 | PR 3: end-to-end tests, rename `src/bun` to `src/core` | optional | | Best at the start of the Android phase |
-| Android on Tauri, retire Capacitor | not started | | Outline in `plan.md` |
+| Android on Tauri, retire Capacitor | **started: groundwork** | | Outline in `plan.md`. Done here: `android` in `PLATFORMS` and `BuildInfo`, About text, no window layer on Android (`isAndroidWebview`). **Not done, and not possible in this sandbox:** `tauri android init` (needs the Android SDK), the NDK build of `ring`, the APK. See "Android" below |
 
 PR 0 and PR 1 were one pull request on `claude/elegant-fermi-u669ds` (pull request #20, merged as `648fe5b`). Test suite: 35 files and 233
 tests before, 44 files and 356 tests (one skipped) after PR 1 alone, and 47 files and 426 tests after the merge of
@@ -556,6 +556,27 @@ clean Windows 11. That is gate G5. A runner has WebView2 and a desktop session, 
   platform without them; deleting the geometry path would remove the one piece of Rust that is more than wiring. Windows
   users would lose dropping a window by its title bar, and keep dragging its tab.
 - How long should the unstable and canary soak last before stable? The plan says five or more unstable builds or one week.
+
+## Android (started 2026-10-21)
+
+Plan steps from `plan.md` "Next phase", and where each stands:
+
+- **1, `tauri android init`: not done.** It needs `ANDROID_HOME` and `NDK_HOME`. The sandbox cannot reach `dl.google.com`, so the
+  SDK and NDK cannot be installed here. `gen/android` has to be generated where they exist (a GitHub runner, or a machine with Android Studio).
+- **Rust for `aarch64-linux-android`: not verified.** `cargo check --target aarch64-linux-android` gets as far as the `ring` build
+  script, which needs the NDK's C compiler. `lib.rs` already gates the single-instance plugin behind `#[cfg(desktop)]`.
+- **2, identity: open.** Still `com.gemiredmine.app` in the Capacitor config; no decision yet.
+- **3, done:** `android` is in `PLATFORMS` (`scripts/release/channels.mjs`) and in `BuildInfo.platform`; `AboutView` says the app does not
+  update itself on Android. `androidVersionCode()` and the overlay are not written.
+- **4, network: open.** `network_security_config.xml` needs `gen/android`. TLS roots on Android are not checked.
+- **5, partly:** `toEnvironment` already names "Android System WebView". Icons and the Rust targets are not done.
+- **6, CI: not written.** The workflow needs the SDK on the runner, and keystore secrets as for the Windows PFX.
+- **7, done:** `hasWindowLayer()` is false on Android (`isAndroidWebview()` reads the WebView's user agent, so it can be read
+  synchronously). The backend still runs there, because `hasDesktopBackend()` is unchanged. Tests in `api.test.ts` and
+  `AboutView.android.test.ts`.
+- **8, Capacitor: not started.**
+
+Verified here: `npm test` (68 files, 879 tests) and `npm run typecheck`.
 
 ## Recipes
 

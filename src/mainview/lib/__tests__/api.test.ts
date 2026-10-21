@@ -46,7 +46,7 @@ vi.mock('../../../bun/backend', () => ({ createBackend: vi.fn(() => fake.backend
 
 import { createBackend } from '../../../bun/backend';
 import { redmineApi } from '../api';
-import { backend, hasDesktopBackend, hasWindowLayer, windowBackend } from '../bridge';
+import { backend, hasDesktopBackend, hasWindowLayer, isAndroidWebview, windowBackend } from '../bridge';
 import { canDetachViews } from '../windows';
 
 const access = { baseUrl: 'https://redmine.local', apiKey: 'key' };
@@ -144,6 +144,24 @@ describe('windows of their own', () => {
     vi.mocked(isTauri).mockReturnValue(false);
     expect(hasWindowLayer()).toBe(false);
     expect(canDetachViews()).toBe(false);
+  });
+
+  it('are not offered on Android, which has no windows of its own, but the backend still runs there', () => {
+    const userAgent = vi.spyOn(navigator, 'userAgent', 'get');
+    userAgent.mockReturnValue('Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36');
+    try {
+      expect(isAndroidWebview()).toBe(true);
+      expect(hasWindowLayer()).toBe(false);
+      expect(canDetachViews()).toBe(false);
+      expect(hasDesktopBackend()).toBe(true);
+    } finally {
+      userAgent.mockRestore();
+    }
+  });
+
+  it('are offered on desktop Linux, whose user agent does not name Android', () => {
+    expect(isAndroidWebview()).toBe(false);
+    expect(hasWindowLayer()).toBe(true);
   });
 
   it('are answered by the main window itself, and asked of it by a view window', () => {
