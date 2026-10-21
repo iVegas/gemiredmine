@@ -59,6 +59,11 @@
         Gemiredmine does not download or replace itself. Windows keeps this channel up to date from its App Installer file,
         which the app checks for when it starts. Each channel is a separate app, so install the channels you want from their own App Installer links.
       </p>
+    {:else if buildInfo.platform === 'android'}
+      <p class="text-sm text-gray-700">
+        Gemiredmine does not update itself on Android. Install a newer build of this channel over the one you have; each channel
+        is a separate app, so several channels can be installed side by side.
+      </p>
     {:else}
       <p class="text-sm text-gray-700">
         Gemiredmine does not download or replace itself. Updates come from the way you installed it: use

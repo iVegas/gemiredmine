@@ -34,9 +34,20 @@ export function backend(): GemiBackend {
   }));
 }
 
-/** Whether view tabs can open in windows of their own: in the desktop app's main window and in those windows. */
+/**
+ * Whether the webview runs on Android. The WebView says so in its user agent, which can be read synchronously; the
+ * environment the shell reports is only available asynchronously.
+ */
+export function isAndroidWebview(): boolean {
+  return typeof navigator !== 'undefined' && /\bAndroid\b/.test(navigator.userAgent);
+}
+
+/**
+ * Whether view tabs can open in windows of their own: in the desktop app's main window and in those windows.
+ * Android has no windows of its own, so the window layer is off there.
+ */
 export function hasWindowLayer(): boolean {
-  if (!hasDesktopBackend()) return false;
+  if (!hasDesktopBackend() || isAndroidWebview()) return false;
   const label = currentLabel();
   return label === MAIN_LABEL || isViewLabel(label);
 }

@@ -108,7 +108,7 @@ export function coreVersion(version) {
  * - unstable: every main-branch build gets `<core>-unstable.<buildNumber>`.
  * - dev:      local builds use the package version unchanged.
  */
-export const PLATFORMS = Object.freeze(['linux', 'windows']);
+export const PLATFORMS = Object.freeze(['linux', 'windows', 'android']);
 
 /** The platform a build targets. Builds run on their target platform, so this is the host platform. */
 export function hostPlatform(processPlatform = process.platform) {

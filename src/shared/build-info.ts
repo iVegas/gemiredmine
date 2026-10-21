@@ -12,7 +12,7 @@ export interface BuildInfo {
   dataDirName: string;
   /** Whether this build can offer the developer preview. Stable builds never can. */
   /** Platform this build targets; decides how updates are offered in the About screen */
-  platform: 'linux' | 'windows';
+  platform: 'linux' | 'windows' | 'android';
   devPreviewAvailable: boolean;
   repositoryUrl: string;
   /** Short git commit the build was made from, or "unknown" outside a git checkout */
