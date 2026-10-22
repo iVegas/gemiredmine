@@ -8,7 +8,7 @@
 
 ## 🚀 Download
 
-Gemiredmine ships as an AppImage for Linux, in three release channels. Each channel can be
+Gemiredmine ships as a Flatpak for Linux and as an APK for Android, in three release channels. Each channel can be
 installed next to the others.
 
 | Channel  | Who it is for                                  | Where to get it |
@@ -17,8 +17,8 @@ installed next to the others.
 | Canary   | Testing the next stable release (release candidates) | [Releases](https://github.com/iVegas/gemiredmine/releases) (`canary-v*`) |
 | Unstable | Following `main`, built on every change        | [Releases](https://github.com/iVegas/gemiredmine/releases) (`unstable-v*`) |
 
-**Linux:** make the AppImage executable and run it. Updates are not downloaded by the app itself; use
-`AppImageUpdate`, or the release page, to get a newer version.
+**Linux:** install the bundle with `flatpak install --user ./<file>.flatpak` and run it. Updates are not downloaded by
+the app itself; install a newer bundle of the same channel, or use the release page, to get a newer version.
 
 **Windows 11:** canary and unstable packages are signed with a self-signed certificate. First import the
 public certificate attached to the release, as an administrator:
@@ -83,7 +83,7 @@ We welcome contributions! Please review our [`CONTRIBUTING.md`](./CONTRIBUTING.m
 7. **Build:**
    - Webview: `npm run build`
    - Desktop app: `npm run build:desktop`. Set `CHANNEL=stable|canary|unstable|dev` to build a channel. The default is `dev`. The executable is `src-tauri/target/release/<app name>`.
-   - Linux AppImage: `CHANNEL=<channel> npm run build:desktop && CHANNEL=<channel> node scripts/release/package-linux.mjs`. Packaging needs `zsync` installed and downloads a pinned `appimagetool`.
+   - Linux Flatpak, in isolation: `docker build -f docker/flatpak/env.Dockerfile -t gemiredmine-flatpak-env .`, then `docker run --rm --privileged -v "$PWD:/work" -e CHANNEL=<channel> gemiredmine-flatpak-env scripts/release/flatpak-build.sh`, then `CHANNEL=<channel> node scripts/release/package-flatpak.mjs`. The host needs only Docker.
    - Windows 11 MSIX (on Windows): `set TARGET_PLATFORM=windows` (PowerShell: `$env:TARGET_PLATFORM='windows'`), then `CHANNEL=<channel>` with `npm run build:desktop` and `node scripts/release/package-windows.mjs`. It needs the Windows SDK tools; without `WINDOWS_SIGNING` the package is unsigned.
    - Android (Capacitor): `npx cap sync android`
 

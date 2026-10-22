@@ -11,6 +11,7 @@ concurrency:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   validate:
@@ -43,8 +44,15 @@ jobs:
       signing: self-signed
     secrets: inherit
 
+  build-android:
+    needs: validate
+    uses: ./.github/workflows/build-android.yml
+    with:
+      channel: canary
+    secrets: inherit
+
   publish:
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-windows, build-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -69,7 +77,13 @@ jobs:
           name: windows-canary
           path: dist/windows/canary
 
+      - name: Download Android package
+        uses: actions/download-artifact@v8
+        with:
+          name: android-canary
+          path: dist/android/canary
+
       - name: Publish canary release and prune
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/release/publish.mjs publish --dir dist/linux/canary --dir dist/windows/canary
+        run: node scripts/release/publish.mjs publish --dir dist/linux/canary --dir dist/windows/canary --dir dist/android/canary

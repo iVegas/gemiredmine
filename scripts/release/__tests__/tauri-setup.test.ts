@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { RUST } from '../flatpak-manifest.mjs';
 import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -239,25 +240,28 @@ describe('the crate', () => {
 describe('the build workflows', () => {
   const workflows = { linux: read('.github', 'workflows', 'build-linux.yml'), windows: read('.github', 'workflows', 'build-windows.yml') };
 
-  it.each(Object.entries(workflows))('%s installs the Rust version that rust-toolchain.toml pins', (_name, workflow) => {
+  it('installs the Rust version that rust-toolchain.toml pins, where the Windows build installs it', () => {
     const pinned = /channel = "([\d.]+)"/.exec(read('rust-toolchain.toml'))?.[1];
 
     expect(pinned).toBeDefined();
-    expect([...workflow.matchAll(/rustup toolchain install (\S+)/g)].map((match) => match[1])).toEqual([pinned]);
+    expect([...workflows.windows.matchAll(/rustup toolchain install (\S+)/g)].map((match) => match[1])).toEqual([pinned]);
+    // The Flatpak build installs the same release in its manifest, from the pinned tarball.
+    expect(RUST.version).toBe(pinned);
   });
 
-  it.each(Object.entries(workflows))('%s builds with the desktop build script and checks the executable', (name, workflow) => {
-    expect(workflow).toContain('run: npm run build:desktop');
-    expect(workflow).toContain(`scripts/release/check-${name}-binary.mjs`);
-    expect(workflow.toLowerCase()).not.toContain('electrobun');
+  it('builds the Windows executable with the desktop build script and checks it', () => {
+    expect(workflows.windows).toContain('run: npm run build:desktop');
+    expect(workflows.windows).toContain('scripts/release/check-windows-binary.mjs');
+    expect(workflows.windows.toLowerCase()).not.toContain('electrobun');
   });
 
-  it('smoke-tests the AppImage on a Wayland compositor as well as on X11', () => {
+  it('builds the Linux package as a Flatpak bundle in the environment image, then smoke-tests it on Wayland', () => {
     const smoke = read('scripts', 'release', 'smoke-test-wayland.sh');
 
-    expect(workflows.linux).toContain('weston');
-    expect(workflows.linux).toContain('xvfb-run');
-    expect(workflows.linux).toContain('scripts/release/smoke-test-wayland.sh "dist/linux/${CHANNEL}/${name}" --appimage-extract-and-run');
+    expect(workflows.linux).toContain('docker run --rm --privileged');
+    expect(workflows.linux).toContain('scripts/release/flatpak-build.sh');
+    expect(workflows.linux).toContain('scripts/release/smoke-test-flatpak.sh');
+    expect(workflows.linux).not.toContain('AppImage');
     // No X server to fall back to, and the app's own request for a toplevel window is what proves a Wayland client.
     expect(smoke).toContain('env -u DISPLAY');
     expect(smoke).toContain('WAYLAND_DEBUG=1');
@@ -273,16 +277,17 @@ describe('the build workflows', () => {
     expect(result.stderr).toContain('usage:');
   });
 
-  it.each(Object.entries(workflows))('%s keeps each channel in its own Rust cache', (_name, workflow) => {
-    expect(workflow).toContain('key: rust-${{ runner.os }}-${{ inputs.channel }}-${{ hashFiles(\'rust-toolchain.toml\', \'src-tauri/Cargo.lock\') }}');
-    expect(workflow).toContain('rust-${{ runner.os }}-${{ inputs.channel }}-\n');
+  // The Linux bundle compiles Rust inside the Flatpak build, which has no workflow cache to key.
+  it('keeps the Windows Rust cache per channel', () => {
+    expect(workflows.windows).toContain('key: rust-${{ runner.os }}-${{ inputs.channel }}-${{ hashFiles(\'rust-toolchain.toml\', \'src-tauri/Cargo.lock\') }}');
+    expect(workflows.windows).toContain('rust-${{ runner.os }}-${{ inputs.channel }}-\n');
   });
 
   it('only runs npm scripts that package.json defines', () => {
     const scripts = Object.keys(readJson('package.json').scripts);
     const checks = read('.github', 'workflows', 'checks.yml');
 
-    for (const [name, workflow] of [...Object.entries(workflows), ['checks', checks]]) {
+    for (const [name, workflow] of [['windows', workflows.windows], ['checks', checks]]) {
       const used = [...workflow.matchAll(/npm run ([\w:-]+)/g)].map((match) => match[1]);
       expect(used.length, name).toBeGreaterThan(0);
       for (const script of used) expect(scripts, `${name} runs npm run ${script}`).toContain(script);
@@ -296,11 +301,6 @@ describe('the build workflows', () => {
 
     expect([...checks.matchAll(/rustup toolchain install (\S+)/g)].map((match) => match[1])).toEqual([pinned]);
     expect(checks).toContain('cargo test --manifest-path src-tauri/Cargo.toml --locked --lib');
-  });
-
-  it('builds Linux on the oldest supported system, which sets the glibc floor', () => {
-    expect(workflows.linux).toContain('runs-on: ubuntu-22.04');
-    expect(read('scripts', 'release', 'check-linux-binary.mjs')).toContain("MAX_GLIBC = '2.35'");
   });
 
   it('never negates a command with a leading "!", which bash -e does not treat as a failure', () => {

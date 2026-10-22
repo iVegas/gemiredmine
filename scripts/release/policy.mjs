@@ -6,7 +6,7 @@
 //   unstable  unstable-v<core>-unstable.<n>   keeps the 3 newest builds of main
 //
 // Pointer releases `canary-latest` and `unstable-latest` hold the newest build of their
-// channel under a fixed file name, so AppImageUpdate can follow them. They are never pruned.
+// channel under a fixed file name, so a download link stays the same. They are never pruned.
 import { compareSemver, isStableVersion, parseSemver } from './channels.mjs';
 
 export const KEEP = Object.freeze({ stable: 2, unstable: 3 });

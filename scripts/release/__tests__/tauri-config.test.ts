@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CHANNELS, deriveBuildInfo } from '../channels.mjs';
-import { tauriBuildArgs, tauriChannelConfig } from '../tauri-config.mjs';
+import { androidBuildFeatures, tauriAndroidConfig, tauriBuildArgs, tauriChannelConfig } from '../tauri-config.mjs';
 
 const ROOT = resolve(fileURLToPath(import.meta.url), '../../../..');
 const TAURI_DIR = join(ROOT, 'src-tauri');
@@ -110,5 +110,33 @@ describe('tauriBuildArgs', () => {
       expect(args.includes('--features'), channel).toBe(channel !== 'stable');
       if (channel !== 'stable') expect(args[args.indexOf('--features') + 1]).toBe('devtools');
     }
+  });
+});
+
+describe.each(Object.entries(CHANNELS))('tauriAndroidConfig for %s', (channel) => {
+  const info = infoFor(channel as keyof typeof CHANNELS);
+  const config = tauriAndroidConfig(info);
+
+  it('uses the channel identifier, name and version, as the desktop build does', () => {
+    expect(config.identifier).toBe(info.identifier);
+    expect(config.productName).toBe(info.productName);
+    expect(config.version).toBe(info.version);
+  });
+
+  it('grants the same capabilities as the desktop build of the channel', () => {
+    expect(config.app.security.capabilities).toEqual(tauriChannelConfig(info).app.security.capabilities);
+  });
+});
+
+describe('the Android identifiers', () => {
+  it('keep stable on the identifier users already have, and give each other channel its own', () => {
+    expect(infoFor('stable').identifier).toBe('com.gemiredmine.app');
+    expect(infoFor('canary').identifier).toBe('com.gemiredmine.app.canary');
+    expect(infoFor('unstable').identifier).toBe('com.gemiredmine.app.unstable');
+  });
+
+  it('builds the developer tools only into the channels that have the developer preview', () => {
+    expect(androidBuildFeatures(infoFor('dev'))).toEqual(['devtools']);
+    expect(androidBuildFeatures(infoFor('stable'))).toEqual([]);
   });
 });

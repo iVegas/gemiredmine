@@ -3,7 +3,7 @@
 // release workflows; authenticates through the GH_TOKEN environment variable of `gh`.
 //
 //   node scripts/release/publish.mjs validate --channel <stable|canary|unstable> [--branch <name>] [--releases-json <file>]
-//   node scripts/release/publish.mjs publish  --dir dist/linux/<channel> [--dir dist/windows/<channel>] [--dry-run]
+//   node scripts/release/publish.mjs publish  --dir dist/linux/<channel> [--dir dist/windows/<channel>] [--dir dist/android/<channel>] [--dry-run]
 //   node scripts/release/publish.mjs prune    [--releases-json <file>] [--dry-run]
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
@@ -73,8 +73,9 @@ export function validate({ channel, branch, releasesJson, env = process.env, log
 }
 
 const PLATFORM_NOTES = {
-  linux: 'Linux: the AppImage. Updates come from AppImageUpdate, not from the app.',
+  linux: 'Linux: the Flatpak bundle. Install it with `flatpak install --user <file>`. The app does not update itself.',
   windows: 'Windows 11: the .msix package. Open the .appinstaller file to install; Windows keeps it up to date.',
+  android: 'Android: the .apk. Install it directly; Android does not update the app itself.',
 };
 
 function selfSignedNote(certificateName) {
@@ -190,7 +191,7 @@ export function publish({ dirs, dryRun = false, log = console.log }) {
         [
           'release', 'create', pointerTag, '--prerelease',
           '--title', `${CHANNEL_LABEL[channel]} (latest build)`,
-          '--notes', 'Always points at the newest build of this channel. Used by AppImageUpdate and the Windows App Installer.',
+          '--notes', 'Always points at the newest build of this channel, under a fixed file name. Used by the Windows App Installer.',
           '--target', commitSha,
         ],
         { dryRun, log }
