@@ -12,9 +12,6 @@ export const REPOSITORY_URL = `https://github.com/${REPOSITORY.owner}/${REPOSITO
 
 const BASE_IDENTIFIER = 'com.gemiredmine.app';
 
-/** Android has one identifier for every channel (plan.md, Android step 2), so an install is never split by channel. */
-export const ANDROID_IDENTIFIER = BASE_IDENTIFIER;
-
 export const CHANNELS = Object.freeze({
   stable: {
     label: 'Stable',
@@ -158,4 +155,22 @@ export function deriveBuildInfo({ packageVersion, channel, platform = 'linux', b
     commit,
     buildDate,
   };
+}
+
+/**
+ * The Android version code. Each channel is its own app (its own identifier), so codes only have to grow within one
+ * channel. The code is the version's core, then the pre-release stage: unstable builds 0 to 4999, release candidates
+ * 5000 to 9998, and a release 9999. Android never accepts a lower code over an installed app, so the stage has to climb.
+ */
+export function androidVersionCode(info) {
+  const { major, minor, patch, prerelease } = parseSemver(info.version);
+  const [kind, number = 0] = [prerelease[0], Number(prerelease[1] ?? 0)];
+  let stage;
+  if (prerelease.length === 0) stage = 9999;
+  else if (kind === 'rc' && number < 4999) stage = 5000 + number;
+  else if (kind === 'unstable' && number < 5000) stage = number;
+  else throw new Error(`No Android version code for "${info.version}": build numbers must stay below 5000.`);
+  const code = major * 100_000_000 + minor * 1_000_000 + patch * 10_000 + stage;
+  if (code > 2_100_000_000) throw new Error(`Version "${info.version}" is too large for an Android version code.`);
+  return code;
 }

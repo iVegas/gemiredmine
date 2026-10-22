@@ -7,6 +7,8 @@
 // The overlay never contains `null` (a merge patch deletes the key then) and never the CSP, which
 // every channel shares from the base file. Arrays are replaced whole, so `windows` is complete.
 
+import { androidVersionCode } from './channels.mjs';
+
 /**
  * The size of the main window, as before the move to Tauri. The app takes no files dropped on it, and Tauri's
  * handling of them would stop a view's tab being dragged into this window from another one (on Windows).
@@ -58,4 +60,20 @@ export function tauriBuildArgs(info, { cli, overlayPath }) {
     '--',
     '--locked',
   ];
+}
+
+/**
+ * The Android configuration of one channel: the desktop's identity, capabilities and icons, plus the version code.
+ * Android builds get the same capabilities as the channel's desktop build, so a stable build never gets dev-preview access.
+ *
+ * @param {ReturnType<typeof import('./channels.mjs').deriveBuildInfo>} info
+ */
+export function tauriAndroidConfig(info) {
+  const desktop = tauriChannelConfig(info);
+  return { ...desktop, bundle: { ...desktop.bundle, android: { versionCode: androidVersionCode(info) } } };
+}
+
+/** The Cargo features an Android build needs: the developer tools, and only in the channels that have the developer preview. */
+export function androidBuildFeatures(info) {
+  return info.devPreviewAvailable ? ['devtools'] : [];
 }

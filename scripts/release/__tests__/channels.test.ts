@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { compareSemver, deriveBuildInfo, isStableVersion, parseSemver } from '../channels.mjs';
+import { androidVersionCode, compareSemver, deriveBuildInfo, isStableVersion, parseSemver } from '../channels.mjs';
 
 describe('parseSemver', () => {
   it('parses core and pre-release parts', () => {
@@ -96,5 +96,26 @@ describe('deriveBuildInfo', () => {
     const info = deriveBuildInfo({ packageVersion: '1.0.0', channel: 'unstable', buildNumber: 12, platform: 'android', buildDate });
     expect(info.platform).toBe('android');
     expect(() => deriveBuildInfo({ packageVersion: '1.0.0', channel: 'stable', platform: 'macos', buildDate })).toThrow('Unknown platform');
+  });
+});
+
+describe('androidVersionCode', () => {
+  const code = (packageVersion: string, channel: string, buildNumber = 0) =>
+    androidVersionCode(deriveBuildInfo({ packageVersion, channel: channel as 'stable', buildNumber, platform: 'android', buildDate: 'x' }));
+
+  it('grows with every build of one channel', () => {
+    const unstable = [1, 2, 3].map(n => code('1.0.0', 'unstable', n));
+    expect(unstable[1]).toBeGreaterThan(unstable[0]);
+    expect(unstable[2]).toBeGreaterThan(unstable[1]);
+    expect(code('1.0.0-rc.2', 'canary')).toBeGreaterThan(code('1.0.0-rc.1', 'canary'));
+  });
+
+  it('sorts unstable below a release candidate, and a release candidate below the release', () => {
+    expect(code('1.0.0', 'unstable', 4999)).toBeLessThan(code('1.0.0-rc.1', 'canary'));
+    expect(code('1.0.0-rc.4998', 'canary')).toBeLessThan(code('1.0.0', 'stable'));
+  });
+
+  it('refuses a build number that would overflow its stage', () => {
+    expect(() => code('1.0.0', 'unstable', 5000)).toThrow('below 5000');
   });
 });

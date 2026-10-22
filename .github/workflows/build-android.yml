@@ -1,10 +1,24 @@
-# Android release APK, signed with the release keystore. Build only: nothing is published from here.
+# Reusable build: the signed Android APK for one release channel, built in the Dockerfile and packaged for the
+# publish step. Called by the unstable, canary and stable workflows. Nothing is published from here.
 # The keystore comes from two secrets. Losing or changing the keystore stops every installed copy from updating,
 # so keep a backup of ANDROID_KEYSTORE_B64 and ANDROID_KEYSTORE_PROPERTIES somewhere safe.
 name: Build Android APK
 
 on:
   workflow_dispatch:
+    inputs:
+      channel:
+        description: stable, canary or unstable
+        required: true
+        default: unstable
+        type: choice
+        options: [unstable, canary, stable]
+  workflow_call:
+    inputs:
+      channel:
+        description: stable, canary or unstable
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -14,6 +28,8 @@ jobs:
     runs-on: ubuntu-22.04
     # The image builds the SDK, the NDK and the Rust toolchain from scratch, so the first run is slow.
     timeout-minutes: 120
+    env:
+      CHANNEL: ${{ inputs.channel }}
     steps:
       - name: Check out
         uses: actions/checkout@v7
@@ -36,17 +52,20 @@ jobs:
 
       - name: Build the signed APK
         run: |
-          # The Dockerfile signs the release APK when both secrets are given. The build runs in the container only.
+          # The Dockerfile builds the release APK of this channel and signs it, because both secrets are given.
           docker buildx build \
             -f docker/android/Dockerfile \
+            --build-arg "CHANNEL=$CHANNEL" \
+            --build-arg "GITHUB_RUN_NUMBER=$GITHUB_RUN_NUMBER" \
+            --build-arg "GITHUB_SHA=$GITHUB_SHA" \
             --secret "id=android_keystore,src=$RUNNER_TEMP/signing/android_keystore" \
             --secret "id=android_keystore_properties,src=$RUNNER_TEMP/signing/android_keystore_properties" \
-            --output type=local,dest=dist/android \
+            --output type=local,dest=dist/android-build \
             .
 
       - name: Check the APK is signed
         run: |
-          apk="$(find dist/android -name '*.apk' | head -n 1)"
+          apk="$(find dist/android-build -name '*.apk' | head -n 1)"
           if [ -z "$apk" ]; then
             echo "::error title=Build::No APK was produced."
             exit 1
@@ -56,10 +75,13 @@ jobs:
           esac
           python3 scripts/release/check-android-signature.py "$apk"
 
-      - name: Upload the APK
+      - name: Package the APK
+        run: node scripts/release/package-android.mjs
+
+      - name: Upload artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: android-release
-          path: dist/android/
+          name: android-${{ inputs.channel }}
+          path: dist/android/${{ inputs.channel }}/
           if-no-files-found: error
           retention-days: 30

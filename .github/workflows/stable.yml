@@ -43,8 +43,15 @@ jobs:
       signing: trusted
     secrets: inherit
 
+  build-android:
+    needs: validate
+    uses: ./.github/workflows/build-android.yml
+    with:
+      channel: stable
+    secrets: inherit
+
   publish:
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-windows, build-android]
     runs-on: ubuntu-latest
     # Attach required reviewers to this environment in the repository settings to approve each release.
     environment: stable-release
@@ -71,7 +78,13 @@ jobs:
           name: windows-stable
           path: dist/windows/stable
 
+      - name: Download Android package
+        uses: actions/download-artifact@v8
+        with:
+          name: android-stable
+          path: dist/android/stable
+
       - name: Publish stable release and prune
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/release/publish.mjs publish --dir dist/linux/stable --dir dist/windows/stable
+        run: node scripts/release/publish.mjs publish --dir dist/linux/stable --dir dist/windows/stable --dir dist/android/stable
