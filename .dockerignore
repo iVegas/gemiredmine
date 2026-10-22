@@ -1,0 +1,7 @@
+# Host artifacts stay out of the build context: the builds install their own dependencies and produce their own output.
+.git
+node_modules
+dist
+views
+src-tauri/target
+src-tauri/gen

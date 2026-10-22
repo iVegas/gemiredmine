@@ -1,0 +1,65 @@
+# Builds the build environments and their dependencies, and pushes them to GHCR. The release workflows pull these
+# images, so no run downloads a toolchain, an SDK or a package. Tags come from scripts/release/image-tags.sh: they are
+# the hashes of what each image is built from, so an image is rebuilt only when its inputs change.
+name: Build images
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docker/**'
+      - 'scripts/release/image-tags.sh'
+      - 'package-lock.json'
+      - 'src-tauri/Cargo.lock'
+      - '.github/workflows/build-images.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Log in to GHCR
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Build and push the Android environment and its dependencies
+        run: |
+          set -eu
+          eval "$(scripts/release/image-tags.sh android)"
+          docker buildx build -f docker/android/env.Dockerfile -t "$ENV" --push .
+          docker buildx build -f docker/android/deps.Dockerfile --build-arg "ENV_IMAGE=$ENV" -t "$DEPS" --push .
+          echo "Pushed $ENV and $DEPS"
+
+  flatpak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Log in to GHCR
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Build and push the Flatpak environment
+        run: |
+          set -eu
+          eval "$(scripts/release/image-tags.sh flatpak)"
+          docker buildx build -f docker/flatpak/env.Dockerfile -t "$ENV" --push .
+          echo "Pushed $ENV"

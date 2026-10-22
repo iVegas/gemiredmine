@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   build:
@@ -50,11 +51,23 @@ jobs:
           printf '%s\n' "$KEYSTORE_PROPERTIES" > "$RUNNER_TEMP/signing/android_keystore_properties"
           chmod 600 "$RUNNER_TEMP/signing/"*
 
+      - name: Pull the Android environment and dependencies
+        run: |
+          # The environment and the dependencies are published by build-images.yml, so this only downloads them.
+          set -eu
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          eval "$(scripts/release/image-tags.sh android)"
+          docker pull "$DEPS"
+          echo "DEPS=$DEPS" >> "$GITHUB_ENV"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
       - name: Build the signed APK
         run: |
           # The Dockerfile builds the release APK of this channel and signs it, because both secrets are given.
           docker buildx build \
             -f docker/android/Dockerfile \
+            --build-arg "DEPS_IMAGE=$DEPS" \
             --build-arg "CHANNEL=$CHANNEL" \
             --build-arg "GITHUB_RUN_NUMBER=$GITHUB_RUN_NUMBER" \
             --build-arg "GITHUB_SHA=$GITHUB_SHA" \

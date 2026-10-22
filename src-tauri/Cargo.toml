@@ -55,7 +55,7 @@ windows-native-keyring-store = "~1.1.0"
 devtools = ["tauri/devtools"]
 
 [profile.release]
-# The desktop binary is shipped inside an AppImage and an MSIX, so size matters more than build time.
+# The desktop binary is shipped inside a Flatpak and an MSIX, so size matters more than build time.
 lto = "thin"
 codegen-units = 1
 strip = true
