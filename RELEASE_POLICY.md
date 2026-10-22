@@ -1,6 +1,6 @@
 # Release and Channel Policy
 
-Gemiredmine ships three release channels for Linux (AppImage) and Windows 11 (MSIX). Each channel is a
+Gemiredmine ships three release channels for Linux (Flatpak), Windows 11 (MSIX) and Android (APK). Each channel is a
 separate application on each platform: it can be installed next to the others, and it keeps its own settings.
 
 ## Versions come from one place
@@ -14,12 +14,12 @@ and from the channel, by `scripts/release/channels.mjs`:
 | Canary   | Canary workflow, started by hand    | `package.json` version (x.y.z-rc.n) | `1.0.0-rc.1`               |
 | Unstable | Every push to `main`                | `<x.y.z>-unstable.<run number>`  | `1.0.0-unstable.42`           |
 
-The version shown in the app's About screen, the AppImage file name, and the release tag all come
+The version shown in the app's About screen, the Flatpak bundle file name, and the release tag all come
 from this derivation.
 
 ## Channel rules
 
-**Unstable** contains the last 3 builds of `main`. Each push to `main` builds an unstable AppImage,
+**Unstable** contains the last 3 builds of `main`. Each push to `main` builds an unstable Flatpak bundle,
 publishes it as a pre-release tagged `unstable-v<version>`, and removes older unstable releases and
 their tags.
 
@@ -33,7 +33,7 @@ released yet and is newer than the latest stable. Only the two newest stable rel
 Stable builds never include the developer preview.
 
 Each channel also has a pointer release (`unstable-latest`, `canary-latest`). It always holds the
-newest build of that channel under a fixed file name, and it is what AppImageUpdate follows. Pointer
+newest build of that channel under a fixed file name, so a download link stays the same. Pointer
 releases are never pruned.
 
 ## Installing and updating on Windows 11
@@ -77,25 +77,21 @@ an unsigned package.
 
 ## Installing and updating on Linux
 
-Each channel's AppImage has its own file name, application identifier, desktop entry and settings
-folder:
+Each channel is a Flatpak bundle with its own application ID, desktop entry and settings folder:
 
-| Channel  | AppImage                                         | Settings folder               |
-|----------|--------------------------------------------------|-------------------------------|
-| Stable   | `Gemiredmine-<version>-x86_64.AppImage`          | `~/.local/share/gemiredmine`  |
-| Canary   | `Gemiredmine-Canary-<version>-x86_64.AppImage`   | `~/.local/share/gemiredmine-canary` |
-| Unstable | `Gemiredmine-Unstable-<version>-x86_64.AppImage` | `~/.local/share/gemiredmine-unstable` |
+| Channel  | Bundle                                    | Application ID                            |
+|----------|-------------------------------------------|-------------------------------------------|
+| Stable   | `Gemiredmine-<version>-x86_64.flatpak`    | `com.github.iVegas.Gemiredmine`           |
+| Canary   | `Gemiredmine-Canary-<version>-x86_64.flatpak` | `com.github.iVegas.Gemiredmine.Canary` |
+| Unstable | `Gemiredmine-Unstable-<version>-x86_64.flatpak` | `com.github.iVegas.Gemiredmine.Unstable` |
 
-Only one AppImage per channel is meant to be installed. Installing a newer AppImage of the same
-channel replaces the desktop entry of the previous one, because the desktop entry identifier is
-fixed per channel.
+Install a bundle with `flatpak install --user ./<file>.flatpak`. Each channel's bundle is built in the Flatpak
+environment image (`docker/flatpak/env.Dockerfile`), on the GNOME 51 runtime, with the Rust release that
+`rust-toolchain.toml` pins. The sandbox grants the network, the Wayland socket, the GPU and the system keyring, and nothing else.
 
-The app never downloads or replaces itself. Updates come from the platform's own mechanism:
-
-- AppImages embed update information. Install `AppImageUpdate` and run it on the AppImage to update
-  in place. Stable follows the latest stable release; canary and unstable follow their pointer
-  releases.
-- Where a system package manager is available for the application, use that instead.
+The app never downloads or replaces itself. To update, install a newer bundle of the same channel over the one you have.
+Stable follows the latest stable release; canary and unstable follow their pointer releases (`canary-latest`,
+`unstable-latest`), which always name the newest build under a fixed file name.
 
 ## Developer preview
 
@@ -155,34 +151,28 @@ executable has the Visual C++ runtime and the WebView2 loader linked in, so no r
 
 ## Host requirements (Linux)
 
-The AppImage bundles the application but not the desktop runtime. It needs GTK 3, WebKitGTK 4.1 (2.40 or newer),
-libsoup 3 and JavaScriptCore 4.1, and glibc 2.35 or newer (Ubuntu 22.04, Debian 12 and Fedora qualify). No tray
-library is needed. For example on Ubuntu 24.04:
-
-```sh
-sudo apt install libwebkit2gtk-4.1-0 libsoup-3.0-0 libjavascriptcoregtk-4.1-0
-```
+The Flatpak bundles the application and takes its desktop runtime from Flathub (GNOME 51, which includes WebKitGTK 4.1).
+No library needs to be installed on the host. A Flatpak installs the runtime on first use.
 
 "Remember me" keeps the API key in the Secret Service (GNOME Keyring, KDE Wallet or another implementation of it), which a desktop session
-normally provides. Without one, or when it cannot be reached, the app says so and the user signs in at every start. The AppImage needs no library
-for it.
+normally provides. Without one, or when it cannot be reached, the app says so and the user signs in at every start. The Flatpak grants
+access to it through the `org.freedesktop.secrets` service only.
 
 The app runs natively on Wayland, and on X11 where that is the session. Wayland is the supported Linux session; X11 is not tested
-and is not a target. The AppImage does not choose between them (it sets no `GDK_BACKEND`), and a user can still set it.
+and is not a target. The Flatpak does not choose between them (it sets no `GDK_BACKEND`), and a user can still set it.
 
 ## Not covered yet
 
-- Android builds are not part of this pipeline.
 - Putting a view window back in the main window: dragging the window's **tab** onto the main window's tabs, and **Move to main
   window**, work on a Wayland compositor (checked on a headless sway only; GNOME, KDE and NVIDIA machines are not checked). Dropping
   the window by its **title bar** needs screen positions, which Wayland does not give; it is for Windows, where it has not been tried.
   On Wayland the desktop decides where a new window opens.
 - WebKitGTK can show a blank window on some systems with the proprietary NVIDIA driver. `WEBKIT_DISABLE_DMABUF_RENDERER=1` is the
-  usual workaround; it is not set by the AppImage and has not been tried here.
+  usual workaround; it is not set by the Flatpak and has not been tried here.
 - "Remember me" has been tried against GNOME Keyring in a headless session on Linux only. Windows Credential Manager (from an installed MSIX
   package), KDE Wallet, and a keyring that asks the user to unlock it have not been tried. The app waits at most 30 seconds for the credential store.
 - Task and log entry tabs show Redmine's text as typed: its markup is not rendered. They cannot be dragged into windows of their own.
-- AppImages are not code-signed. Windows packages need signing secrets for their channel (see above).
+- Flatpak bundles are not signed, and are not yet on Flathub. Windows packages need signing secrets for their channel (see above).
 - The Linux update path has not been tested with a published release yet, and the Windows packages have not been
   installed on a Windows machine by the pipeline (see the verification notes in the pull request).
 - Windows on ARM and the Microsoft Store are not covered. winget is a possible next step.

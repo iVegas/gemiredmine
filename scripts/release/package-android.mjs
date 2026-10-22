@@ -9,8 +9,8 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSyn
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deriveBuildInfo } from './channels.mjs';
-import { sha256 } from './package-linux.mjs';
-import { releaseMetadata } from './linux-metadata.mjs';
+import { sha256 } from './checksum.mjs';
+import { releaseMetadata } from './release-metadata.mjs';
 import { POINTER_TAGS, tagFor } from './policy.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');

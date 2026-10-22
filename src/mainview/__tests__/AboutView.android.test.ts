@@ -23,11 +23,11 @@ vi.mock('../lib/api', () => ({ redmineApi: {} }));
 import AboutView from '../AboutView.svelte';
 
 describe('AboutView on Android', () => {
-  it('says the app does not update itself, and names neither App Installer nor AppImage tooling', () => {
+  it('says the app does not update itself, and names neither App Installer nor the Flatpak command', () => {
     const { getByText, queryByText } = render(AboutView, { props: { onClose: vi.fn() } });
 
     expect(getByText(/does not update itself on Android/)).toBeInTheDocument();
     expect(queryByText(/App Installer/)).not.toBeInTheDocument();
-    expect(queryByText('AppImageUpdate')).not.toBeInTheDocument();
+    expect(queryByText(/flatpak install/)).not.toBeInTheDocument();
   });
 });

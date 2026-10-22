@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Builds the Tauri desktop executable for one release channel. Reads CHANNEL (default: dev).
 //
-// It builds the bare executable (`--no-bundle`): the AppImage and the MSIX are made from it by
-// package-linux.mjs and package-windows.mjs, which Tauri's own bundlers cannot produce. The channel's
+// It builds the bare executable (`--no-bundle`): the Flatpak bundle and the MSIX are made from it by
+// flatpak-build.sh and package-windows.mjs, which Tauri's own bundlers cannot produce. The channel's
 // identity comes from tauri-config.mjs, laid over src-tauri/tauri.conf.json with `--config`.
 //
 // The web assets are built by the config's `beforeBuildCommand` (`npm run build`), whose `prebuild`

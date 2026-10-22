@@ -149,7 +149,7 @@ Keep it that way; logic belongs in TypeScript, where the tests and the Android b
   `src-tauri/tauri.conf.json`, which is the dev channel and what every channel shares (the content security policy).
 - **Wayland first on Linux.** Nothing may need X11 or a position on the screen: Wayland does not tell an application where its
   windows or the pointer are, and does not let it place a window. `AppRun` sets no `GDK_BACKEND`, and the Linux build starts the
-  AppImage on a headless compositor to prove it. A feature that moves things between windows uses drag and drop or a request
+  Flatpak on a headless compositor to prove it. A feature that moves things between windows uses drag and drop or a request
   between windows, as dropping a view's tab onto the main window's tabs does. `docs/tauri-migration/wayland-rig/` is a rig to
   try it (a headless sway with a virtual pointer).
 - **One copy per channel.** `tauri-plugin-single-instance` has to stay the first plugin (a test checks it), so that a second start ends before it

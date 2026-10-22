@@ -69,8 +69,8 @@ describe('publish CLI logic', () => {
   it('plans a publish with the full commit SHA as the release target and the pointer upload', () => {
     const artifacts = join(dir, 'linux');
     mkdirSync(artifacts);
-    writeFileSync(join(artifacts, 'Gemiredmine-Unstable-1.0.0-unstable.7-x86_64.AppImage'), 'x');
-    writeFileSync(join(artifacts, 'Gemiredmine-Unstable-x86_64.AppImage'), 'x');
+    writeFileSync(join(artifacts, 'Gemiredmine-Unstable-1.0.0-unstable.7-x86_64.flatpak'), 'x');
+    writeFileSync(join(artifacts, 'Gemiredmine-Unstable-x86_64.flatpak'), 'x');
     writeFileSync(join(artifacts, 'SHA256SUMS'), 'x');
     writeFileSync(
       join(artifacts, 'release.json'),
@@ -82,8 +82,8 @@ describe('publish CLI logic', () => {
         tag: 'unstable-v1.0.0-unstable.7',
         pointerTag: 'unstable-latest',
         assets: [
-          { name: 'Gemiredmine-Unstable-1.0.0-unstable.7-x86_64.AppImage', pointer: false },
-          { name: 'Gemiredmine-Unstable-x86_64.AppImage', pointer: true },
+          { name: 'Gemiredmine-Unstable-1.0.0-unstable.7-x86_64.flatpak', pointer: false },
+          { name: 'Gemiredmine-Unstable-x86_64.flatpak', pointer: true },
           { name: 'SHA256SUMS', pointer: false },
         ],
       })
@@ -123,7 +123,7 @@ describe('publish CLI logic', () => {
   };
 
   it('publishes Linux and Windows artifacts as one release with both platforms described', () => {
-    const linux = artifactFolder('linux', 'linux', {}, [['Gemiredmine-Unstable-1.0.0-unstable.7-x86_64.AppImage', false], ['SHA256SUMS-linux.txt', false]]);
+    const linux = artifactFolder('linux', 'linux', {}, [['Gemiredmine-Unstable-1.0.0-unstable.7-x86_64.flatpak', false], ['SHA256SUMS-linux.txt', false]]);
     const windows = artifactFolder('windows', 'windows', {}, [
       ['Gemiredmine-Unstable-1.0.0-unstable.7-x64.msix', false],
       ['Gemiredmine-Unstable-x64.msix', true],
@@ -135,7 +135,7 @@ describe('publish CLI logic', () => {
 
     const create = logs.find(line => line.includes('release create unstable-v1.0.0-unstable.7'));
     expect(create).toContain('Gemiredmine-Unstable-1.0.0-unstable.7-x64.msix');
-    expect(create).toContain('AppImage');
+    expect(create).toContain('Flatpak');
     const upload = logs.find(line => line.includes('release upload unstable-latest'));
     expect(upload).toContain('Gemiredmine-Unstable-x64.msix');
     expect(upload).toContain('Gemiredmine-Unstable.appinstaller');
@@ -144,7 +144,7 @@ describe('publish CLI logic', () => {
   });
 
   it('refuses to combine artifacts built from different commits or versions', () => {
-    const linux = artifactFolder('linux', 'linux', {}, [['a.AppImage', false]]);
+    const linux = artifactFolder('linux', 'linux', {}, [['a.flatpak', false]]);
     const windows = artifactFolder('windows', 'windows', { commitSha: 'ffffffffffffffffffffffffffffffffffffffff' }, [['b.msix', false]]);
 
     expect(() => publish({ dirs: [linux, windows], dryRun: true, log })).toThrow('disagree on commitSha');

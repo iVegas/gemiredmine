@@ -66,9 +66,9 @@
       </p>
     {:else}
       <p class="text-sm text-gray-700">
-        Gemiredmine does not download or replace itself. Updates come from the way you installed it: use
-        <code class="font-mono text-xs">AppImageUpdate</code> for the AppImage, or your package manager where one is available.
-        Each channel updates only within its own channel.
+        Gemiredmine does not download or replace itself. Install a newer build of this channel over the one you have
+        (<code class="font-mono text-xs">flatpak install --user</code> for the Flatpak bundle, or the installer you used
+        on Windows). Each channel is a separate app and updates only within its own channel.
       </p>
     {/if}
     <p class="text-sm text-gray-700">

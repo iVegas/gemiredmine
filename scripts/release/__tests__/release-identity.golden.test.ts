@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { CHANNELS, REPOSITORY, deriveBuildInfo } from '../channels.mjs';
 import { POINTER_TAGS, tagFor } from '../policy.mjs';
-import { appImageFileName, desktopEntry, pointerFileName, updateInformation } from '../linux-metadata.mjs';
+import { flatpakAppId } from '../flatpak-manifest.mjs';
 import {
   appInstallerFileName,
   buildAppInstaller,
@@ -68,14 +68,11 @@ describe.each(channels)('%s channel', (channel) => {
     }).toMatchSnapshot();
   });
 
-  it('names and describes the Linux AppImage', () => {
+  it('names the Flatpak app and its bundle', () => {
     expect({
-      appImage: appImageFileName(linux.appName, linux.version),
-      pointer: pointerFileName(linux.appName),
-      updateInformation: outcome(() =>
-        updateInformation({ channel, owner: REPOSITORY.owner, repo: REPOSITORY.name, appName: linux.appName })
-      ),
-      desktopEntry: desktopEntry(linux),
+      appId: flatpakAppId(linux),
+      bundle: `${linux.appName}-${linux.version}-x86_64.flatpak`,
+      pointer: POINTER_TAGS[channel as keyof typeof POINTER_TAGS] ? `${linux.appName}-x86_64.flatpak` : null,
     }).toMatchSnapshot();
   });
 

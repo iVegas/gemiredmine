@@ -33,28 +33,6 @@ exports[`canary channel > derives the build info 1`] = `
 }
 `;
 
-exports[`canary channel > names and describes the Linux AppImage 1`] = `
-{
-  "appImage": "Gemiredmine-Canary-1.0.0-rc.3-x86_64.AppImage",
-  "desktopEntry": "[Desktop Entry]
-Type=Application
-Name=Gemiredmine Canary
-GenericName=Redmine client (canary channel)
-Comment=Redmine client, canary channel
-Exec=AppRun %U
-Icon=com.gemiredmine.app.canary
-Terminal=false
-Categories=Development;ProjectManagement;
-StartupWMClass=Gemiredmine-Canary
-X-AppImage-Name=Gemiredmine Canary
-X-AppImage-Version=1.0.0-rc.3
-X-AppImage-Identifier=com.gemiredmine.app.canary
-",
-  "pointer": "Gemiredmine-Canary-x86_64.AppImage",
-  "updateInformation": "gh-releases-zsync|iVegas|gemiredmine|canary-latest|Gemiredmine-Canary-x86_64.AppImage.zsync",
-}
-`;
-
 exports[`canary channel > names and describes the Windows package and its feed 1`] = `
 {
   "appInstaller": "<?xml version="1.0" encoding="utf-8"?>
@@ -118,6 +96,14 @@ exports[`canary channel > names and describes the Windows package and its feed 1
 }
 `;
 
+exports[`canary channel > names the Flatpak app and its bundle 1`] = `
+{
+  "appId": "com.github.iVegas.Gemiredmine.Canary",
+  "bundle": "Gemiredmine-Canary-1.0.0-rc.3-x86_64.flatpak",
+  "pointer": "Gemiredmine-Canary-x86_64.flatpak",
+}
+`;
+
 exports[`canary channel > names the release tags 1`] = `
 {
   "pointer": "canary-latest",
@@ -154,30 +140,6 @@ exports[`dev channel > derives the build info 1`] = `
     "productName": "Gemiredmine Dev",
     "repositoryUrl": "https://github.com/iVegas/gemiredmine",
     "version": "1.0.0",
-  },
-}
-`;
-
-exports[`dev channel > names and describes the Linux AppImage 1`] = `
-{
-  "appImage": "Gemiredmine-Dev-1.0.0-x86_64.AppImage",
-  "desktopEntry": "[Desktop Entry]
-Type=Application
-Name=Gemiredmine Dev
-GenericName=Redmine client (dev channel)
-Comment=Redmine client, dev channel
-Exec=AppRun %U
-Icon=com.gemiredmine.app.dev
-Terminal=false
-Categories=Development;ProjectManagement;
-StartupWMClass=Gemiredmine-Dev
-X-AppImage-Name=Gemiredmine Dev
-X-AppImage-Version=1.0.0
-X-AppImage-Identifier=com.gemiredmine.app.dev
-",
-  "pointer": "Gemiredmine-Dev-x86_64.AppImage",
-  "updateInformation": {
-    "error": "Channel "dev" has no update pointer.",
   },
 }
 `;
@@ -237,6 +199,14 @@ exports[`dev channel > names and describes the Windows package and its feed 1`] 
 }
 `;
 
+exports[`dev channel > names the Flatpak app and its bundle 1`] = `
+{
+  "appId": "com.github.iVegas.Gemiredmine.Dev",
+  "bundle": "Gemiredmine-Dev-1.0.0-x86_64.flatpak",
+  "pointer": null,
+}
+`;
+
 exports[`dev channel > names the release tags 1`] = `
 {
   "pointer": null,
@@ -276,28 +246,6 @@ exports[`stable channel > derives the build info 1`] = `
     "repositoryUrl": "https://github.com/iVegas/gemiredmine",
     "version": "1.0.0",
   },
-}
-`;
-
-exports[`stable channel > names and describes the Linux AppImage 1`] = `
-{
-  "appImage": "Gemiredmine-1.0.0-x86_64.AppImage",
-  "desktopEntry": "[Desktop Entry]
-Type=Application
-Name=Gemiredmine
-GenericName=Redmine client (stable channel)
-Comment=Redmine client, stable channel
-Exec=AppRun %U
-Icon=com.gemiredmine.app
-Terminal=false
-Categories=Development;ProjectManagement;
-StartupWMClass=Gemiredmine
-X-AppImage-Name=Gemiredmine
-X-AppImage-Version=1.0.0
-X-AppImage-Identifier=com.gemiredmine.app
-",
-  "pointer": "Gemiredmine-x86_64.AppImage",
-  "updateInformation": "gh-releases-zsync|iVegas|gemiredmine|latest|Gemiredmine-*-x86_64.AppImage.zsync",
 }
 `;
 
@@ -364,6 +312,14 @@ exports[`stable channel > names and describes the Windows package and its feed 1
 }
 `;
 
+exports[`stable channel > names the Flatpak app and its bundle 1`] = `
+{
+  "appId": "com.github.iVegas.Gemiredmine",
+  "bundle": "Gemiredmine-1.0.0-x86_64.flatpak",
+  "pointer": null,
+}
+`;
+
 exports[`stable channel > names the release tags 1`] = `
 {
   "pointer": null,
@@ -401,28 +357,6 @@ exports[`unstable channel > derives the build info 1`] = `
     "repositoryUrl": "https://github.com/iVegas/gemiredmine",
     "version": "1.0.0-unstable.42",
   },
-}
-`;
-
-exports[`unstable channel > names and describes the Linux AppImage 1`] = `
-{
-  "appImage": "Gemiredmine-Unstable-1.0.0-unstable.42-x86_64.AppImage",
-  "desktopEntry": "[Desktop Entry]
-Type=Application
-Name=Gemiredmine Unstable
-GenericName=Redmine client (unstable channel)
-Comment=Redmine client, unstable channel
-Exec=AppRun %U
-Icon=com.gemiredmine.app.unstable
-Terminal=false
-Categories=Development;ProjectManagement;
-StartupWMClass=Gemiredmine-Unstable
-X-AppImage-Name=Gemiredmine Unstable
-X-AppImage-Version=1.0.0-unstable.42
-X-AppImage-Identifier=com.gemiredmine.app.unstable
-",
-  "pointer": "Gemiredmine-Unstable-x86_64.AppImage",
-  "updateInformation": "gh-releases-zsync|iVegas|gemiredmine|unstable-latest|Gemiredmine-Unstable-x86_64.AppImage.zsync",
 }
 `;
 
@@ -486,6 +420,14 @@ exports[`unstable channel > names and describes the Windows package and its feed
 ",
   "msixVersion": "1.0.0.42",
   "packageFile": "Gemiredmine-Unstable-1.0.0-unstable.42-x64.msix",
+}
+`;
+
+exports[`unstable channel > names the Flatpak app and its bundle 1`] = `
+{
+  "appId": "com.github.iVegas.Gemiredmine.Unstable",
+  "bundle": "Gemiredmine-Unstable-1.0.0-unstable.42-x86_64.flatpak",
+  "pointer": "Gemiredmine-Unstable-x86_64.flatpak",
 }
 `;
 

@@ -1,114 +1,63 @@
-# Reusable build: tests, type check, Tauri build and AppImage for one release channel.
+# Reusable build: the Flatpak bundle for one release channel. The bundle is built and smoke-tested in the Flatpak
+# environment image (docker/flatpak/env.Dockerfile), which is pulled, so the runner installs nothing for the build.
 # Called by the unstable, canary and stable workflows. Nothing is published from here.
-name: Build Linux AppImage
+name: Build Linux Flatpak
 
 on:
-  # Runs from the Actions tab for a build-only check (no publishing), for example before a merge.
   workflow_dispatch:
     inputs:
       channel:
-        description: stable, canary or unstable
+        description: stable, canary, unstable or dev
         required: true
         default: unstable
         type: choice
-        options: [unstable, canary, stable]
+        options: [unstable, canary, stable, dev]
   workflow_call:
     inputs:
       channel:
-        description: stable, canary or unstable
+        description: stable, canary, unstable or dev
         required: true
         type: string
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   build:
-    # The oldest system the AppImage supports. The executable can only use the glibc and library versions the
-    # build machine has, so it runs here and on anything newer. check-linux-binary.mjs enforces the floor.
-    runs-on: ubuntu-22.04
-    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
     env:
       CHANNEL: ${{ inputs.channel }}
     steps:
       - name: Check out
         uses: actions/checkout@v7
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: '24'
-          cache: npm
-
-      - name: Install dependencies
-        env:
-          HUSKY: '0'
-        run: npm ci
-
-      - name: Test
-        run: npm test
-
-      - name: Type check
-        run: npm run typecheck
-
-      - name: Install system packages
+      - name: Pull the Flatpak environment
         run: |
-          sudo apt-get update
-          # Tauri's build dependencies, zsync for the AppImage update file, xvfb and weston (a headless Wayland
-          # compositor) for the smoke tests.
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libxdo-dev libssl-dev \
-            libayatana-appindicator3-dev librsvg2-dev zsync xvfb weston
-
-      - name: Install Rust
-        # The same version as rust-toolchain.toml, which tauri-setup.test.ts checks.
-        run: rustup toolchain install 1.99.0 --profile minimal --no-self-update
-
-      - name: Cache Rust build
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cargo/registry/index
-            ~/.cargo/registry/cache
-            ~/.cargo/git/db
-            src-tauri/target
-          # Per channel: the channels build different feature sets (developer tools), so they share no objects.
-          key: rust-${{ runner.os }}-${{ inputs.channel }}-${{ hashFiles('rust-toolchain.toml', 'src-tauri/Cargo.lock') }}
-          restore-keys: |
-            rust-${{ runner.os }}-${{ inputs.channel }}-
-
-      # Builds the web assets first (the Tauri config's beforeBuildCommand), then the executable.
-      - name: Build desktop app
-        run: npm run build:desktop
-
-      - name: Check the executable
-        run: node scripts/release/check-linux-binary.mjs
-
-      - name: Package AppImage
-        run: node scripts/release/package-linux.mjs
-
-      - name: Smoke test the AppImage
+          set -eu
+          echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          eval "$(scripts/release/image-tags.sh flatpak)"
+          docker pull "$ENV"
+          echo "ENV=$ENV" >> "$GITHUB_ENV"
         env:
-          GEMIREDMINE_DATA_DIR: ${{ runner.temp }}/smoke-data
-        run: |
-          # Starts the packaged app on a virtual display. It has to still be running when `timeout` stops it
-          # after 20 seconds (status 124); any earlier exit means it did not start.
-          name="$(node -p "JSON.parse(require('fs').readFileSync('dist/linux/${CHANNEL}/release.json', 'utf8')).assets[0].name")"
-          echo "Starting $name"
-          status=0
-          xvfb-run -a timeout 20 "dist/linux/${CHANNEL}/${name}" --appimage-extract-and-run || status=$?
-          if [ "$status" -ne 124 ]; then
-            echo "::error title=Smoke test::The app exited with status $status within 20 seconds."
-            exit 1
-          fi
+          GITHUB_TOKEN: ${{ github.token }}
 
-      - name: Smoke test the AppImage on Wayland
-        env:
-          GEMIREDMINE_DATA_DIR: ${{ runner.temp }}/smoke-data-wayland
+      - name: Build the Flatpak bundle
         run: |
-          # Wayland is the target on Linux, so the packaged app also has to open a window as a Wayland client, on a
-          # compositor with no X11 behind it. The script explains how it tells.
-          name="$(node -p "JSON.parse(require('fs').readFileSync('dist/linux/${CHANNEL}/release.json', 'utf8')).assets[0].name")"
-          scripts/release/smoke-test-wayland.sh "dist/linux/${CHANNEL}/${name}" --appimage-extract-and-run
+          # flatpak-builder needs namespaces and a sandbox, so the container runs privileged. It holds the build only.
+          docker run --rm --privileged \
+            -v "$PWD:/work" \
+            -e CHANNEL -e GITHUB_RUN_NUMBER -e GITHUB_SHA \
+            "$ENV" scripts/release/flatpak-build.sh
+
+      - name: Package the bundle
+        run: node scripts/release/package-flatpak.mjs
+
+      - name: Smoke test the installed app on Wayland
+        run: |
+          docker run --rm --privileged -v "$PWD:/work" \
+            "$ENV" scripts/release/smoke-test-flatpak.sh "/work/dist/flatpak/${CHANNEL}/bundle.flatpak"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { REPOSITORY, deriveBuildInfo } from './channels.mjs';
 import { POINTER_TAGS, tagFor } from './policy.mjs';
 import { findAppBinary } from './build-output.mjs';
-import { releaseMetadata } from './linux-metadata.mjs';
+import { releaseMetadata } from './release-metadata.mjs';
 import { resolveSigning } from './windows-signing.mjs';
 import {
   appInstallerFileName,

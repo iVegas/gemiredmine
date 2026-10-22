@@ -23,10 +23,10 @@ vi.mock('../lib/api', () => ({ redmineApi: {} }));
 import AboutView from '../AboutView.svelte';
 
 describe('AboutView on Windows', () => {
-  it('describes App Installer updates instead of AppImage tooling', () => {
+  it('describes App Installer updates instead of the Flatpak command', () => {
     const { getByText, queryByText } = render(AboutView, { props: { onClose: vi.fn() } });
 
     expect(getByText(/App Installer file/)).toBeInTheDocument();
-    expect(queryByText('AppImageUpdate')).not.toBeInTheDocument();
+    expect(queryByText(/flatpak install/)).not.toBeInTheDocument();
   });
 });
