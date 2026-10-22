@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { deriveBuildInfo } from './channels.mjs';
 import { sha256 } from './package-linux.mjs';
 import { releaseMetadata } from './linux-metadata.mjs';
-import { tagFor } from './policy.mjs';
+import { POINTER_TAGS, tagFor } from './policy.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -46,12 +46,20 @@ export function packageAndroid({ env = process.env, root = ROOT } = {}) {
   const apkPath = join(outDir, apkName);
   copyFileSync(source, apkPath);
 
-  const sums = `${sha256(apkPath)}  ${apkName}\n`;
-  writeFileSync(join(outDir, 'SHA256SUMS-android.txt'), sums);
-  const assets = [
-    { name: apkName, path: apkPath, pointer: false },
-    { name: 'SHA256SUMS-android.txt', path: join(outDir, 'SHA256SUMS-android.txt'), pointer: false },
-  ];
+  // Pointer releases hold the same APK under a fixed name, as the Windows packages do. The publish step requires every
+  // platform of one channel to name the same pointer tag, so Android names it too.
+  const pointerTag = POINTER_TAGS[channel] ?? null;
+  const assets = [{ name: apkName, path: apkPath, pointer: false }];
+  if (pointerTag) {
+    const pointerName = `${info.appName}.apk`;
+    const pointerPath = join(outDir, pointerName);
+    copyFileSync(apkPath, pointerPath);
+    assets.push({ name: pointerName, path: pointerPath, pointer: true });
+  }
+
+  const sums = assets.map(asset => `${sha256(asset.path)}  ${asset.name}`).join('\n');
+  writeFileSync(join(outDir, 'SHA256SUMS-android.txt'), `${sums}\n`);
+  assets.push({ name: 'SHA256SUMS-android.txt', path: join(outDir, 'SHA256SUMS-android.txt'), pointer: false });
 
   const metadata = releaseMetadata({
     channel,
@@ -60,7 +68,7 @@ export function packageAndroid({ env = process.env, root = ROOT } = {}) {
     commit: info.commit,
     commitSha,
     tag: tagFor(channel, info.version),
-    pointerTag: null,
+    pointerTag,
     assets: assets.map(({ name, pointer }) => ({ name, pointer })),
   });
   writeFileSync(join(outDir, 'release.json'), `${JSON.stringify(metadata, null, 2)}\n`);
