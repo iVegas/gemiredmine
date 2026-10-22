@@ -3,7 +3,7 @@
 // release workflows; authenticates through the GH_TOKEN environment variable of `gh`.
 //
 //   node scripts/release/publish.mjs validate --channel <stable|canary|unstable> [--branch <name>] [--releases-json <file>]
-//   node scripts/release/publish.mjs publish  --dir dist/linux/<channel> [--dir dist/windows/<channel>] [--dry-run]
+//   node scripts/release/publish.mjs publish  --dir dist/linux/<channel> [--dir dist/windows/<channel>] [--dir dist/android/<channel>] [--dry-run]
 //   node scripts/release/publish.mjs prune    [--releases-json <file>] [--dry-run]
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
@@ -75,6 +75,7 @@ export function validate({ channel, branch, releasesJson, env = process.env, log
 const PLATFORM_NOTES = {
   linux: 'Linux: the AppImage. Updates come from AppImageUpdate, not from the app.',
   windows: 'Windows 11: the .msix package. Open the .appinstaller file to install; Windows keeps it up to date.',
+  android: 'Android: the .apk. Install it directly; Android does not update the app itself.',
 };
 
 function selfSignedNote(certificateName) {

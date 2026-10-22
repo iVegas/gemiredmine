@@ -27,8 +27,14 @@ jobs:
       signing: self-signed
     secrets: inherit
 
+  build-android:
+    uses: ./.github/workflows/build-android.yml
+    with:
+      channel: unstable
+    secrets: inherit
+
   publish:
-    needs: [build-linux, build-windows]
+    needs: [build-linux, build-windows, build-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -48,7 +54,13 @@ jobs:
           name: windows-unstable
           path: dist/windows/unstable
 
+      - name: Download Android package
+        uses: actions/download-artifact@v8
+        with:
+          name: android-unstable
+          path: dist/android/unstable
+
       - name: Publish unstable release and prune old builds
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/release/publish.mjs publish --dir dist/linux/unstable --dir dist/windows/unstable
+        run: node scripts/release/publish.mjs publish --dir dist/linux/unstable --dir dist/windows/unstable --dir dist/android/unstable

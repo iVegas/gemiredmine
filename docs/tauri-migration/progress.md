@@ -576,6 +576,13 @@ Plan steps from `plan.md` "Next phase", and where each stands:
   `AboutView.android.test.ts`.
 - **8, Capacitor: not started.**
 
+**Built and released (2026-10-22).** The Docker build (`docker/android/Dockerfile`) produces the release APK for each
+channel, signed by `build-android.yml` with the release keystore from the `ANDROID_KEYSTORE_*` secrets. Stable is
+`com.gemiredmine.app`; canary, unstable and dev add `.canary`, `.unstable` and `.dev`, as Linux and Windows do. The
+version code (`androidVersionCode` in `channels.mjs`) grows with every build of one channel. Each channel's APK gets
+the same capabilities as its desktop build. The channel workflows build and publish the APK with the other platforms.
+Not yet run in CI: the first unstable run on `main` after the merge.
+
 Verified here: `npm test` (68 files, 879 tests) and `npm run typecheck`.
 
 ## Recipes
