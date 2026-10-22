@@ -82,6 +82,30 @@ export function sumHours(entries: RedmineTimeEntry[]): number {
   return Math.round(total * 100) / 100;
 }
 
+/**
+ * Hours as a person writes them: 4 decimals at most, so a value shows what was stored. Two decimals hid the difference
+ * between 1.01 and 1.02, and 1:05 is 1.0833 hours.
+ */
 export function formatHours(hours: number): string {
-  return `${Math.round(hours * 100) / 100} h`;
+  return `${Math.round(hours * 10000) / 10000} h`;
+}
+
+/**
+ * Hours from what the user types: a decimal with a point or a comma ("1", "1.01", "1,01"), or hours and minutes
+ * ("1:05"). Returns null when it is not a time above zero. The result keeps up to 4 decimals, the precision that
+ * is stored, so that what is typed is what is logged.
+ */
+export function parseHours(text: string): number | null {
+  const value = text.trim();
+  let hours: number;
+  const clock = /^(\d{1,3}):([0-5]\d)$/.exec(value);
+  if (clock) {
+    hours = Number(clock[1]) + Number(clock[2]) / 60;
+  } else if (/^\d{1,3}(?:[.,]\d{1,4})?$/.test(value)) {
+    hours = Number(value.replace(',', '.'));
+  } else {
+    return null;
+  }
+  if (!(hours > 0)) return null;
+  return Math.round(hours * 10000) / 10000;
 }
