@@ -196,6 +196,13 @@ pub fn run() {
             if let Some(dir) = data_dir_override() {
                 app.fs_scope().allow_directory(&dir, true)?;
             }
+            // Under Flatpak the window's app id must be the app's ID. The desktop shell finds a window's icon by the
+            // desktop file of that name, and Flatpak installs it under the app ID. GTK sends its program class as the
+            // app id, and by default that is the program name.
+            #[cfg(target_os = "linux")]
+            if let Ok(app_id) = std::env::var("FLATPAK_ID") {
+                gdk::set_program_class(&app_id);
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
