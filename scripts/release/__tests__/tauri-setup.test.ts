@@ -181,12 +181,16 @@ describe('versions', () => {
 describe('the crate', () => {
   const cargo = read('src-tauri', 'Cargo.toml');
 
-  it('talks to Redmine through rustls with the OS trust store and without a cookie jar', () => {
-    const http = /tauri-plugin-http = \{[^}]*\}/s.exec(cargo)?.[0] ?? '';
-    expect(http).toContain('default-features = false');
-    expect(http).toContain('"rustls-tls-native-roots"');
-    expect(http).toContain('"gzip"');
-    expect(http).not.toContain('cookies');
+  it('talks to Redmine through rustls without a cookie jar, with the OS trust store on desktop', () => {
+    const [desktop, android] = [...cargo.matchAll(/tauri-plugin-http = \{[^}]*\}/gs)].map((match) => match[0]);
+    expect(desktop).toContain('default-features = false');
+    expect(desktop).toContain('"rustls-tls-native-roots"');
+    expect(desktop).toContain('"gzip"');
+    expect(desktop).not.toContain('cookies');
+    expect(cargo).toContain(`[target.'cfg(not(target_os = "android"))'.dependencies]`);
+    expect(cargo).toContain(`[target.'cfg(target_os = "android")'.dependencies]`);
+    expect(android).toContain('"rustls-tls-webpki-roots"');
+    expect(android).not.toContain('native-roots');
   });
 
   it('keeps its data in SQLite, built into the app, and in no other kind of database', () => {

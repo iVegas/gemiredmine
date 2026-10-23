@@ -20,8 +20,17 @@ tauri-plugin-fs = "~2.7.1"
 tauri-plugin-opener = "~2.7.2"
 # The app's own database (src/bun/storage). SQLite is built in, so nothing has to be installed next to the app.
 tauri-plugin-sql = { version = "~2.5.0", features = ["sqlite"] }
-# No cookie jar (the API key travels in a header). Native roots, so a Redmine server behind
-# a private CA that the OS trusts works. gzip because Redmine compresses large lists.
+serde = { version = "1", features = ["derive"] }
+# The API keys of the user's servers go in the system's credential store (src/credentials.rs). The stores are
+# separate crates, one per system; the other systems have none yet.
+keyring-core = "~1.0.1"
+
+# No cookie jar (the API key travels in a header). gzip because Redmine compresses large lists.
+# The trust roots differ by platform, one feature each (the two blocks below cover every target):
+# - Desktop: the OS trust store, so a Redmine server behind a private CA that the OS trusts works.
+# - Android: no system store is at the paths the native loader reads, so every HTTPS request failed
+#   with "error sending request". The bundled Mozilla roots cover public CAs there.
+[target.'cfg(not(target_os = "android"))'.dependencies]
 tauri-plugin-http = { version = "~2.8.3", default-features = false, features = [
   "rustls-tls-native-roots",
   "http2",
@@ -29,10 +38,15 @@ tauri-plugin-http = { version = "~2.8.3", default-features = false, features = [
   "system-proxy",
   "gzip",
 ] }
-serde = { version = "1", features = ["derive"] }
-# The API keys of the user's servers go in the system's credential store (src/credentials.rs). The stores are
-# separate crates, one per system; the other systems have none yet.
-keyring-core = "~1.0.1"
+
+[target.'cfg(target_os = "android")'.dependencies]
+tauri-plugin-http = { version = "~2.8.3", default-features = false, features = [
+  "rustls-tls-webpki-roots",
+  "http2",
+  "charset",
+  "system-proxy",
+  "gzip",
+] }
 
 # Only one copy of the app runs per channel; a second one brings the first to the front and ends.
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
