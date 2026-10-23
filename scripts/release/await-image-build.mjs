@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 export const WORKFLOW = 'build-images.yml';
 // A push starts the image build and the release together, but the image run can be listed a little later.
-export const APPEAR_GRACE_MS = 2 * 60_000;
+export const APPEAR_GRACE_MS = 10_000;
 export const TIMEOUT_MS = 40 * 60_000;
 export const POLL_MS = 20_000;
 
