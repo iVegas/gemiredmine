@@ -9,7 +9,14 @@ import type { RedmineIssueDetails, RedmineTimeEntry } from '../../bun/redmine/ty
 import type { TaskDetails } from '../../shared/backend';
 
 vi.mock('../lib/api', () => ({
-  redmineApi: { getTask: vi.fn(), listTaskLogEntries: vi.fn(), listTimeActivities: vi.fn(), createLogEntry: vi.fn() },
+  redmineApi: {
+    getTask: vi.fn(),
+    listTaskLogEntries: vi.fn(),
+    listTimeActivities: vi.fn(),
+    createLogEntry: vi.fn(),
+    listTaskOptions: vi.fn(),
+    updateTask: vi.fn(),
+  },
 }));
 
 const api = vi.mocked(redmineApi);
@@ -447,5 +454,94 @@ describe('TaskDetailsView', () => {
 
     expect(view.queryByText(/The first task, late/)).not.toBeInTheDocument();
     expect(view.getByRole('heading', { name: '#43 The other task' })).toBeInTheDocument();
+  });
+});
+
+describe('editing a task', () => {
+  const taskOptions = {
+    statuses: [
+      { id: 1, name: 'New' },
+      { id: 2, name: 'In progress' },
+    ],
+    priorities: [
+      { id: 4, name: 'Urgent' },
+      { id: 3, name: 'High' },
+    ],
+  };
+
+  beforeEach(() => {
+    api.getTask.mockResolvedValue(task());
+    api.listTaskLogEntries.mockResolvedValue([]);
+    api.listTaskOptions.mockResolvedValue(taskOptions);
+    api.updateTask.mockResolvedValue(undefined);
+    resetViews();
+    viewLabels.set({});
+  });
+
+  afterEach(() => resetViews());
+
+  async function openEdit() {
+    const view = render(TaskDetailsView, { props: { server, taskId: 42 } });
+    await view.findByRole('heading', { name: '#42 Fix the login' });
+    await fireEvent.click(view.getByRole('button', { name: 'Edit' }));
+    await view.findByRole('option', { name: 'New' });
+    return view;
+  }
+
+  it('opens a form with the task\'s current values and the statuses and priorities of the server', async () => {
+    const view = await openEdit();
+
+    expect(view.getByLabelText('Subject')).toHaveValue('Fix the login');
+    expect(view.getByLabelText('Status')).toHaveValue('2');
+    expect(view.getByLabelText('Priority')).toHaveValue('4');
+    expect(view.getByLabelText('% Done')).toHaveValue(40);
+    expect(view.getByLabelText('Estimated time')).toHaveValue('8');
+    expect(api.listTaskOptions).toHaveBeenCalledExactlyOnceWith(access);
+  });
+
+  it('saves the changes to Redmine, and reads the task again', async () => {
+    const view = await openEdit();
+
+    await fireEvent.input(view.getByLabelText('Subject'), { target: { value: 'Fix the login page' } });
+    await fireEvent.change(view.getByLabelText('Status'), { target: { value: '1' } });
+    await fireEvent.submit(view.getByRole('form', { name: 'Edit task #42' }));
+
+    expect(api.updateTask).toHaveBeenCalledExactlyOnceWith(
+      access,
+      42,
+      expect.objectContaining({
+        subject: 'Fix the login page',
+        statusId: 1,
+        priorityId: 4,
+        doneRatio: 40,
+        estimatedHours: 8,
+        dueDate: '2099-12-31',
+        notes: '',
+      })
+    );
+    expect(await view.findByText('Saved.')).toBeInTheDocument();
+    expect(api.getTask).toHaveBeenCalledTimes(2);
+  });
+
+  it('says why Redmine refused the change, and keeps the form open', async () => {
+    api.updateTask.mockRejectedValue(
+      new Error('Redmine does not let you change this task. Ask a project member who may change it.')
+    );
+    const view = await openEdit();
+
+    await fireEvent.submit(view.getByRole('form', { name: 'Edit task #42' }));
+
+    expect(await view.findByText(/The change was not saved: Redmine does not let you change this task/)).toBeInTheDocument();
+    expect(view.getByRole('form', { name: 'Edit task #42' })).toBeInTheDocument();
+  });
+
+  it('does not send a task without a subject', async () => {
+    const view = await openEdit();
+    await fireEvent.input(view.getByLabelText('Subject'), { target: { value: '   ' } });
+
+    await fireEvent.submit(view.getByRole('form', { name: 'Edit task #42' }));
+
+    expect(api.updateTask).not.toHaveBeenCalled();
+    expect(view.getByText('Enter a subject.')).toBeInTheDocument();
   });
 });

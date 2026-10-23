@@ -111,6 +111,16 @@ async function historyNames(client: RedmineClient, issue: RedmineIssueDetails): 
   return names;
 }
 
+/** Redmine answers 403 to a change the user has no permission for. Says so in words the user can act on. */
+function refusedBy(what: string) {
+  return (error: unknown): never => {
+    if (error instanceof RedmineApiError && error.status === 403) {
+      throw new Error(`Redmine does not let you change ${what}. Ask a project member who may change it.`);
+    }
+    throw error;
+  };
+}
+
 export function createBackend(platform: BackendPlatform, options: BackendOptions = {}): GemiBackend {
   const info = options.buildInfo ?? generatedBuildInfo;
   const previewAvailable = options.devPreviewAvailable ?? DEV_PREVIEW_AVAILABLE;
@@ -258,6 +268,44 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
 
     getLogEntry: traced('getLogEntry', (access, entryId) =>
       authorized(access, (transport) => clientFor(access, transport).getTimeEntry(entryId))
+    ),
+
+    updateLogEntry: traced('updateLogEntry', (access, entryId, changes) =>
+      authorized(access, (transport) =>
+        clientFor(access, transport).updateTimeEntry(entryId, {
+          spent_on: changes.spentOn,
+          hours: changes.hours,
+          activity_id: changes.activityId,
+          comments: changes.comments,
+        })
+      ).catch(refusedBy('this log entry'))
+    ),
+
+    listTaskOptions: traced('listTaskOptions', (access) =>
+      authorized(access, async (transport) => {
+        const client = clientFor(access, transport);
+        const [statuses, priorities] = await Promise.all([client.getIssueStatuses(), client.getIssuePriorities()]);
+        return {
+          statuses: statuses.issue_statuses.map(({ id, name }) => ({ id, name })),
+          priorities: priorities.issue_priorities.map(({ id, name }) => ({ id, name })),
+        };
+      })
+    ),
+
+    updateTask: traced('updateTask', (access, taskId, changes) =>
+      authorized(access, (transport) =>
+        clientFor(access, transport).updateIssue(taskId, {
+          subject: changes.subject,
+          description: changes.description,
+          status_id: changes.statusId,
+          priority_id: changes.priorityId,
+          start_date: changes.startDate,
+          due_date: changes.dueDate,
+          done_ratio: changes.doneRatio,
+          estimated_hours: changes.estimatedHours,
+          notes: changes.notes,
+        })
+      ).catch(refusedBy('this task'))
     ),
 
     listTimeActivities: traced('listTimeActivities', (access) =>

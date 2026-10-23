@@ -1,11 +1,13 @@
 <script lang="ts">
   import type { ServerConnection } from './lib/store';
   import type { RedmineTimeEntry } from '../bun/redmine/types';
+  import type { TimeActivity } from '../shared/backend';
   import { redmineApi } from './lib/api';
-  import { formatHours } from './lib/calendar';
+  import { formatHours, parseHours } from './lib/calendar';
   import { formatDueDate } from './lib/todo';
   import { customFieldText, formatTimestamp, serverPage } from './lib/task-details';
   import { logView, openTask, setViewLabel } from './lib/views';
+  import HoursField from './components/HoursField.svelte';
 
   export let server: ServerConnection;
   export let entryId: number;
@@ -15,6 +17,15 @@
   let error = '';
   // Responses for an entry or a server the view has moved on from are ignored.
   let latestRequest = 0;
+
+  // The form that changes the entry. Redmine decides who may change it: a refused change says so here.
+  let editing = false;
+  let activities: TimeActivity[] = [];
+  let activitiesError = '';
+  let draft = { hours: '', spentOn: '', activityId: null as number | null, comments: '' };
+  let saving = false;
+  let saveError = '';
+  let saved = '';
 
   $: load(server.url, server.apiToken, entryId);
 
@@ -39,6 +50,58 @@
   }
 
   const reload = () => load(server.url, server.apiToken, entryId);
+
+  /** Opens the form with the entry's current values. The activities are fetched the first time. */
+  async function startEdit() {
+    if (!entry) return;
+    draft = {
+      hours: String(entry.hours),
+      spentOn: entry.spent_on,
+      activityId: entry.activity.id,
+      comments: entry.comments ?? '',
+    };
+    editing = true;
+    saved = '';
+    saveError = '';
+    if (activities.length > 0 || !server.apiToken) return;
+    activitiesError = '';
+    try {
+      activities = await redmineApi.listTimeActivities({ baseUrl: server.url, apiKey: server.apiToken });
+    } catch (err) {
+      activitiesError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  async function saveEdit() {
+    const hours = parseHours(draft.hours);
+    if (hours === null) {
+      saveError = 'Enter the time as hours, like 1.5, 1,5 or 1:30.';
+      return;
+    }
+    if (!draft.spentOn || draft.activityId === null) {
+      saveError = 'Enter the date and an activity.';
+      return;
+    }
+    if (!server.apiToken || saving) return;
+
+    saving = true;
+    saveError = '';
+    saved = '';
+    try {
+      await redmineApi.updateLogEntry(
+        { baseUrl: server.url, apiKey: server.apiToken },
+        entryId,
+        { spentOn: draft.spentOn, hours, activityId: draft.activityId, comments: draft.comments.trim() }
+      );
+      editing = false;
+      saved = 'Saved.';
+      await reload();
+    } catch (err) {
+      saveError = `The change was not saved: ${err instanceof Error ? err.message : String(err)}`;
+    } finally {
+      saving = false;
+    }
+  }
 
   // Redmine has no page that shows one entry; its edit page is the one that opens.
   $: redmineLink = serverPage(server.url, `/time_entries/${entryId}/edit`);
@@ -89,6 +152,15 @@
             Open in Redmine
           </a>
         {/if}
+        {#if !editing}
+          <button
+            type="button"
+            class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            on:click={startEdit}
+          >
+            Edit
+          </button>
+        {/if}
         <button
           type="button"
           disabled={loading}
@@ -99,6 +171,54 @@
         </button>
       </div>
     </header>
+
+    {#if saved}<p role="status" class="text-sm text-green-700">{saved}</p>{/if}
+
+    {#if editing}
+      <form
+        aria-label="Edit log entry #{entryId}"
+        class="space-y-3 rounded-lg border border-gray-200 bg-white p-4 shadow"
+        on:submit|preventDefault={saveEdit}
+      >
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <HoursField id="edit-hours-{entryId}" bind:value={draft.hours} />
+          <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+            Date
+            <input type="date" required bind:value={draft.spentOn} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </label>
+          <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+            Activity
+            <select required disabled={activities.length === 0} bind:value={draft.activityId} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60">
+              {#each activities as activity (activity.id)}
+                <option value={activity.id}>{activity.name}</option>
+              {/each}
+            </select>
+          </label>
+        </div>
+        <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+          Comment
+          <textarea rows="3" bind:value={draft.comments} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+        </label>
+
+        {#if activitiesError}<p role="alert" class="text-sm text-red-700">The activities cannot be loaded: {activitiesError}</p>{/if}
+        {#if saveError}<p role="alert" class="text-sm text-red-700">{saveError}</p>{/if}
+
+        <div class="flex flex-wrap justify-end gap-2">
+          <button type="button" class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" on:click={() => (editing = false)}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving || activities.length === 0}
+            class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </form>
+    {:else if saveError}
+      <p role="alert" class="text-sm text-red-700">{saveError}</p>
+    {/if}
 
     <section aria-label="Details" class="rounded-lg border border-gray-200 bg-white p-4 shadow">
       <dl class="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">

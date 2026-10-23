@@ -278,3 +278,47 @@ describe('logging time', () => {
     expect(error.status).toBe(422);
   });
 });
+
+describe('changing a time entry and a task', () => {
+  const client = () => new RedmineClient({ baseUrl, apiKey: API_KEY });
+
+  it('saves a change to the user\'s time entry, and the change is read back', async () => {
+    const [entry] = (await client().getIssueTimeEntries(5)).slice(-1);
+
+    await client().updateTimeEntry(entry.id, { hours: 2.25, comments: 'Changed by the test' });
+
+    const after = await client().getTimeEntry(entry.id);
+    expect(after).toMatchObject({ hours: 2.25, comments: 'Changed by the test' });
+  });
+
+  it('refuses a time entry change with a sentence the user can read', async () => {
+    const [entry] = (await client().getIssueTimeEntries(5)).slice(-1);
+
+    const error = await client().updateTimeEntry(entry.id, { activity_id: 999 }).catch((e) => e);
+
+    expect(error).toBeInstanceOf(RedmineApiError);
+    expect(error.status).toBe(422);
+    expect(error.message).toBe('Activity is invalid.');
+  });
+
+  it('saves a change to an issue the user may change, and the change is read back', async () => {
+    await client().updateIssue(1, { subject: 'Renamed by the test', status_id: 2, done_ratio: 60, due_date: '2030-01-02' });
+
+    const issue = await client().getIssue(1);
+    expect(issue).toMatchObject({ subject: 'Renamed by the test', status: { id: 2, name: 'In progress' }, done_ratio: 60, due_date: '2030-01-02' });
+  });
+
+  it('refuses a change to an issue assigned to someone else with 403', async () => {
+    const error = await client().updateIssue(4, { subject: 'Not mine' }).catch((e) => e);
+
+    expect(error).toBeInstanceOf(RedmineApiError);
+    expect(error.status).toBe(403);
+  });
+
+  it('refuses a change Redmine finds invalid, and says each reason', async () => {
+    const error = await client().updateIssue(1, { subject: '', done_ratio: 150 }).catch((e) => e);
+
+    expect(error.status).toBe(422);
+    expect(error.message).toBe('Subject cannot be blank. % Done is not included in the list.');
+  });
+});

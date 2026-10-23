@@ -11,6 +11,9 @@
 //   GET /issues/<id>.json     one issue, with ?include=journals,attachments,children,relations; 404 for an id that does not exist
 //   GET /time_entries/<id>.json   one time entry; 404 for an id that does not exist
 //   POST /time_entries.json   logs time: {"time_entry": {issue_id, spent_on, hours, activity_id, comments}}; 201 with the entry, 422 with errors
+//   PUT /time_entries/<id>.json   changes one of the user's entries; 204. Another user's entry is 403, as Redmine refuses it.
+//   PUT /issues/<id>.json   changes an issue: {"issue": {subject, description, status_id, priority_id, start_date, due_date, done_ratio, estimated_hours, notes}};
+//     204. Issues every fourth id is assigned to someone else, and those are 403. Changes are kept for the life of the server.
 //   GET /issue_statuses.json, /trackers.json, /enumerations/issue_priorities.json, /enumerations/time_entry_activities.json
 //     the names that journals refer to by id, and the activities that time can be logged under
 //
@@ -111,12 +114,12 @@ export function buildIssueDetails(issue, today, timeEntries) {
   return {
     ...issue,
     author: PEOPLE[1],
-    assigned_to: PEOPLE[0],
+    assigned_to: id % 4 === 0 ? PEOPLE[1] : PEOPLE[0],
     ...(id % 2 === 1 ? { category: { id: 1, name: 'Backend' } } : {}),
     ...(id % 3 === 0 ? { fixed_version: { id: 1, name: '1.0' } } : {}),
-    description: `Steps for task ${id}:\n\n1. Open the page\n2. Press the button\n\nExpected: it works.\nSee <b>not bold</b> and <script>alert(1)</script>`,
+    description: issue.description ?? `Steps for task ${id}:\n\n1. Open the page\n2. Press the button\n\nExpected: it works.\nSee <b>not bold</b> and <script>alert(1)</script>`,
     is_private: false,
-    estimated_hours: id % 3 === 0 ? 8 : null,
+    estimated_hours: issue.estimated_hours !== undefined ? issue.estimated_hours : id % 3 === 0 ? 8 : null,
     spent_hours: spent,
     total_spent_hours: spent,
     created_on: at(-20, '09:00:00'),
@@ -210,6 +213,16 @@ async function readBody(request) {
   return text;
 }
 
+/** The JSON object in a request body, or null when the body is not one. */
+function parseBody(body) {
+  try {
+    const value = JSON.parse(body);
+    return value && typeof value === 'object' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 function sendJson(response, status, body) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   response.end(JSON.stringify(body));
@@ -238,7 +251,9 @@ export function createMockRedmine({ delayMs = 31_000, today = new Date().toISOSt
 
   function handle(request, response, pathname, query, body) {
     const logsTime = request.method === 'POST' && pathname === '/time_entries.json';
-    if (request.method !== 'GET' && !logsTime) {
+    const changesEntry = request.method === 'PUT' && /^\/time_entries\/\d+\.json$/.test(pathname);
+    const changesIssue = request.method === 'PUT' && /^\/issues\/\d+\.json$/.test(pathname);
+    if (request.method !== 'GET' && !logsTime && !changesEntry && !changesIssue) {
       response.writeHead(405).end();
       return;
     }
@@ -249,6 +264,14 @@ export function createMockRedmine({ delayMs = 31_000, today = new Date().toISOSt
 
     if (logsTime) {
       createTimeEntry(response, body);
+      return;
+    }
+    if (changesEntry) {
+      updateTimeEntry(response, Number(pathname.match(/\d+/)[0]), body);
+      return;
+    }
+    if (changesIssue) {
+      updateIssue(response, Number(pathname.match(/\d+/)[0]), body);
       return;
     }
 
@@ -294,6 +317,62 @@ export function createMockRedmine({ delayMs = 31_000, today = new Date().toISOSt
     }
   }
 
+  /** Changes a time entry. As Redmine does, the user may change only the entries they logged. */
+  function updateTimeEntry(response, id, body) {
+    const entry = timeEntries.find((candidate) => candidate.id === id);
+    if (!entry) return void response.writeHead(404).end();
+    if (entry.user.id !== USER.id) return void response.writeHead(403).end();
+    const input = parseBody(body)?.time_entry;
+    if (!input) return void sendJson(response, 422, { errors: ['Request body is not JSON'] });
+
+    const errors = [];
+    if (input.hours !== undefined && !(Number(input.hours) > 0)) errors.push('Hours is invalid');
+    if (input.spent_on !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(input.spent_on)) errors.push('Spent on is invalid');
+    if (input.activity_id !== undefined && !ACTIVITIES.some((activity) => activity.id === Number(input.activity_id))) {
+      errors.push('Activity is invalid');
+    }
+    if (errors.length > 0) return void sendJson(response, 422, { errors });
+
+    if (input.hours !== undefined) entry.hours = Number(input.hours);
+    if (input.spent_on !== undefined) entry.spent_on = input.spent_on;
+    if (input.activity_id !== undefined) entry.activity = ACTIVITIES.find((activity) => activity.id === Number(input.activity_id));
+    if (input.comments !== undefined) entry.comments = String(input.comments);
+    response.writeHead(204).end();
+  }
+
+  /** Changes an issue. Issues that are assigned to someone else are refused with 403, as Redmine does for a user without the right. */
+  function updateIssue(response, id, body) {
+    const issue = issues.find((candidate) => candidate.id === id);
+    if (!issue) return void response.writeHead(404).end();
+    if (id % 4 === 0) return void response.writeHead(403).end();
+    const input = parseBody(body)?.issue;
+    if (!input) return void sendJson(response, 422, { errors: ['Request body is not JSON'] });
+
+    const errors = [];
+    if (input.subject !== undefined && String(input.subject).trim() === '') errors.push('Subject cannot be blank');
+    if (input.status_id !== undefined && !STATUSES.some((status) => status.id === Number(input.status_id))) errors.push('Status is invalid');
+    if (input.priority_id !== undefined && !PRIORITIES.some((priority) => priority.id === Number(input.priority_id))) {
+      errors.push('Priority is invalid');
+    }
+    if (input.done_ratio !== undefined && !(Number(input.done_ratio) >= 0 && Number(input.done_ratio) <= 100)) {
+      errors.push('% Done is not included in the list');
+    }
+    for (const [key, label] of [['start_date', 'Start date'], ['due_date', 'Due date']]) {
+      if (input[key] !== undefined && input[key] !== null && !/^\d{4}-\d{2}-\d{2}$/.test(input[key])) errors.push(`${label} is not a valid date`);
+    }
+    if (errors.length > 0) return void sendJson(response, 422, { errors });
+
+    if (input.subject !== undefined) issue.subject = String(input.subject);
+    if (input.description !== undefined) issue.description = String(input.description);
+    if (input.status_id !== undefined) issue.status = STATUSES.find((status) => status.id === Number(input.status_id));
+    if (input.priority_id !== undefined) issue.priority = PRIORITIES.find((priority) => priority.id === Number(input.priority_id));
+    if (input.start_date !== undefined) issue.start_date = input.start_date;
+    if (input.due_date !== undefined) issue.due_date = input.due_date;
+    if (input.done_ratio !== undefined) issue.done_ratio = Number(input.done_ratio);
+    if (input.estimated_hours !== undefined) issue.estimated_hours = input.estimated_hours;
+    response.writeHead(204).end();
+  }
+
   /** Adds a time entry as Redmine does: the issue must exist, and so must the activity. */
   function createTimeEntry(response, body) {
     let input;
@@ -332,7 +411,7 @@ export function createMockRedmine({ delayMs = 31_000, today = new Date().toISOSt
     const url = new URL(request.url ?? '/', 'http://mock-redmine.invalid');
     const prefixed = /^\/(moved|sso|slow)(\/.*)$/.exec(url.pathname);
     const [, prefix, rest] = prefixed ?? [];
-    const body = request.method === 'POST' ? await readBody(request) : '';
+    const body = request.method === 'POST' || request.method === 'PUT' ? await readBody(request) : '';
 
     if (prefix === 'moved') {
       response.writeHead(301, { Location: `https://elsewhere.example${rest}${url.search}` }).end();

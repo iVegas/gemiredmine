@@ -6,7 +6,9 @@ import { redmineApi } from '../lib/api';
 import { activeView, openViews, resetViews, viewLabels } from '../lib/views';
 import type { RedmineTimeEntry } from '../../bun/redmine/types';
 
-vi.mock('../lib/api', () => ({ redmineApi: { getLogEntry: vi.fn() } }));
+vi.mock('../lib/api', () => ({
+  redmineApi: { getLogEntry: vi.fn(), listTimeActivities: vi.fn(), updateLogEntry: vi.fn() },
+}));
 
 const api = vi.mocked(redmineApi);
 const server = { id: 'srv-1', name: 'Work', url: 'https://redmine.example.com', apiToken: 'key-1' };
@@ -126,5 +128,86 @@ describe('LogEntryView', () => {
     render(LogEntryView, { props: { server: { ...server, apiToken: undefined }, entryId: 7 } });
 
     expect(api.getLogEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe('editing a log entry', () => {
+  const activities = [
+    { id: 8, name: 'Development' },
+    { id: 9, name: 'Design' },
+  ];
+  const access = { baseUrl: 'https://redmine.example.com', apiKey: 'key-1' };
+
+  beforeEach(() => {
+    api.getLogEntry.mockResolvedValue(entry());
+    api.listTimeActivities.mockResolvedValue(activities);
+    api.updateLogEntry.mockResolvedValue(undefined);
+    resetViews();
+    viewLabels.set({});
+  });
+
+  afterEach(() => resetViews());
+
+  it('opens a form with the entry\'s current values', async () => {
+    const view = render(LogEntryView, { props: { server, entryId: 7 } });
+    await view.findByRole('heading', { name: 'Log entry #7' });
+
+    await fireEvent.click(view.getByRole('button', { name: 'Edit' }));
+
+    expect(view.getByLabelText('Hours')).toHaveValue('2.5');
+    expect(view.getByLabelText('Date')).toHaveValue('2026-10-01');
+    expect(await view.findByRole('option', { name: 'Design' })).toBeInTheDocument();
+    expect(view.getByLabelText('Activity')).toHaveValue('8');
+    expect(view.getByRole('textbox', { name: 'Comment' })).toHaveValue('Paired on the <b>login</b> form');
+  });
+
+  it('saves the change to Redmine, and reads the entry again', async () => {
+    const view = render(LogEntryView, { props: { server, entryId: 7 } });
+    await view.findByRole('heading', { name: 'Log entry #7' });
+    await fireEvent.click(view.getByRole('button', { name: 'Edit' }));
+    await view.findByRole('option', { name: 'Design' });
+
+    await fireEvent.input(view.getByLabelText('Hours'), { target: { value: '1,25' } });
+    await fireEvent.change(view.getByLabelText('Activity'), { target: { value: '9' } });
+    await fireEvent.input(view.getByRole('textbox', { name: 'Comment' }), { target: { value: ' Reviewed ' } });
+    await fireEvent.submit(view.getByRole('form', { name: 'Edit log entry #7' }));
+
+    expect(api.updateLogEntry).toHaveBeenCalledExactlyOnceWith(access, 7, {
+      spentOn: '2026-10-01',
+      hours: 1.25,
+      activityId: 9,
+      comments: 'Reviewed',
+    });
+    expect(await view.findByText('Saved.')).toBeInTheDocument();
+    expect(view.queryByRole('form', { name: 'Edit log entry #7' })).not.toBeInTheDocument();
+    expect(api.getLogEntry).toHaveBeenCalledTimes(2);
+  });
+
+  it('says why Redmine refused the change, and keeps the form open to try again', async () => {
+    api.updateLogEntry.mockRejectedValue(
+      new Error('Redmine does not let you change this log entry. Ask a project member who may change it.')
+    );
+    const view = render(LogEntryView, { props: { server, entryId: 7 } });
+    await view.findByRole('heading', { name: 'Log entry #7' });
+    await fireEvent.click(view.getByRole('button', { name: 'Edit' }));
+    await view.findByRole('option', { name: 'Design' });
+
+    await fireEvent.submit(view.getByRole('form', { name: 'Edit log entry #7' }));
+
+    expect(await view.findByText(/The change was not saved: Redmine does not let you change this log entry/)).toBeInTheDocument();
+    expect(view.getByRole('form', { name: 'Edit log entry #7' })).toBeInTheDocument();
+  });
+
+  it('does not send a change without hours', async () => {
+    const view = render(LogEntryView, { props: { server, entryId: 7 } });
+    await view.findByRole('heading', { name: 'Log entry #7' });
+    await fireEvent.click(view.getByRole('button', { name: 'Edit' }));
+    await view.findByRole('option', { name: 'Design' });
+    await fireEvent.input(view.getByLabelText('Hours'), { target: { value: 'two' } });
+
+    await fireEvent.submit(view.getByRole('form', { name: 'Edit log entry #7' }));
+
+    expect(api.updateLogEntry).not.toHaveBeenCalled();
+    expect(view.getByText('Enter the time as hours, like 1.5, 1,5 or 1:30.')).toBeInTheDocument();
   });
 });
