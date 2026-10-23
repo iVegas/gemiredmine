@@ -46,4 +46,14 @@ describe('flatpak-build.sh', () => {
     expect(script).toContain('dbus-run-session -- flatpak run');
     expect(script).toContain('command -v dbus-run-session');
   });
+
+  it('finds the app window in both libwayland log formats and under both app IDs', () => {
+    const script = read('scripts', 'release', 'smoke-test-wayland.sh');
+    expect(script).toContain('xdg_toplevel[@#][0-9]*\\.set_app_id("[^"]*Gemiredmine');
+    // The same pattern, as a JavaScript regex, against lines of the log.
+    const match = new RegExp('xdg_toplevel[@#][0-9]*\\.set_app_id\\("[^"]*Gemiredmine');
+    expect(match.test('xdg_toplevel#14.set_app_id("com.github.iVegas.Gemiredmine.Unstable")')).toBe(true);
+    expect(match.test('xdg_toplevel@3.set_app_id("Gemiredmine-Unstable")')).toBe(true);
+    expect(match.test('xdg_toplevel#14.set_min_size(122, 37)')).toBe(false);
+  });
 });
