@@ -17,6 +17,24 @@ export const RUST = Object.freeze({
   sha256: '891c6366d7100feda0bca4c03ce63f3c9ac827cbebbc283e7433061d42c6a376',
 });
 
+/** What the Rust install puts in /app that only compiling needs: the compiler, Cargo, the toolchain libraries, the docs. */
+export const RUST_BUILD_ONLY = Object.freeze([
+  '/bin/cargo*',
+  '/bin/rust*',
+  '/bin/clippy-driver',
+  '/bin/cargo-*',
+  '/lib/rustlib',
+  '/lib/librustc_*',
+  '/lib/libLLVM*',
+  '/lib/libstd-*',
+  '/lib/libtest-*',
+  '/share/doc/rust',
+  '/share/man/man1/cargo*',
+  '/share/man/man1/rust*',
+  '/share/bash-completion/completions/cargo',
+  '/share/zsh/site-functions/_cargo',
+]);
+
 /** The Flathub branches: GNOME 51 and its freedesktop base 26.08, which provides Node 24. */
 export const RUNTIME = Object.freeze({ platform: 'org.gnome.Platform', sdk: 'org.gnome.Sdk', version: '51' });
 export const NODE_EXTENSION = 'org.freedesktop.Sdk.Extension.node24';
@@ -78,6 +96,9 @@ export function flatpakManifest(info, { env = process.env } = {}) {
         buildsystem: 'simple',
         'build-commands': ['./install.sh --prefix=/app --disable-ldconfig'],
         sources: [{ type: 'archive', url: RUST.url, sha256: RUST.sha256, 'strip-components': 1 }],
+        // The compiler is needed to build the app, not to run it. flatpak-builder removes these paths from the
+        // finished /app after the app is built, so the bundle carries the app and its libraries only.
+        cleanup: RUST_BUILD_ONLY,
       },
       {
         name: appName,
