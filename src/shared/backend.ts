@@ -73,6 +73,42 @@ export interface TimeActivity {
   name: string;
 }
 
+/** The fields of a log entry the user can change. */
+export interface LogEntryChanges {
+  /** YYYY-MM-DD */
+  spentOn: string;
+  hours: number;
+  activityId: number;
+  comments: string;
+}
+
+/** A status or a priority a task can take on this server. */
+export interface TaskOption {
+  id: number;
+  name: string;
+}
+
+export interface TaskOptions {
+  statuses: TaskOption[];
+  priorities: TaskOption[];
+}
+
+/** The fields of a task the user can change. `null` clears a date or the estimate. */
+export interface TaskChanges {
+  subject: string;
+  description: string;
+  statusId: number;
+  priorityId: number;
+  /** YYYY-MM-DD */
+  startDate: string | null;
+  /** YYYY-MM-DD */
+  dueDate: string | null;
+  doneRatio: number;
+  estimatedHours: number | null;
+  /** A note that is added to the task's history with the change. Empty for none. */
+  notes: string;
+}
+
 /** A log entry the user is adding to a task. */
 export interface NewLogEntry {
   taskId: number;
@@ -104,6 +140,12 @@ export interface GemiBackend {
   getLogEntry(access: ServerAccess, entryId: number): Promise<RedmineTimeEntry>;
   /** The activities that time can be logged under on this server. */
   listTimeActivities(access: ServerAccess): Promise<TimeActivity[]>;
+  /** Changes a log entry. Rejects with a sentence the user can read, such as when Redmine does not allow the change. */
+  updateLogEntry(access: ServerAccess, entryId: number, changes: LogEntryChanges): Promise<void>;
+  /** The statuses and priorities a task can take on this server. */
+  listTaskOptions(access: ServerAccess): Promise<TaskOptions>;
+  /** Changes a task. Rejects with a sentence the user can read, such as when Redmine does not allow the change. */
+  updateTask(access: ServerAccess, taskId: number, changes: TaskChanges): Promise<void>;
   /** Logs time on a task. Rejects when the server refuses it, such as for a user without the right to log time. */
   createLogEntry(access: ServerAccess, entry: NewLogEntry): Promise<void>;
   getDevPreviewStatus(): Promise<DevPreviewStatus>;

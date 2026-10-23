@@ -27,7 +27,9 @@ import type {
   IssuesResponse,
   IssueResponse,
   RedmineIssueDetails,
-  NewTimeEntry
+  NewTimeEntry,
+  TimeEntryChanges,
+  IssueChanges
 } from './types';
 
 // Redmine caps list endpoints at 100 items per page; the cap keeps a runaway total from looping forever.
@@ -113,6 +115,19 @@ function redirectError(response: Response, requestUrl: string, endpointPath: str
   );
 }
 
+/** The messages in a 422 answer, such as `{"errors": ["Subject cannot be blank"]}`, as sentences. Empty when there are none. */
+async function validationReasons(response: Response): Promise<string[]> {
+  try {
+    const body = (await response.json()) as { errors?: unknown };
+    if (!Array.isArray(body.errors)) return [];
+    return body.errors
+      .filter((reason): reason is string => typeof reason === 'string' && reason.trim() !== '')
+      .map((reason) => (/[.!?]$/.test(reason) ? reason : `${reason}.`));
+  } catch {
+    return [];
+  }
+}
+
 // Looked up on every call, so a test that replaces the global fetch is honoured.
 const globalFetch: FetchLike = (url, init) => fetch(url, init);
 
@@ -180,11 +195,17 @@ export class RedmineClient {
     const response = await (this.config.fetch ?? globalFetch)(url, init);
 
     if (!response.ok) {
-      // Nothing reads this body. Release it, so a native HTTP client does not keep the connection open.
-      await response.body?.cancel().catch(() => {});
       if (REDIRECT_STATUSES.has(response.status)) {
+        await response.body?.cancel().catch(() => {});
         throw redirectError(response, url, endpoint.split('?')[0].replace(/^(?!\/)/, '/'));
       }
+      // Redmine says why it refuses a change, such as a blank subject, in the body of a 422. Other bodies are not read,
+      // and are released so a native HTTP client does not keep the connection open.
+      if (response.status === 422) {
+        const reasons = await validationReasons(response);
+        throw new RedmineApiError(response.status, response.statusText, reasons.length > 0 ? reasons.join(' ') : undefined);
+      }
+      await response.body?.cancel().catch(() => {});
       throw new RedmineApiError(response.status, response.statusText);
     }
 
@@ -282,6 +303,22 @@ export class RedmineClient {
     await this.request<unknown>('/time_entries.json', {
       method: 'POST',
       body: JSON.stringify({ time_entry: { ...entry, issue_id: recordId(entry.issue_id) } })
+    });
+  }
+
+  /** Changes a time entry. Redmine refuses it with 403 when the user may not change it. Redmine answers 204. */
+  async updateTimeEntry(id: number, changes: TimeEntryChanges): Promise<void> {
+    await this.request<unknown>(`/time_entries/${recordId(id)}.json`, {
+      method: 'PUT',
+      body: JSON.stringify({ time_entry: changes })
+    });
+  }
+
+  /** Changes an issue. Redmine refuses it with 403 when the user may not change it. Redmine answers 204. */
+  async updateIssue(id: number, changes: IssueChanges): Promise<void> {
+    await this.request<unknown>(`/issues/${recordId(id)}.json`, {
+      method: 'PUT',
+      body: JSON.stringify({ issue: changes })
     });
   }
 

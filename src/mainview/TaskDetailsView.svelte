@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ServerConnection } from './lib/store';
-  import type { TaskDetails, TimeActivity } from '../shared/backend';
+  import type { TaskDetails, TaskOptions, TimeActivity } from '../shared/backend';
   import type { RedmineTimeEntry } from '../bun/redmine/types';
   import { redmineApi } from './lib/api';
   import { formatHours, parseHours, sumHours, toDateKey } from './lib/calendar';
@@ -15,6 +15,7 @@
     serverPage,
   } from './lib/task-details';
   import { openLogEntry, openTask, setViewLabel, taskView } from './lib/views';
+  import HoursField from './components/HoursField.svelte';
 
   export let server: ServerConnection;
   export let taskId: number;
@@ -76,26 +77,6 @@
   let activitiesError = '';
   // The hours are text, so that "1,01" and "1:01" can be typed as well as "1.01"; they are read by parseHours.
   let draft = { hours: '', spentOn: toDateKey(new Date()), activityId: null as number | null, comments: '' };
-  // The steps of the quick buttons: a quarter hour, which is the step of the minus and plus buttons too.
-  const QUARTER_HOUR = 0.25;
-  const QUICK_HOURS: Array<[string, number]> = [
-    ['15 min', 0.25],
-    ['30 min', 0.5],
-    ['1 h', 1],
-    ['2 h', 2],
-    ['4 h', 4],
-    ['8 h', 8],
-  ];
-
-  /** Sets the hours from a button. Hours that are not valid yet count as nothing. */
-  function addHours(delta: number) {
-    const current = parseHours(draft.hours) ?? 0;
-    draft.hours = String(Math.max(QUARTER_HOUR, Math.round((current + delta) * 10000) / 10000));
-  }
-
-  function setHours(hours: number) {
-    draft.hours = String(hours);
-  }
   let saving = false;
   let saveError = '';
   let saved = '';
@@ -141,6 +122,99 @@
       saveError = `The time could not be logged: ${describe(err)}`;
     } finally {
       saving = false;
+    }
+  }
+
+  // The form that changes the task. Redmine decides which fields this user may change, and a refused change says so.
+  let editingTask = false;
+  let options: TaskOptions | null = null;
+  let optionsError = '';
+  let taskDraft = {
+    subject: '',
+    description: '',
+    statusId: null as number | null,
+    priorityId: null as number | null,
+    startDate: '',
+    dueDate: '',
+    doneRatio: 0,
+    estimatedHours: '',
+    notes: '',
+  };
+  let savingTask = false;
+  let taskSaveError = '';
+  let taskSaved = '';
+
+  /** Opens the form with the task's current values. The statuses and priorities are fetched the first time. */
+  async function startTaskEdit() {
+    if (!details || !server.apiToken) return;
+    const current = details.issue;
+    taskDraft = {
+      subject: current.subject,
+      description: current.description ?? '',
+      statusId: current.status.id,
+      priorityId: current.priority.id,
+      startDate: current.start_date ?? '',
+      dueDate: current.due_date ?? '',
+      doneRatio: current.done_ratio ?? 0,
+      estimatedHours: current.estimated_hours ? String(current.estimated_hours) : '',
+      notes: '',
+    };
+    editingTask = true;
+    taskSaved = '';
+    taskSaveError = '';
+    if (options) return;
+    optionsError = '';
+    try {
+      options = await redmineApi.listTaskOptions({ baseUrl: server.url, apiKey: server.apiToken });
+    } catch (err) {
+      optionsError = describe(err);
+    }
+  }
+
+  async function saveTask() {
+    if (!server.apiToken || savingTask) return;
+    const subject = taskDraft.subject.trim();
+    const { statusId, priorityId, doneRatio } = taskDraft;
+    const estimate = taskDraft.estimatedHours.trim() === '' ? null : parseHours(taskDraft.estimatedHours);
+    if (subject === '') {
+      taskSaveError = 'Enter a subject.';
+      return;
+    }
+    if (statusId === null || priorityId === null) {
+      taskSaveError = 'Choose a status and a priority.';
+      return;
+    }
+    if (!(doneRatio >= 0 && doneRatio <= 100)) {
+      taskSaveError = '% Done must be between 0 and 100.';
+      return;
+    }
+    if (estimate === null && taskDraft.estimatedHours.trim() !== '') {
+      taskSaveError = 'Enter the estimate as hours, like 8 or 2:30.';
+      return;
+    }
+
+    savingTask = true;
+    taskSaveError = '';
+    taskSaved = '';
+    try {
+      await redmineApi.updateTask({ baseUrl: server.url, apiKey: server.apiToken }, taskId, {
+        subject,
+        description: taskDraft.description,
+        statusId,
+        priorityId,
+        startDate: taskDraft.startDate || null,
+        dueDate: taskDraft.dueDate || null,
+        doneRatio,
+        estimatedHours: estimate,
+        notes: taskDraft.notes.trim(),
+      });
+      editingTask = false;
+      taskSaved = 'Saved.';
+      await reload();
+    } catch (err) {
+      taskSaveError = `The change was not saved: ${describe(err)}`;
+    } finally {
+      savingTask = false;
     }
   }
 
@@ -209,6 +283,15 @@
             Open in Redmine
           </a>
         {/if}
+        {#if !editingTask}
+          <button
+            type="button"
+            class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            on:click={startTaskEdit}
+          >
+            Edit
+          </button>
+        {/if}
         <button
           type="button"
           disabled={loading}
@@ -219,6 +302,81 @@
         </button>
       </div>
     </header>
+
+    {#if taskSaved}<p role="status" class="text-sm text-green-700">{taskSaved}</p>{/if}
+
+    {#if editingTask}
+      <form
+        aria-label="Edit task #{taskId}"
+        class="space-y-3 rounded-lg border border-gray-200 bg-white p-4 shadow"
+        on:submit|preventDefault={saveTask}
+      >
+        <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+          Subject
+          <input type="text" required bind:value={taskDraft.subject} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        </label>
+        <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+          Description
+          <textarea rows="6" bind:value={taskDraft.description} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+        </label>
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+            Status
+            <select required disabled={!options} bind:value={taskDraft.statusId} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60">
+              {#each options?.statuses ?? [] as status (status.id)}
+                <option value={status.id}>{status.name}</option>
+              {/each}
+            </select>
+          </label>
+          <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+            Priority
+            <select required disabled={!options} bind:value={taskDraft.priorityId} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60">
+              {#each options?.priorities ?? [] as priority (priority.id)}
+                <option value={priority.id}>{priority.name}</option>
+              {/each}
+            </select>
+          </label>
+          <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+            Start date
+            <input type="date" bind:value={taskDraft.startDate} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </label>
+          <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+            Due date
+            <input type="date" bind:value={taskDraft.dueDate} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </label>
+          <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+            % Done
+            <input type="number" min="0" max="100" step="10" bind:value={taskDraft.doneRatio} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </label>
+          <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+            Estimated time
+            <input type="text" inputmode="decimal" placeholder="8 or 2:30" bind:value={taskDraft.estimatedHours} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </label>
+        </div>
+        <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+          Note, added to the history (optional)
+          <textarea rows="2" bind:value={taskDraft.notes} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+        </label>
+
+        {#if optionsError}<p role="alert" class="text-sm text-red-700">The statuses and priorities cannot be loaded: {optionsError}</p>{/if}
+        {#if taskSaveError}<p role="alert" class="text-sm text-red-700">{taskSaveError}</p>{/if}
+
+        <div class="flex flex-wrap justify-end gap-2">
+          <button type="button" class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" on:click={() => (editingTask = false)}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={savingTask || !options}
+            class="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+          >
+            {savingTask ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </form>
+    {:else if taskSaveError}
+      <p role="alert" class="text-sm text-red-700">{taskSaveError}</p>
+    {/if}
 
     <section aria-label="Details" class="rounded-lg border border-gray-200 bg-white p-4 shadow">
       <dl class="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
@@ -332,53 +490,7 @@
           on:submit|preventDefault={logTime}
         >
           <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <div class="flex flex-col gap-1 text-xs font-medium text-gray-700">
-              <label for="log-hours-{taskId}">Hours</label>
-              <div class="flex items-stretch gap-1">
-                <button
-                  type="button"
-                  aria-label="Subtract 15 minutes"
-                  class="rounded border border-gray-300 bg-white px-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  on:click={() => addHours(-QUARTER_HOUR)}
-                >
-                  −
-                </button>
-                <input
-                  id="log-hours-{taskId}"
-                  type="text"
-                  inputmode="decimal"
-                  autocomplete="off"
-                  required
-                  aria-describedby="log-hours-help-{taskId}"
-                  placeholder="1.5 or 1:30"
-                  bind:value={draft.hours}
-                  class="min-w-0 flex-1 rounded border border-gray-300 bg-white px-2 py-1.5 text-center text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  type="button"
-                  aria-label="Add 15 minutes"
-                  class="rounded border border-gray-300 bg-white px-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  on:click={() => addHours(QUARTER_HOUR)}
-                >
-                  +
-                </button>
-              </div>
-              <span id="log-hours-help-{taskId}" class="font-normal text-gray-500">
-                Type 1.01, 1,01 or 1:01 (one hour and one minute). Any amount above zero, to the minute.
-              </span>
-              <div class="flex flex-wrap gap-1 pt-1" role="group" aria-label="Common amounts">
-                {#each QUICK_HOURS as [label, hours] (label)}
-                  <button
-                    type="button"
-                    aria-label="Set the hours to {label}"
-                    class="rounded-full border border-gray-300 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    on:click={() => setHours(hours)}
-                  >
-                    {label}
-                  </button>
-                {/each}
-              </div>
-            </div>
+            <HoursField id="log-hours-{taskId}" bind:value={draft.hours} />
             <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
               Date
               <input type="date" required bind:value={draft.spentOn} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
