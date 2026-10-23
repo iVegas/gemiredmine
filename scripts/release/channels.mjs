@@ -12,6 +12,9 @@ export const REPOSITORY_URL = `https://github.com/${REPOSITORY.owner}/${REPOSITO
 
 const BASE_IDENTIFIER = 'com.gemiredmine.app';
 
+/** Android has one identifier for every channel (plan.md, Android step 2), so an install is never split by channel. */
+export const ANDROID_IDENTIFIER = BASE_IDENTIFIER;
+
 export const CHANNELS = Object.freeze({
   stable: {
     label: 'Stable',

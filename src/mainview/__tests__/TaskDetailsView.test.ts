@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render } from '@testing-library/svelte';
+import { fireEvent, render, screen } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import TaskDetailsView from '../TaskDetailsView.svelte';
 import { redmineApi } from '../lib/api';
@@ -283,7 +283,58 @@ describe('TaskDetailsView', () => {
         });
         expect(await view.findByText('Review')).toBeInTheDocument();
         expect(view.getByRole('status')).toHaveTextContent('Logged 1.5 h');
-        expect(view.getByLabelText('Hours')).toHaveValue(null);
+        expect(view.getByLabelText('Hours')).toHaveValue('');
+      });
+
+      /** Opens the form of the rendered view. */
+      async function openForm() {
+        await screen.findByText('No time has been logged on this task.');
+        await fireEvent.click(screen.getByRole('button', { name: 'Log time' }));
+        await screen.findByRole('option', { name: 'Development' });
+      }
+
+      it.each([
+        ['1.00', 1],
+        ['1.01', 1.01],
+        ['1,01', 1.01],
+        ['1:01', 1.0167],
+        ['1:30', 1.5],
+        ['0,25', 0.25],
+      ])('logs exactly what is typed: %s', async (typed, expected) => {
+        api.createLogEntry.mockResolvedValue(undefined);
+        const view = render(TaskDetailsView, { props: { server, taskId: 42 } });
+        await openForm();
+        await fireEvent.input(view.getByLabelText('Hours'), { target: { value: typed } });
+
+        await fireEvent.submit(view.getByRole('form', { name: 'Log time on #42' }));
+
+        expect(api.createLogEntry).toHaveBeenCalledExactlyOnceWith(access, expect.objectContaining({ hours: expected }));
+      });
+
+      it('says how to type a time it cannot read, and sends nothing', async () => {
+        const view = render(TaskDetailsView, { props: { server, taskId: 42 } });
+        await openForm();
+        await fireEvent.input(view.getByLabelText('Hours'), { target: { value: '1h30' } });
+
+        await fireEvent.submit(view.getByRole('form', { name: 'Log time on #42' }));
+
+        expect(api.createLogEntry).not.toHaveBeenCalled();
+        expect(view.getByRole('alert')).toHaveTextContent('Enter the time as hours, like 1.5, 1,5 or 1:30.');
+      });
+
+      it('adds and subtracts quarter hours, and sets the common amounts from buttons', async () => {
+        const view = render(TaskDetailsView, { props: { server, taskId: 42 } });
+        await openForm();
+        const hours = view.getByLabelText('Hours');
+
+        await fireEvent.click(view.getByRole('button', { name: 'Add 15 minutes' }));
+        expect(hours).toHaveValue('0.25');
+        await fireEvent.click(view.getByRole('button', { name: 'Add 15 minutes' }));
+        await fireEvent.click(view.getByRole('button', { name: 'Subtract 15 minutes' }));
+        expect(hours).toHaveValue('0.25');
+
+        await fireEvent.click(view.getByRole('button', { name: 'Set the hours to 2 h' }));
+        expect(hours).toHaveValue('2');
       });
 
       it('does not send a log entry without hours, and says what is missing', async () => {
@@ -309,7 +360,7 @@ describe('TaskDetailsView', () => {
         await fireEvent.submit(view.getByRole('form', { name: 'Log time on #42' }));
 
         expect(await view.findByText(/could not be logged: Redmine API request failed: 403 Forbidden/)).toBeInTheDocument();
-        expect(view.getByLabelText('Hours')).toHaveValue(2);
+        expect(view.getByLabelText('Hours')).toHaveValue('2');
       });
     });
   });

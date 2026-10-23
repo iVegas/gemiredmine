@@ -3,7 +3,7 @@
   import type { TaskDetails, TimeActivity } from '../shared/backend';
   import type { RedmineTimeEntry } from '../bun/redmine/types';
   import { redmineApi } from './lib/api';
-  import { formatHours, sumHours, toDateKey } from './lib/calendar';
+  import { formatHours, parseHours, sumHours, toDateKey } from './lib/calendar';
   import { formatDueDate, isOverdue } from './lib/todo';
   import {
     attachmentLink,
@@ -74,7 +74,28 @@
   let logForm = false;
   let activities: TimeActivity[] = [];
   let activitiesError = '';
-  let draft = { hours: null as number | null, spentOn: toDateKey(new Date()), activityId: null as number | null, comments: '' };
+  // The hours are text, so that "1,01" and "1:01" can be typed as well as "1.01"; they are read by parseHours.
+  let draft = { hours: '', spentOn: toDateKey(new Date()), activityId: null as number | null, comments: '' };
+  // The steps of the quick buttons: a quarter hour, which is the step of the minus and plus buttons too.
+  const QUARTER_HOUR = 0.25;
+  const QUICK_HOURS: Array<[string, number]> = [
+    ['15 min', 0.25],
+    ['30 min', 0.5],
+    ['1 h', 1],
+    ['2 h', 2],
+    ['4 h', 4],
+    ['8 h', 8],
+  ];
+
+  /** Sets the hours from a button. Hours that are not valid yet count as nothing. */
+  function addHours(delta: number) {
+    const current = parseHours(draft.hours) ?? 0;
+    draft.hours = String(Math.max(QUARTER_HOUR, Math.round((current + delta) * 10000) / 10000));
+  }
+
+  function setHours(hours: number) {
+    draft.hours = String(hours);
+  }
   let saving = false;
   let saveError = '';
   let saved = '';
@@ -93,9 +114,13 @@
   }
 
   async function logTime() {
-    const hours = Number(draft.hours);
     if (!server.apiToken || saving) return;
-    if (!(hours > 0) || !draft.spentOn || draft.activityId === null) {
+    const hours = parseHours(draft.hours);
+    if (hours === null) {
+      saveError = draft.hours.trim() === '' ? 'Enter the hours, the date and an activity.' : 'Enter the time as hours, like 1.5, 1,5 or 1:30.';
+      return;
+    }
+    if (!draft.spentOn || draft.activityId === null) {
       saveError = 'Enter the hours, the date and an activity.';
       return;
     }
@@ -109,7 +134,7 @@
         { taskId, spentOn: draft.spentOn, hours, activityId: draft.activityId, comments: draft.comments.trim() }
       );
       saved = `Logged ${formatHours(hours)} on ${formatDueDate(draft.spentOn)}.`;
-      draft = { ...draft, hours: null, comments: '' };
+      draft = { ...draft, hours: '', comments: '' };
       // The entries and the spent time of the task are fetched again, so the new entry is in the list at once.
       await reload();
     } catch (err) {
@@ -307,10 +332,53 @@
           on:submit|preventDefault={logTime}
         >
           <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
-              Hours
-              <input type="number" min="0.01" step="0.25" required bind:value={draft.hours} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </label>
+            <div class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+              <label for="log-hours-{taskId}">Hours</label>
+              <div class="flex items-stretch gap-1">
+                <button
+                  type="button"
+                  aria-label="Subtract 15 minutes"
+                  class="rounded border border-gray-300 bg-white px-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  on:click={() => addHours(-QUARTER_HOUR)}
+                >
+                  −
+                </button>
+                <input
+                  id="log-hours-{taskId}"
+                  type="text"
+                  inputmode="decimal"
+                  autocomplete="off"
+                  required
+                  aria-describedby="log-hours-help-{taskId}"
+                  placeholder="1.5 or 1:30"
+                  bind:value={draft.hours}
+                  class="min-w-0 flex-1 rounded border border-gray-300 bg-white px-2 py-1.5 text-center text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  aria-label="Add 15 minutes"
+                  class="rounded border border-gray-300 bg-white px-2 text-sm font-semibold text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  on:click={() => addHours(QUARTER_HOUR)}
+                >
+                  +
+                </button>
+              </div>
+              <span id="log-hours-help-{taskId}" class="font-normal text-gray-500">
+                Type 1.01, 1,01 or 1:01 (one hour and one minute). Any amount above zero, to the minute.
+              </span>
+              <div class="flex flex-wrap gap-1 pt-1" role="group" aria-label="Common amounts">
+                {#each QUICK_HOURS as [label, hours] (label)}
+                  <button
+                    type="button"
+                    aria-label="Set the hours to {label}"
+                    class="rounded-full border border-gray-300 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    on:click={() => setHours(hours)}
+                  >
+                    {label}
+                  </button>
+                {/each}
+              </div>
+            </div>
             <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
               Date
               <input type="date" required bind:value={draft.spentOn} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />

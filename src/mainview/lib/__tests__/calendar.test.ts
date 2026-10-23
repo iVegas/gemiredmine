@@ -6,6 +6,7 @@ import {
   monthBounds,
   sumHours,
   formatHours,
+  parseHours,
   toDateKey,
 } from '../calendar';
 import type { RedmineIssue, RedmineTimeEntry } from '../../../bun/redmine/types';
@@ -98,5 +99,26 @@ describe('hours formatting', () => {
   it('formats hours with a unit', () => {
     expect(formatHours(1.5)).toBe('1.5 h');
     expect(formatHours(2)).toBe('2 h');
+    expect(formatHours(1.01)).toBe('1.01 h');
+    expect(formatHours(1 + 1 / 60)).toBe('1.0167 h');
+  });
+});
+
+describe('parseHours', () => {
+  it.each([
+    ['1', 1],
+    ['1.00', 1],
+    ['1.01', 1.01],
+    ['1,01', 1.01],
+    ['0,25', 0.25],
+    ['1:30', 1.5],
+    ['1:01', 1.0167],
+    [' 2 ', 2],
+  ])('reads %s as %s hours', (text, hours) => {
+    expect(parseHours(text)).toBe(hours);
+  });
+
+  it.each(['', '0', '0.00', '0:00', '-1', '1h', '1h30', '1.5.2', 'abc', '1:60', '1:5', '1000.5'])('refuses %s', text => {
+    expect(parseHours(text)).toBeNull();
   });
 });
