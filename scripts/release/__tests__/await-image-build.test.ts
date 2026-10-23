@@ -27,7 +27,7 @@ describe('waiting for the image build of a commit', () => {
   });
 
   it('gives a queued image run a moment to show up, then accepts that the commit has none', () => {
-    expect(decide([], 30_000).action).toBe('wait');
+    expect(decide([], 5_000).action).toBe('wait');
     expect(decide([], APPEAR_GRACE_MS).action).toBe('proceed');
   });
 
