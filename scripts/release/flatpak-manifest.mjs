@@ -35,8 +35,11 @@ export const RUST_BUILD_ONLY = Object.freeze([
   '/share/zsh/site-functions/_cargo',
 ]);
 
-/** The Flathub branches: GNOME 51 and its freedesktop base 26.08, which provides Node 24. */
-export const RUNTIME = Object.freeze({ platform: 'org.gnome.Platform', sdk: 'org.gnome.Sdk', version: '51' });
+/**
+ * The Flathub branches: GNOME 50 and its freedesktop base 25.08, which provides Node 24. GNOME 51 (freedesktop 26.08)
+ * showed a WebKit web process at 100% CPU and no rendered page on the Radeon 890M host, so the bundle moves back one release.
+ */
+export const RUNTIME = Object.freeze({ platform: 'org.gnome.Platform', sdk: 'org.gnome.Sdk', version: '50' });
 export const NODE_EXTENSION = 'org.freedesktop.Sdk.Extension.node24';
 
 /** The app ID of a channel. Stable is the base ID; the other channels add a suffix, as their identifiers do. */
