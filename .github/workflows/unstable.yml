@@ -16,12 +16,31 @@ permissions:
   packages: read
 
 jobs:
+  # The builds pull the images that build-images.yml pushes for this commit. Both start on the same push, so the
+  # builds wait here until that image run has finished, and stop if it failed.
+  await-images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Wait for the image build of this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/await-image-build.mjs "$GITHUB_SHA"
+
   build-linux:
+    needs: await-images
     uses: ./.github/workflows/build-linux.yml
     with:
       channel: unstable
 
   build-windows:
+    needs: await-images
     uses: ./.github/workflows/build-windows.yml
     with:
       channel: unstable
@@ -29,6 +48,7 @@ jobs:
     secrets: inherit
 
   build-android:
+    needs: await-images
     uses: ./.github/workflows/build-android.yml
     with:
       channel: unstable
