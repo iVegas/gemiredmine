@@ -40,4 +40,10 @@ describe('flatpak-build.sh', () => {
     expect(chown).toBeGreaterThan(bundle);
     expect(bundle).toBeGreaterThan(-1);
   });
+
+  it('runs the installed app under its own D-Bus session, which the icon loader needs', () => {
+    const script = read('scripts', 'release', 'smoke-test-flatpak.sh');
+    expect(script).toContain('dbus-run-session -- flatpak run');
+    expect(script).toContain('command -v dbus-run-session');
+  });
 });
