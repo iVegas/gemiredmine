@@ -568,7 +568,11 @@ Plan steps from `plan.md` "Next phase", and where each stands:
 - **2, identity: open.** Still `com.gemiredmine.app` in the Capacitor config; no decision yet.
 - **3, done:** `android` is in `PLATFORMS` (`scripts/release/channels.mjs`) and in `BuildInfo.platform`; `AboutView` says the app does not
   update itself on Android. `androidVersionCode()` and the overlay are not written.
-- **4, network: open.** `network_security_config.xml` needs `gen/android`. TLS roots on Android are not checked.
+- **4, network: TLS roots fixed, cleartext open.** On Android the native-roots loader reads Linux certificate paths (`/etc/ssl/certs`), which do
+  not exist there, so every HTTPS request failed with "error sending request for url (...)" (seen on the owner's APK, golems.team). Android
+  now uses the bundled Mozilla roots (`rustls-tls-webpki-roots`, `src-tauri/Cargo.toml`), and desktop keeps the OS roots. Verified by
+  `cargo tree` (the resolved features per target) and `scripts/release/__tests__/tauri-setup.test.ts`, not on a device. A private CA
+  does not work on Android yet. `network_security_config.xml` (cleartext) still needs `gen/android`.
 - **5, partly:** `toEnvironment` already names "Android System WebView". Icons and the Rust targets are not done.
 - **6, CI: not written.** The workflow needs the SDK on the runner, and keystore secrets as for the Windows PFX.
 - **7, done:** `hasWindowLayer()` is false on Android (`isAndroidWebview()` reads the WebView's user agent, so it can be read
