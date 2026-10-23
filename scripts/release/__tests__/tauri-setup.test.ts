@@ -265,7 +265,7 @@ describe('the build workflows', () => {
     // No X server to fall back to, and the app's own request for a toplevel window is what proves a Wayland client.
     expect(smoke).toContain('env -u DISPLAY');
     expect(smoke).toContain('WAYLAND_DEBUG=1');
-    expect(smoke).toContain('xdg_toplevel@[0-9]*\\.set_app_id("Gemiredmine');
+    expect(smoke).toContain('xdg_toplevel[@#][0-9]*\\.set_app_id("[^"]*Gemiredmine');
   });
 
   it('runs the Wayland smoke test script as a command and refuses to run without one', () => {
