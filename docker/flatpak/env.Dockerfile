@@ -15,7 +15,7 @@ ARG CARGO_GENERATOR_SHA256=0a2db6be87d75910facef28ab46d4d6460802e8419ab850d0caa6
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       flatpak flatpak-builder git ca-certificates curl python3 python3-venv \
-      xz-utils elfutils xvfb xauth weston \
+      xz-utils elfutils xvfb xauth weston dbus \
  && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m venv /opt/generators \
