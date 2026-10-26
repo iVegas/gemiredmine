@@ -29,4 +29,6 @@ export const redmineApi: GemiBackend = {
   deleteCredential: (serverId) => backend().deleteCredential(serverId),
   getCredentialOptions: () => backend().getCredentialOptions(),
   setBiometricUnlock: (enabled) => backend().setBiometricUnlock(enabled),
+  getAgentSettings: () => backend().getAgentSettings(),
+  saveAgentSettings: (settings) => backend().saveAgentSettings(settings),
 };

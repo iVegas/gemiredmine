@@ -1,3 +1,4 @@
+import { AGENT_SETTINGS_KEY, agentSettingsFrom, isAgentPort, type AgentSettings } from '../shared/agents';
 import type { CredentialOptions, GemiBackend, HistoryNames, LoadedCredentials, ServerAccess } from '../shared/backend';
 import type { BuildInfo } from '../shared/build-info';
 import { buildInfo as generatedBuildInfo, DEV_PREVIEW_AVAILABLE } from '../shared/build-info.generated';
@@ -380,6 +381,15 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
     getCredentialOptions: traced('getCredentialOptions', async (): Promise<CredentialOptions> => {
       const store = platform.credentials;
       return store?.options ? store.options() : { biometric: null };
+    }),
+
+    getAgentSettings: traced('getAgentSettings', async (): Promise<AgentSettings> =>
+      agentSettingsFrom(await (await appStorage()).getSetting(AGENT_SETTINGS_KEY))
+    ),
+
+    saveAgentSettings: traced('saveAgentSettings', async (settings) => {
+      if (!isAgentPort(settings.port)) throw new Error('The port must be a whole number from 1024 to 65535.');
+      await (await appStorage()).setSetting(AGENT_SETTINGS_KEY, { enabled: settings.enabled === true, port: settings.port });
     }),
 
     setBiometricUnlock: traced('setBiometricUnlock', async (enabled) => {

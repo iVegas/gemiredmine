@@ -134,6 +134,8 @@ export interface CredentialOptions {
   biometric: { available: boolean; enabled: boolean } | null;
 }
 
+import type { AgentSettings } from './agents';
+
 export interface GemiBackend {
   signIn(params: SignInParams): Promise<SignInResponse>;
   getCurrentUser(access: ServerAccess): Promise<CurrentUserSummary>;
@@ -175,4 +177,8 @@ export interface GemiBackend {
   getCredentialOptions(): Promise<CredentialOptions>;
   /** Asks for a fingerprint or face before the saved sign-ins are read, or stops asking. Rejects with a sentence the user can read. */
   setBiometricUnlock(enabled: boolean): Promise<void>;
+  /** The settings of the endpoint that AI agents connect to. Off unless the user turned it on. */
+  getAgentSettings(): Promise<AgentSettings>;
+  /** Keeps the settings of the endpoint. Rejects with a sentence the user can read when the port cannot be used. */
+  saveAgentSettings(settings: AgentSettings): Promise<void>;
 }
