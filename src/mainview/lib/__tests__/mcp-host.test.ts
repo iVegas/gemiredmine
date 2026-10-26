@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { MAX_WAITING_PROPOSALS } from '../../../bun/mcp/host';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { get } from 'svelte/store';
@@ -6,10 +7,15 @@ import { redmineApi } from '../api';
 import { hasDesktopBackend } from '../bridge';
 import { isAndroidWebview } from '../tauri-platform';
 import { activeServerId, servers } from '../store';
+import { get as readStore } from 'svelte/store';
 import { currentLabel } from '../window-transport';
 import {
+  agentProposals,
   agentsAvailable,
   agentToken,
+  approveAgentProposal,
+  rejectAgentProposal,
+  resetAgentToken,
   restoreAgentEndpoint,
   startAgentEndpoint,
   storeHost,
@@ -23,8 +29,13 @@ vi.mock('../api', () => ({
     getAgentSettings: vi.fn(),
     recordDiagnostic: vi.fn(async () => {}),
     listAssignedTasks: vi.fn(async () => []),
-    getTask: vi.fn(),
+    getTask: vi.fn(async (_access: unknown, taskId: number) => ({
+      issue: { id: taskId, subject: 'Fix login', status: { id: 1, name: 'New' }, priority: { id: 2, name: 'Normal' } },
+      names: {},
+    })),
     listTaskLogEntries: vi.fn(async () => []),
+    createLogEntry: vi.fn(async () => {}),
+    updateTask: vi.fn(async () => {}),
   },
 }));
 vi.mock('../bridge', () => ({ hasDesktopBackend: vi.fn(() => true) }));
@@ -187,3 +198,98 @@ describe('starting the endpoint at launch', () => {
     expect(redmineApi.getAgentSettings).not.toHaveBeenCalled();
   });
 });
+
+describe('the changes that wait for the user', () => {
+  const change = { kind: 'log_time' as const, taskId: 7, spentOn: '2026-10-20', hours: 1, activityId: 9, comments: '' };
+
+  beforeEach(() => {
+    agentProposals.set([]);
+    vi.mocked(redmineApi.createLogEntry).mockReset().mockResolvedValue(undefined);
+  });
+
+  it('keeps a proposed change as waiting, for the server it is about', () => {
+    const proposed = storeHost.propose({ serverId: 'srv-1', serverName: 'Work', change, summary: 'Log 1 h' });
+
+    expect(proposed).toMatchObject({ serverId: 'srv-1', serverName: 'Work', status: 'waiting', outcome: null, summary: 'Log 1 h' });
+    expect(storeHost.proposal(proposed.id)).toEqual(proposed);
+    expect(readStore(agentProposals)).toHaveLength(1);
+    expect(redmineApi.createLogEntry).not.toHaveBeenCalled();
+  });
+
+  it('saves an approved change with the key of its server, and records what it did', async () => {
+    const proposed = storeHost.propose({ serverId: 'srv-1', serverName: 'Work', change, summary: 'Log 1 h' });
+
+    await approveAgentProposal(proposed.id);
+
+    expect(redmineApi.createLogEntry).toHaveBeenCalledExactlyOnceWith(
+      { baseUrl: 'https://redmine.work.example', apiKey: KEY },
+      { taskId: 7, spentOn: '2026-10-20', hours: 1, activityId: 9, comments: '' }
+    );
+    expect(storeHost.proposal(proposed.id)).toMatchObject({ status: 'done', outcome: 'Logged 1 h on task #7.' });
+  });
+
+  it('fails an approved change when the user is no longer signed in, without calling Redmine', async () => {
+    const proposed = storeHost.propose({ serverId: 'srv-2', serverName: 'Home', change, summary: 'Log 1 h' });
+
+    await approveAgentProposal(proposed.id);
+
+    expect(redmineApi.createLogEntry).not.toHaveBeenCalled();
+    expect(storeHost.proposal(proposed.id)).toMatchObject({ status: 'failed' });
+    expect(storeHost.proposal(proposed.id)?.outcome).toContain('no longer signed in to Home');
+  });
+
+  it('records why Redmine refused an approved change', async () => {
+    vi.mocked(redmineApi.createLogEntry).mockRejectedValue(new Error('Redmine does not let you log time on this task.'));
+    const proposed = storeHost.propose({ serverId: 'srv-1', serverName: 'Work', change, summary: 'Log 1 h' });
+
+    await approveAgentProposal(proposed.id);
+
+    expect(storeHost.proposal(proposed.id)).toMatchObject({
+      status: 'failed',
+      outcome: 'Redmine does not let you log time on this task.',
+    });
+  });
+
+  it('rejects a change without calling Redmine, and leaves a decided change as it is', async () => {
+    const proposed = storeHost.propose({ serverId: 'srv-1', serverName: 'Work', change, summary: 'Log 1 h' });
+
+    rejectAgentProposal(proposed.id);
+    await approveAgentProposal(proposed.id);
+
+    expect(storeHost.proposal(proposed.id)).toMatchObject({ status: 'rejected' });
+    expect(redmineApi.createLogEntry).not.toHaveBeenCalled();
+  });
+
+  it('asks an agent to wait when too many changes are undecided, and frees a place when one is decided', () => {
+    const ids = Array.from({ length: MAX_WAITING_PROPOSALS }, () =>
+      storeHost.propose({ serverId: 'srv-1', serverName: 'Work', change, summary: 'Log 1 h' }).id
+    );
+
+    expect(() => storeHost.propose({ serverId: 'srv-1', serverName: 'Work', change, summary: 'Log 1 h' })).toThrow(
+      `${MAX_WAITING_PROPOSALS} changes are already waiting for the user.`
+    );
+
+    rejectAgentProposal(ids[0]);
+    expect(() => storeHost.propose({ serverId: 'srv-1', serverName: 'Work', change, summary: 'Log 1 h' })).not.toThrow();
+  });
+
+  it('gives no proposal for an id it does not have', () => {
+    expect(storeHost.proposal('p-missing')).toBeNull();
+  });
+});
+
+describe('replacing the token', () => {
+  it('asks the app for a new token, and gives it back', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce('new-token');
+
+    expect(await resetAgentToken()).toBe('new-token');
+    expect(invoke).toHaveBeenLastCalledWith('mcp_reset_token');
+  });
+
+  it('passes on the reason when the token cannot be replaced', async () => {
+    vi.mocked(invoke).mockRejectedValueOnce("The system's credential store did not accept the request.");
+
+    await expect(resetAgentToken()).rejects.toThrow("The system's credential store did not accept the request.");
+  });
+});
+

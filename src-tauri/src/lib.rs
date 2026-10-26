@@ -168,6 +168,27 @@ impl McpState {
         Ok(())
     }
 
+    /// Restarts a running endpoint with another token, on the same port. The old token is refused from then on.
+    fn rotate(&self, app: tauri::AppHandle, token: String) -> Result<(), String> {
+        let mut endpoint = self
+            .endpoint
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let Some(port) = endpoint.as_ref().map(mcp::Endpoint::port) else {
+            return Ok(());
+        };
+        // The port is freed before it is bound again: the endpoint cannot share it with itself.
+        *endpoint = None;
+        *endpoint = Some(
+            mcp::start(app, Arc::clone(&self.bridge), token, port).map_err(|error| {
+                format!(
+                    "The endpoint stopped, because it could not restart with the new token: {error}"
+                )
+            })?,
+        );
+        Ok(())
+    }
+
     fn stop(&self) {
         *self
             .endpoint
@@ -200,6 +221,22 @@ async fn mcp_start(
     tauri::async_runtime::spawn_blocking(move || mcp.start(app, token, port))
         .await
         .map_err(|error| error.to_string())?
+}
+
+/// Replaces the bearer token. The one that was given out stops working, and a running endpoint restarts with the new one.
+#[tauri::command]
+async fn mcp_reset_token(
+    app: tauri::AppHandle,
+    credentials: tauri::State<'_, Arc<credentials::Credentials>>,
+    mcp: tauri::State<'_, Arc<McpState>>,
+) -> Result<String, String> {
+    let token = on_credentials(credentials, |store| store.reset_mcp_token()).await?;
+    let mcp = mcp.inner().clone();
+    let restarted = token.clone();
+    tauri::async_runtime::spawn_blocking(move || mcp.rotate(app, restarted))
+        .await
+        .map_err(|error| error.to_string())??;
+    Ok(token)
 }
 
 /// Stops the MCP endpoint. Nothing listens after this returns.
@@ -266,6 +303,7 @@ pub fn run() {
             credential_load,
             credential_delete,
             mcp_token,
+            mcp_reset_token,
             mcp_start,
             mcp_stop,
             mcp_respond

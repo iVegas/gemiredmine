@@ -1,14 +1,16 @@
 // Runs the endpoint that AI agents connect to (src-tauri/src/mcp.rs) from the main window. The endpoint forwards each
-// request here, as an event; this answers it from the servers the user has added, and hands the answer back.
+// request here, as an event; this answers it from the servers the user has added, and hands the answer back. It also
+// keeps the changes that agents propose until the user approves or rejects them.
 //
 // Only the main window does this. The endpoint sends its requests to that window alone, and the servers and their API
 // keys live in that window's store.
 
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { get } from 'svelte/store';
+import { get, writable } from 'svelte/store';
 import { answerMcp } from '../../bun/mcp/protocol';
-import type { McpHost, McpServerInfo } from '../../bun/mcp/host';
+import { MAX_WAITING_PROPOSALS, type McpHost, type McpServerInfo, type Proposal, type ProposalStatus } from '../../bun/mcp/host';
+import { runProposal } from '../../bun/mcp/proposals';
 import type { AgentSettings } from '../../shared/agents';
 import { buildInfo } from '../../shared/build-info.generated';
 import type { ServerAccess } from '../../shared/backend';
@@ -24,7 +26,18 @@ const REQUEST_EVENT = 'mcp-request';
 /** Whether this window can run the endpoint: the desktop app's main window. Android has no endpoint. */
 export const agentsAvailable = (): boolean => hasDesktopBackend() && !isAndroidWebview() && currentLabel() === MAIN_LABEL;
 
-/** What the tools see of the servers. The API key is handed out only for a request that needs it. */
+/** The changes that agents proposed, the waiting ones first and then those that were decided. Kept for this run only. */
+export const agentProposals = writable<Proposal[]>([]);
+
+let counter = 0;
+
+const setProposal = (id: string, patch: Partial<Proposal>) =>
+  agentProposals.update((list) => list.map((proposal) => (proposal.id === id ? { ...proposal, ...patch } : proposal)));
+
+/** Changes that have not been decided yet, which count against the limit. */
+const undecided = () => get(agentProposals).filter((proposal) => proposal.status === 'waiting' || proposal.status === 'running').length;
+
+/** What the tools see of the servers and of the proposals. The API key is handed out only for a request that needs it. */
 export const storeHost: McpHost = {
   servers(): McpServerInfo[] {
     const active = get(activeServerId);
@@ -41,7 +54,54 @@ export const storeHost: McpHost = {
     const server = get(servers).find((candidate) => candidate.id === serverId);
     return server?.apiToken ? { baseUrl: server.url, apiKey: server.apiToken } : null;
   },
+  propose({ serverId, serverName, change, summary }) {
+    if (undecided() >= MAX_WAITING_PROPOSALS) {
+      throw new Error(
+        `${MAX_WAITING_PROPOSALS} changes are already waiting for the user. Ask the user to approve or reject some of them first.`
+      );
+    }
+    counter += 1;
+    const proposal: Proposal = {
+      id: `p${counter}`,
+      serverId,
+      serverName,
+      change,
+      summary,
+      status: 'waiting',
+      outcome: null,
+      createdAt: new Date().toISOString(),
+    };
+    agentProposals.update((list) => [proposal, ...list]);
+    return proposal;
+  },
+  proposal(id: string): Proposal | null {
+    return get(agentProposals).find((proposal) => proposal.id === id) ?? null;
+  },
 };
+
+/** Runs a waiting change with the user's own key, once the user has approved it. */
+export async function approveAgentProposal(id: string): Promise<void> {
+  const proposal = get(agentProposals).find((candidate) => candidate.id === id);
+  if (!proposal || proposal.status !== 'waiting') return;
+  setProposal(id, { status: 'running' });
+  const finish = (status: ProposalStatus, outcome: string) => setProposal(id, { status, outcome });
+  const access = storeHost.access(proposal.serverId);
+  if (!access) {
+    finish('failed', `You are no longer signed in to ${proposal.serverName}. Sign in to it, then propose the change again.`);
+    return;
+  }
+  try {
+    finish('done', await runProposal(proposal, access, redmineApi));
+  } catch (error) {
+    finish('failed', error instanceof Error ? error.message : String(error));
+  }
+}
+
+/** Declines a waiting change. Nothing is sent to Redmine. */
+export function rejectAgentProposal(id: string): void {
+  const proposal = get(agentProposals).find((candidate) => candidate.id === id);
+  if (proposal?.status === 'waiting') setProposal(id, { status: 'rejected', outcome: 'You rejected it.' });
+}
 
 let listening: Promise<UnlistenFn> | null = null;
 
@@ -72,6 +132,18 @@ export async function stopAgentEndpoint(): Promise<void> {
 /** The bearer token that an agent must send. It is made on first use and kept in the system's credential store. */
 export async function agentToken(): Promise<string> {
   return invoke<string>('mcp_token');
+}
+
+/**
+ * Replaces the token. The one that was given out stops working at once, and a running endpoint is restarted with the
+ * new one. Rejects with the reason when the store cannot be used.
+ */
+export async function resetAgentToken(): Promise<string> {
+  try {
+    return await invoke<string>('mcp_reset_token');
+  } catch (error) {
+    throw new Error(typeof error === 'string' ? error : error instanceof Error ? error.message : String(error));
+  }
 }
 
 /**
