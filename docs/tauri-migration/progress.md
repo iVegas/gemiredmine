@@ -607,9 +607,11 @@ Verified here: `npm test` (68 files, 935 tests) and `npm run typecheck`.
 (Streamable HTTP, bearer token). The Rust side (`src-tauri/src/mcp.rs`) listens on 127.0.0.1 only, checks the Host, the
 Origin and the token before it reads a body, and passes each request to the main window as an `mcp-request` event. The
 window answers with `mcp_respond`. The message handler is portable (`src/bun/mcp/`): four read-only tools over the
-servers the user added, with the API keys never returned. The settings page (AI agents) turns it on, shows the token and
-the port. The user guide is `docs/ai-agents.md`. Not done: write tools behind an approval, a way to replace the token,
-and a run with a real agent. The Rust module also compiles for Android, which is unverified: the settings section, and so the start, is not shown on Android.
+servers the user added, and two tools that propose a change (`log_time`, `update_task`). A proposal runs only when the user
+approves it under AI agents in Settings, with the user's own key (`src/bun/mcp/proposals.ts`). The token can be replaced,
+which restarts a running endpoint. Proposals are kept for the running app only. The user guide is `docs/ai-agents.md`.
+Not done: a run with a real agent against a running app. The Rust module also compiles for Android, which is unverified:
+the settings section, and so the start, is not shown on Android.
 
 ## Recipes
 
