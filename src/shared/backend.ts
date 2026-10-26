@@ -126,6 +126,14 @@ export interface LoadedCredentials {
   problem: string | null;
 }
 
+/**
+ * How the saved sign-ins are kept on this device. `biometric` is null where the platform has no fingerprint or face
+ * unlock, so the setting is not offered there. Otherwise it says whether this device can use one, and whether it is on.
+ */
+export interface CredentialOptions {
+  biometric: { available: boolean; enabled: boolean } | null;
+}
+
 export interface GemiBackend {
   signIn(params: SignInParams): Promise<SignInResponse>;
   getCurrentUser(access: ServerAccess): Promise<CurrentUserSummary>;
@@ -163,4 +171,8 @@ export interface GemiBackend {
   saveCredential(serverId: string, apiKey: string): Promise<void>;
   /** Forgets the API key of a server. A server that has none is fine. */
   deleteCredential(serverId: string): Promise<void>;
+  /** How the saved sign-ins are kept here, and whether a fingerprint or face is asked for before they are read. */
+  getCredentialOptions(): Promise<CredentialOptions>;
+  /** Asks for a fingerprint or face before the saved sign-ins are read, or stops asking. Rejects with a sentence the user can read. */
+  setBiometricUnlock(enabled: boolean): Promise<void>;
 }

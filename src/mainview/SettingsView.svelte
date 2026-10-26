@@ -1,9 +1,43 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import AddServerForm from './AddServerForm.svelte';
+  import { redmineApi } from './lib/api';
   import { servers, activeServerId, removeServer, remembersSignIn, updateServer, type ServerConnection } from './lib/store';
   import { openView } from './lib/views';
+  import type { CredentialOptions } from '../shared/backend';
 
   let adding = false;
+
+  /** The fingerprint or face unlock of the saved sign-ins. Null where the device has none, so the section is not shown. */
+  let biometric: CredentialOptions['biometric'] = null;
+  let biometricError = '';
+  let biometricBusy = false;
+
+  onMount(async () => {
+    try {
+      biometric = (await redmineApi.getCredentialOptions()).biometric;
+    } catch {
+      // Outside the desktop app there are no saved sign-ins to unlock.
+      biometric = null;
+    }
+  });
+
+  // The switch shows the new setting at once and goes back to the old one if the change is refused.
+  async function setBiometric(enabled: boolean) {
+    const current = biometric;
+    if (!current) return;
+    biometric = { ...current, enabled };
+    biometricBusy = true;
+    biometricError = '';
+    try {
+      await redmineApi.setBiometricUnlock(enabled);
+    } catch (error) {
+      biometric = { ...current, enabled: current.enabled };
+      biometricError = `The change was not saved: ${error instanceof Error ? error.message : String(error)}`;
+    } finally {
+      biometricBusy = false;
+    }
+  }
 
   function signIn(server: ServerConnection) {
     // The dashboard asks a signed-out server to sign in.
@@ -114,4 +148,32 @@
       {/each}
     </ul>
   </section>
+
+  {#if biometric}
+    <section aria-labelledby="settings-security-heading" class="rounded-lg border border-gray-200 bg-white p-4 shadow">
+      <h3 id="settings-security-heading" class="text-lg font-semibold text-gray-900">Security</h3>
+      <p class="mt-1 text-sm text-gray-500">Saved sign-ins are kept encrypted on this device. Whether the app asks for a fingerprint or face before it uses them is up to you.</p>
+
+      <label class="mt-4 flex items-start gap-2 text-sm text-gray-800">
+        <input
+          type="checkbox"
+          checked={biometric.enabled}
+          disabled={!biometric.available || biometricBusy}
+          class="mt-0.5 h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-60"
+          on:change={(event) => setBiometric(event.currentTarget.checked)}
+        >
+        <span>
+          <span class="font-medium">Unlock saved sign-ins with a fingerprint or face</span>
+          <span class="block text-gray-500">When on, the app asks for it once when it starts, before it signs in with a saved key. When off, saved sign-ins open without asking.</span>
+        </span>
+      </label>
+
+      {#if !biometric.available}
+        <p class="mt-2 text-sm text-amber-700">Set up a fingerprint or face in the system settings to use this.</p>
+      {/if}
+      {#if biometricError}
+        <p role="alert" class="mt-2 text-sm text-red-700">{biometricError}</p>
+      {/if}
+    </section>
+  {/if}
 </div>

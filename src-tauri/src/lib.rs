@@ -167,6 +167,7 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_credential_vault::init())
         // The schema is created and updated by the TypeScript side (src/bun/storage/migrations.ts), so the plugin has no
         // migrations of its own to run: the database is opened at a path that depends on the channel.
         .plugin(tauri_plugin_sql::Builder::default().build())

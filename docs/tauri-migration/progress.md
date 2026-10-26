@@ -587,7 +587,21 @@ version code (`androidVersionCode` in `channels.mjs`) grows with every build of 
 the same capabilities as its desktop build. The channel workflows build and publish the APK with the other platforms.
 Not yet run in CI: the first unstable run on `main` after the merge.
 
-Verified here: `npm test` (68 files, 879 tests) and `npm run typecheck`.
+**Saved sign-ins on Android (2026-10-26).** Android had no credential store, so "Remember me" could not keep the API
+key: the app said "Your sign-in could not be remembered" and asked for the password at every start. Now the key is kept
+in `src-tauri/plugins/credential-vault`: the Kotlin plugin encrypts each key with a data key, which an Android Keystore
+key wraps. The Keystore key needs a fingerprint or face only when the user turns that on, in Settings > Security (shown
+only where the device can offer it). With it on, the data key is unlocked once, when the app starts, so the user is
+asked once per start and not once per server. A cancelled prompt leaves the sign-in to the password form, and a changed
+fingerprint or face set forgets the saved keys. Settings are the place for the switch (`getCredentialOptions`,
+`setBiometricUnlock`).
+
+Not verified here: the Kotlin code, the Gradle build of the plugin and the prompt on a device. The Android SDK cannot be
+installed in this sandbox. `scripts/release/__tests__/credential-vault.test.ts` checks that the Kotlin commands, the
+Rust registration, the permissions and the webview calls agree by name. Not done: lock on background, a backup rule that
+keeps the wrapped key out of Android backups (a restored copy cannot be opened, and is forgotten), and Windows Hello.
+
+Verified here: `npm test` (68 files, 935 tests) and `npm run typecheck`.
 
 ## Recipes
 

@@ -20,6 +20,9 @@ tauri-plugin-fs = "~2.7.1"
 tauri-plugin-opener = "~2.7.2"
 # The app's own database (src/bun/storage). SQLite is built in, so nothing has to be installed next to the app.
 tauri-plugin-sql = { version = "~2.5.0", features = ["sqlite"] }
+# The Android Keystore keeps the API keys on Android (plugins/credential-vault, with the Kotlin side). The desktop
+# builds only register it.
+tauri-plugin-credential-vault = { path = "plugins/credential-vault" }
 serde = { version = "1", features = ["derive"] }
 # The API keys of the user's servers go in the system's credential store (src/credentials.rs). The stores are
 # separate crates, one per system; the other systems have none yet.

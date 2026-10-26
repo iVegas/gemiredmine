@@ -1560,6 +1560,7 @@ dependencies = [
  "serde",
  "tauri",
  "tauri-build",
+ "tauri-plugin-credential-vault",
  "tauri-plugin-fs",
  "tauri-plugin-http",
  "tauri-plugin-opener",
@@ -4835,6 +4836,14 @@ dependencies = [
  "serde_json",
  "tauri-utils",
  "walkdir",
+]
+
+[[package]]
+name = "tauri-plugin-credential-vault"
+version = "0.1.0"
+dependencies = [
+ "tauri",
+ "tauri-plugin",
 ]
 
 [[package]]

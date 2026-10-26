@@ -22,6 +22,8 @@ const fake = vi.hoisted(() => {
     'loadCredentials',
     'saveCredential',
     'deleteCredential',
+    'getCredentialOptions',
+    'setBiometricUnlock',
   ] as const;
   return {
     methods,
@@ -36,7 +38,10 @@ const fake = vi.hoisted(() => {
 
 vi.mock('@tauri-apps/api/core', () => ({ isTauri: vi.fn() }));
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ label: fake.window.label }) }));
-vi.mock('../tauri-platform', () => ({ tauriPlatform: () => fake.platform }));
+vi.mock('../tauri-platform', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../tauri-platform')>()),
+  tauriPlatform: () => fake.platform,
+}));
 vi.mock('../window-layer', () => ({
   startMainLayer: vi.fn(() => ({ api: fake.mainApi })),
   remoteWindowApi: () => fake.remoteApi,
@@ -105,6 +110,8 @@ describe('in the desktop app', () => {
       loadCredentials: [['s1', 's2']],
       saveCredential: ['s1', 'key'],
       deleteCredential: ['s1'],
+      getCredentialOptions: [],
+      setBiometricUnlock: [true],
     };
 
     for (const name of fake.methods) {
