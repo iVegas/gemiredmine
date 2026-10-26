@@ -49,8 +49,12 @@ Three tools propose a change. **Nothing reaches Redmine until you approve it** i
 | `update_task` | `taskId`, `status` (a status name), `doneRatio`, `notes` (at least one of them) | A new status, % done, and a note in the history |
 | `get_proposal` | `proposalId` | Whether the change is waiting, done, failed or rejected, and what it did |
 
-A proposal waits for you in the app. Up to 20 can wait at once. A proposal is kept for the running app only: after a
-restart, the changes that were still waiting are gone, and the agent must propose them again.
+A proposal waits for you in the app. Up to 20 can wait at once. Proposals are kept in the app's database (the
+`proposals` table), so a change still waiting stays waiting after a restart. The latest 200 decided changes are kept
+too; older ones are forgotten.
+
+A change that was running when the app stopped is marked failed after the restart, and is not run again. Check Redmine,
+and propose it again if it is missing.
 
 A server is named by its id or its name. Without one, the server the app shows is used. An agent that asks for a server
 you are not signed in to is told so, and is asked to sign in to it in the app.
@@ -67,7 +71,7 @@ you are not signed in to is told so, and is asked to sign in to it in the app.
 
 - Desktop only: Windows and Linux. Android has no endpoint.
 - Turning the endpoint off stops it. It does not change the token.
-- Proposals are kept for the running app only.
+- A change that was running when the app stopped is not finished: it must be checked in Redmine.
 
 ## How it is built
 

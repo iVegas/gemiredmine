@@ -609,7 +609,9 @@ Origin and the token before it reads a body, and passes each request to the main
 window answers with `mcp_respond`. The message handler is portable (`src/bun/mcp/`): four read-only tools over the
 servers the user added, and two tools that propose a change (`log_time`, `update_task`). A proposal runs only when the user
 approves it under AI agents in Settings, with the user's own key (`src/bun/mcp/proposals.ts`). The token can be replaced,
-which restarts a running endpoint. Proposals are kept for the running app only. The user guide is `docs/ai-agents.md`.
+which restarts a running endpoint. Proposals are kept in the app's SQLite database (migration 3, the `proposals` table): a
+waiting change survives a restart, and one that was running is marked failed, not run again. The user guide is
+`docs/ai-agents.md`.
 Not done: a run with a real agent against a running app. The Rust module also compiles for Android, which is unverified:
 the settings section, and so the start, is not shown on Android.
 

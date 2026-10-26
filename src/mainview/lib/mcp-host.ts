@@ -26,13 +26,42 @@ const REQUEST_EVENT = 'mcp-request';
 /** Whether this window can run the endpoint: the desktop app's main window. Android has no endpoint. */
 export const agentsAvailable = (): boolean => hasDesktopBackend() && !isAndroidWebview() && currentLabel() === MAIN_LABEL;
 
-/** The changes that agents proposed, the waiting ones first and then those that were decided. Kept for this run only. */
+/** The changes that agents proposed, the newest first. The app keeps them in its database, see `loadAgentProposals`. */
 export const agentProposals = writable<Proposal[]>([]);
 
-let counter = 0;
+/** An id that no earlier change has, since the changes outlive a run of the app. */
+const newProposalId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 
-const setProposal = (id: string, patch: Partial<Proposal>) =>
+/** Keeps a change as it is now. A failure is reported in the developer preview; the change stays on screen. */
+function saveProposal(proposal: Proposal) {
+  redmineApi.saveAgentProposal(proposal).catch((error: unknown) =>
+    redmineApi
+      .recordDiagnostic('error', 'mcp', `A proposed change could not be kept: ${error instanceof Error ? error.message : String(error)}`)
+      .catch(() => undefined)
+  );
+}
+
+function setProposal(id: string, patch: Partial<Proposal>) {
   agentProposals.update((list) => list.map((proposal) => (proposal.id === id ? { ...proposal, ...patch } : proposal)));
+  const updated = get(agentProposals).find((proposal) => proposal.id === id);
+  if (updated) saveProposal(updated);
+}
+
+/**
+ * Loads the changes the app kept. A change that was running when the app stopped is marked failed: whether Redmine
+ * took it is not known, so it is not run again. The user checks Redmine and proposes it again if it is missing.
+ */
+export async function loadAgentProposals(): Promise<void> {
+  const kept = await redmineApi.listAgentProposals();
+  const interrupted = kept.filter((proposal) => proposal.status === 'running');
+  const restored = kept.map((proposal) =>
+    proposal.status === 'running'
+      ? { ...proposal, status: 'failed' as const, outcome: 'The app stopped before this change finished. Check Redmine before you propose it again.' }
+      : proposal
+  );
+  for (const proposal of interrupted) saveProposal(restored.find((candidate) => candidate.id === proposal.id)!);
+  agentProposals.update((list) => [...list.filter((proposal) => !restored.some((kept) => kept.id === proposal.id)), ...restored]);
+}
 
 /** Changes that have not been decided yet, which count against the limit. */
 const undecided = () => get(agentProposals).filter((proposal) => proposal.status === 'waiting' || proposal.status === 'running').length;
@@ -60,9 +89,8 @@ export const storeHost: McpHost = {
         `${MAX_WAITING_PROPOSALS} changes are already waiting for the user. Ask the user to approve or reject some of them first.`
       );
     }
-    counter += 1;
     const proposal: Proposal = {
-      id: `p${counter}`,
+      id: newProposalId(),
       serverId,
       serverName,
       change,
@@ -72,6 +100,7 @@ export const storeHost: McpHost = {
       createdAt: new Date().toISOString(),
     };
     agentProposals.update((list) => [proposal, ...list]);
+    saveProposal(proposal);
     return proposal;
   },
   proposal(id: string): Proposal | null {
@@ -152,6 +181,12 @@ export async function resetAgentToken(): Promise<string> {
  */
 export async function restoreAgentEndpoint(): Promise<void> {
   if (!agentsAvailable()) return;
+  // The changes waiting for approval are shown even while the endpoint is off, so they are loaded first.
+  await loadAgentProposals().catch((error: unknown) =>
+    redmineApi
+      .recordDiagnostic('error', 'mcp', `The proposed changes could not be loaded: ${error instanceof Error ? error.message : String(error)}`)
+      .catch(() => undefined)
+  );
   try {
     const settings: AgentSettings = await redmineApi.getAgentSettings();
     if (settings.enabled) await startAgentEndpoint(settings.port);

@@ -26,6 +26,8 @@ const fake = vi.hoisted(() => {
     'setBiometricUnlock',
     'getAgentSettings',
     'saveAgentSettings',
+    'listAgentProposals',
+    'saveAgentProposal',
   ] as const;
   return {
     methods,
@@ -116,6 +118,19 @@ describe('in the desktop app', () => {
       setBiometricUnlock: [true],
       getAgentSettings: [],
       saveAgentSettings: [{ enabled: true, port: 47831 }],
+      listAgentProposals: [],
+      saveAgentProposal: [
+        {
+          id: 'p1',
+          serverId: 'srv-1',
+          serverName: 'Work',
+          change: { kind: 'log_time', taskId: 7, spentOn: '2026-10-20', hours: 1, activityId: 9, comments: '' },
+          summary: 'Log 1 h',
+          status: 'waiting',
+          outcome: null,
+          createdAt: '2026-10-26T00:00:00Z',
+        },
+      ],
     };
 
     for (const name of fake.methods) {
