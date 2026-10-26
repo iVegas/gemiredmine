@@ -154,6 +154,15 @@ impl Credentials {
         }
     }
 
+    /// Replaces the bearer token with a new one. The token it replaces stops being accepted once the endpoint restarts.
+    pub fn reset_mcp_token(&self) -> Result<String, String> {
+        let token = new_token()?;
+        self.named_entry(MCP_TOKEN_NAME)?
+            .set_password(&token)
+            .map_err(describe)?;
+        Ok(token)
+    }
+
     /// Keeps the key of a server, replacing the one it had.
     pub fn save(&self, server_id: &str, token: &str) -> Result<(), String> {
         if token.is_empty() || token.len() > MAX_TOKEN_LEN {
@@ -356,5 +365,43 @@ mod tests {
 
         assert!(message.contains("locked"), "{message}");
         assert!(!message.contains("the-secret-key"), "{message}");
+    }
+    #[test]
+    fn the_mcp_token_is_kept_until_it_is_replaced_and_the_new_one_is_kept_next() {
+        let store = mock_store();
+        let credentials = credentials("com.gemiredmine.app.unstable", &store);
+
+        let first = credentials.mcp_token().unwrap();
+        assert_eq!(
+            credentials.mcp_token().unwrap(),
+            first,
+            "the same token is given again"
+        );
+        assert_eq!(first.len(), 64, "32 random bytes, as hex");
+
+        let second = credentials.reset_mcp_token().unwrap();
+        assert_ne!(second, first, "a reset makes a new token");
+        assert_eq!(
+            credentials.mcp_token().unwrap(),
+            second,
+            "the new token is the one that is kept"
+        );
+    }
+
+    #[test]
+    fn the_mcp_token_does_not_share_its_entry_with_a_server() {
+        let store = mock_store();
+        let credentials = credentials("com.gemiredmine.app.unstable", &store);
+        let id = "e571478f-9167-41ff-89b5-bd3500ebe196";
+        credentials
+            .save(id, "0123456789abcdef0123456789abcdef01234567")
+            .unwrap();
+
+        credentials.reset_mcp_token().unwrap();
+
+        assert_eq!(
+            credentials.load(id).unwrap().as_deref(),
+            Some("0123456789abcdef0123456789abcdef01234567")
+        );
     }
 }

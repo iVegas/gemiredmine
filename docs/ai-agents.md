@@ -24,11 +24,13 @@ The settings page shows this command, with the token filled in once you click Sh
 transport and a bearer token can connect the same way.
 
 Keep the token secret. Anyone who has it can read your tasks through the app. The token is kept in the system's
-credential store, and it stays the same until it is removed from there.
+credential store, and it stays the same until you replace it. **Replace token** in the same section makes a new one at
+once: the old token stops working, and a running endpoint restarts with the new one. Agents that use the old token must
+be given the new one.
 
 ## What an agent can do
 
-Every tool reads. None of them changes Redmine.
+Four tools read, and answer at once.
 
 | Tool | Arguments | Answer |
 | --- | --- | --- |
@@ -36,6 +38,19 @@ Every tool reads. None of them changes Redmine.
 | `list_assigned_tasks` | `server` (optional) | The open tasks assigned to you on that server, up to 100 |
 | `get_task` | `server` (optional), `taskId` | One task in full: description, people, estimate, time spent, dates |
 | `list_task_time` | `server` (optional), `taskId` | The time logged on a task, with the total hours |
+| `list_time_activities` | `server` (optional) | The activities that time can be logged under, with their ids |
+
+Three tools propose a change. **Nothing reaches Redmine until you approve it** in **Settings > AI agents**, under
+*Changes that agents proposed*. Approving runs the change with your own API key, so Redmine decides whether it is allowed.
+
+| Tool | Arguments | The change |
+| --- | --- | --- |
+| `log_time` | `taskId`, `hours`, `activityId`, `spentOn` (optional, today), `comments` (optional) | A log entry of time |
+| `update_task` | `taskId`, `status` (a status name), `doneRatio`, `notes` (at least one of them) | A new status, % done, and a note in the history |
+| `get_proposal` | `proposalId` | Whether the change is waiting, done, failed or rejected, and what it did |
+
+A proposal waits for you in the app. Up to 20 can wait at once. A proposal is kept for the running app only: after a
+restart, the changes that were still waiting are gone, and the agent must propose them again.
 
 A server is named by its id or its name. Without one, the server the app shows is used. An agent that asks for a server
 you are not signed in to is told so, and is asked to sign in to it in the app.
@@ -51,10 +66,8 @@ you are not signed in to is told so, and is asked to sign in to it in the app.
 ## Limits
 
 - Desktop only: Windows and Linux. Android has no endpoint.
-- Read only. Logging time or changing a task needs an approval step in the app first, which is not built yet.
-- The token cannot be replaced from the settings yet. Removing it from the credential store makes a new one on the next
-  start, and every agent must then be given the new token.
-- Turning the endpoint off stops it, but does not revoke the token.
+- Turning the endpoint off stops it. It does not change the token.
+- Proposals are kept for the running app only.
 
 ## How it is built
 

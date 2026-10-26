@@ -6,7 +6,16 @@
   import { openView } from './lib/views';
   import type { CredentialOptions } from '../shared/backend';
   import { AGENT_MAX_PORT, AGENT_MIN_PORT, isAgentPort, type AgentSettings } from '../shared/agents';
-  import { agentToken as loadAgentToken, agentsAvailable, startAgentEndpoint, stopAgentEndpoint } from './lib/mcp-host';
+  import {
+    agentProposals,
+    agentToken as loadAgentToken,
+    agentsAvailable,
+    approveAgentProposal,
+    rejectAgentProposal,
+    resetAgentToken,
+    startAgentEndpoint,
+    stopAgentEndpoint,
+  } from './lib/mcp-host';
 
   let adding = false;
 
@@ -24,6 +33,30 @@
   let agentsError = '';
   let agentToken = '';
   let showAgentToken = false;
+  let confirmingReset = false;
+
+  const proposalStatus: Record<string, string> = {
+    waiting: 'Waiting for you',
+    running: 'Running',
+    done: 'Done',
+    failed: 'Failed',
+    rejected: 'Rejected',
+  };
+
+  // The old token stops working at once, so the user is asked first.
+  async function replaceAgentToken() {
+    agentsBusy = true;
+    agentsError = '';
+    try {
+      agentToken = await resetAgentToken();
+      showAgentToken = false;
+      confirmingReset = false;
+    } catch (error) {
+      agentsError = `The token could not be replaced: ${messageOf(error)}`;
+    } finally {
+      agentsBusy = false;
+    }
+  }
 
   onMount(async () => {
     try {
@@ -331,12 +364,79 @@
             >
               Copy token
             </button>
+            {#if confirmingReset}
+              <span class="flex w-full flex-wrap items-center gap-2 text-xs text-amber-800">
+                Agents that use the current token will be disconnected. Replace it?
+                <button
+                  type="button"
+                  disabled={agentsBusy}
+                  class="rounded border border-red-300 bg-white px-2 py-0.5 text-xs text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                  on:click={replaceAgentToken}
+                >
+                  Replace token
+                </button>
+                <button
+                  type="button"
+                  class="rounded border border-gray-300 bg-white px-2 py-0.5 text-xs hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  on:click={() => (confirmingReset = false)}
+                >
+                  Keep it
+                </button>
+              </span>
+            {:else}
+              <button
+                type="button"
+                class="rounded border border-gray-300 bg-white px-2 py-0.5 text-xs hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                on:click={() => (confirmingReset = true)}
+              >
+                Replace token
+              </button>
+            {/if}
           </dd>
         </dl>
         <p class="mt-3 text-xs text-gray-500">
           To connect Claude Code, run:
           <code class="block break-all rounded bg-gray-50 p-2 text-gray-800">claude mcp add --transport http gemiredmine http://127.0.0.1:{agents.port}/mcp --header "Authorization: Bearer {showAgentToken ? agentToken : '<token>'}"</code>
         </p>
+      {/if}
+
+      {#if $agentProposals.length > 0}
+        <div class="mt-5 border-t border-gray-100 pt-4">
+          <h4 class="text-sm font-semibold text-gray-900">Changes that agents proposed</h4>
+          <p class="mt-1 text-xs text-gray-500">Nothing is saved in Redmine until you approve a change here. Approving runs it with your own API key.</p>
+          <ul class="mt-2 divide-y divide-gray-100">
+            {#each $agentProposals as proposal (proposal.id)}
+              <li class="flex flex-wrap items-start justify-between gap-3 py-3 text-sm">
+                <div class="min-w-0">
+                  <p class="text-gray-900">{proposal.summary}</p>
+                  <p class="text-xs text-gray-500">
+                    {proposal.serverName} · {proposalStatus[proposal.status] ?? proposal.status}{proposal.outcome ? ` · ${proposal.outcome}` : ''}
+                  </p>
+                </div>
+                {#if proposal.status === 'waiting'}
+                  <div class="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      aria-label="Approve: {proposal.summary}"
+                      class="rounded-md bg-blue-600 px-3 py-1 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      on:click={() => approveAgentProposal(proposal.id)}
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      aria-label="Reject: {proposal.summary}"
+                      class="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      on:click={() => rejectAgentProposal(proposal.id)}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                {/if}
+              </li>
+            {/each}
+          </ul>
+        </div>
       {/if}
 
       {#if agentsError}

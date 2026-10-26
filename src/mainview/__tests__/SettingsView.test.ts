@@ -5,14 +5,29 @@ import SettingsView from '../SettingsView.svelte';
 import { servers, activeServerId } from '../lib/store';
 import { activeView, openView, resetViews } from '../lib/views';
 import { redmineApi } from '../lib/api';
-import { agentsAvailable, startAgentEndpoint, stopAgentEndpoint } from '../lib/mcp-host';
+import {
+  agentProposals,
+  agentsAvailable,
+  approveAgentProposal,
+  rejectAgentProposal,
+  resetAgentToken,
+  startAgentEndpoint,
+  stopAgentEndpoint,
+} from '../lib/mcp-host';
 
-vi.mock('../lib/mcp-host', () => ({
-  agentsAvailable: vi.fn(() => false),
-  startAgentEndpoint: vi.fn(async () => {}),
-  stopAgentEndpoint: vi.fn(async () => {}),
-  agentToken: vi.fn(async () => 'token-123'),
-}));
+vi.mock('../lib/mcp-host', async () => {
+  const { writable } = await import('svelte/store');
+  return {
+    agentsAvailable: vi.fn(() => false),
+    startAgentEndpoint: vi.fn(async () => {}),
+    stopAgentEndpoint: vi.fn(async () => {}),
+    agentToken: vi.fn(async () => 'token-123'),
+    resetAgentToken: vi.fn(async () => 'token-456'),
+    agentProposals: writable([]),
+    approveAgentProposal: vi.fn(async () => {}),
+    rejectAgentProposal: vi.fn(),
+  };
+});
 
 vi.mock('../lib/api', () => ({
   redmineApi: {
@@ -275,6 +290,77 @@ describe('SettingsView: AI agents', () => {
 
     expect(await view.findByRole('alert')).toHaveTextContent('The agent endpoint could not be started: Port 47831');
     expect(startAgentEndpoint).toHaveBeenCalledWith(47831);
+  });
+});
+
+describe('SettingsView: changes that agents proposed', () => {
+  const waiting = {
+    id: 'p1',
+    serverId: '1',
+    serverName: 'Dev Server',
+    change: { kind: 'log_time', taskId: 7, spentOn: '2026-10-20', hours: 1.5, activityId: 9, comments: '' },
+    summary: 'Log 1.5 h on task #7 “Fix login”, activity Development, on 2026-10-20.',
+    status: 'waiting',
+    outcome: null,
+    createdAt: '2026-10-26T00:00:00Z',
+  };
+
+  beforeEach(() => {
+    servers.set([dev, prod]);
+    activeServerId.set('1');
+    resetViews();
+    vi.mocked(agentsAvailable).mockReturnValue(true);
+    vi.mocked(redmineApi.getAgentSettings).mockResolvedValue({ enabled: true, port: 47831 });
+    vi.mocked(startAgentEndpoint).mockReset().mockResolvedValue(undefined);
+    vi.mocked(resetAgentToken).mockReset().mockResolvedValue('token-456');
+    vi.mocked(approveAgentProposal).mockClear();
+    vi.mocked(rejectAgentProposal).mockClear();
+    agentProposals.set([waiting as never]);
+  });
+
+  afterEach(() => {
+    agentProposals.set([]);
+    vi.mocked(agentsAvailable).mockReturnValue(false);
+  });
+
+  it('lists a change that waits, with what it does and the choice to approve or reject it', async () => {
+    const view = render(SettingsView);
+
+    expect(await view.findByText(waiting.summary)).toBeInTheDocument();
+    expect(view.getByText('Dev Server · Waiting for you')).toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole('button', { name: `Approve: ${waiting.summary}` }));
+    expect(approveAgentProposal).toHaveBeenCalledExactlyOnceWith('p1');
+
+    await fireEvent.click(view.getByRole('button', { name: `Reject: ${waiting.summary}` }));
+    expect(rejectAgentProposal).toHaveBeenCalledExactlyOnceWith('p1');
+  });
+
+  it('shows what became of a change that was decided, without offering to decide it again', async () => {
+    agentProposals.set([{ ...waiting, status: 'failed', outcome: 'Redmine does not let you log time on this task.' } as never]);
+    const view = render(SettingsView);
+
+    expect(await view.findByText('Dev Server · Failed · Redmine does not let you log time on this task.')).toBeInTheDocument();
+    expect(view.queryByRole('button', { name: `Approve: ${waiting.summary}` })).toBeNull();
+  });
+
+  it('replaces the token only after the user confirms it, and shows the new one', async () => {
+    const view = render(SettingsView);
+    await view.findByRole('checkbox', { name: 'Let AI agents connect on this computer' });
+
+    await fireEvent.click(await view.findByRole('button', { name: 'Replace token' }));
+    expect(resetAgentToken).not.toHaveBeenCalled();
+    expect(view.getByText(/Agents that use the current token will be disconnected/)).toBeInTheDocument();
+
+    await fireEvent.click(view.getByRole('button', { name: 'Keep it' }));
+    expect(resetAgentToken).not.toHaveBeenCalled();
+
+    await fireEvent.click(view.getByRole('button', { name: 'Replace token' }));
+    await fireEvent.click(view.getByRole('button', { name: 'Replace token' }));
+    expect(resetAgentToken).toHaveBeenCalledTimes(1);
+
+    await fireEvent.click(await view.findByRole('button', { name: 'Show' }));
+    expect(view.getAllByText('token-456', { exact: false })).toHaveLength(2);
   });
 });
 

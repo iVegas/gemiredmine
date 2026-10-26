@@ -1,7 +1,7 @@
 // @vitest-environment node
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { answerMcp, PROTOCOL_VERSION } from '../mcp/protocol';
-import type { McpApi, McpDeps, McpHost, McpServerInfo } from '../mcp/host';
+import { MAX_WAITING_PROPOSALS, type McpApi, type McpDeps, type McpHost, type McpServerInfo, type Proposal } from '../mcp/host';
 import { MAX_ITEMS, MAX_TEXT } from '../mcp/tools';
 import { agentSettingsFrom, AGENT_DEFAULT_PORT, isAgentPort } from '../../shared/agents';
 
@@ -12,13 +12,35 @@ const servers: McpServerInfo[] = [
   { id: 'srv-2', name: 'Home', url: 'https://home.example', signedIn: false, active: false },
 ];
 
+/** The changes proposed in the current test. */
+let proposals: Proposal[] = [];
+
 /** A host with two servers, one signed in. The key is kept here, as the app keeps it. */
 function host(): McpHost {
   return {
     servers: () => servers,
     access: (id) => (id === 'srv-1' ? { baseUrl: 'https://redmine.work.example', apiKey: SECRET } : null),
+    propose: ({ serverId, serverName, change, summary }) => {
+      const proposal: Proposal = {
+        id: `p${proposals.length + 1}`,
+        serverId,
+        serverName,
+        change,
+        summary,
+        status: 'waiting',
+        outcome: null,
+        createdAt: '2026-10-26T00:00:00Z',
+      };
+      proposals.push(proposal);
+      return proposal;
+    },
+    proposal: (id) => proposals.find((candidate) => candidate.id === id) ?? null,
   };
 }
+
+beforeEach(() => {
+  proposals = [];
+});
 
 const issue = (id: number, subject = `Task ${id}`) => ({
   id,
@@ -49,6 +71,19 @@ function api(overrides: Partial<McpApi> = {}): McpApi {
       },
       names: {},
     })),
+    listTimeActivities: vi.fn(async () => [
+      { id: 9, name: 'Development' },
+      { id: 10, name: 'Review' },
+    ]),
+    listTaskOptions: vi.fn(async () => ({
+      statuses: [
+        { id: 1, name: 'New' },
+        { id: 2, name: 'In progress' },
+      ],
+      priorities: [{ id: 2, name: 'Normal' }],
+    })),
+    createLogEntry: vi.fn(async () => {}),
+    updateTask: vi.fn(async () => {}),
     listTaskLogEntries: vi.fn(async () => [
       {
         id: 90,
@@ -138,7 +173,7 @@ describe('the protocol handshake', () => {
 });
 
 describe('the tools an agent sees', () => {
-  it('lists the four read-only tools, each with a schema and the read-only mark', async () => {
+  it('lists every tool, each with a schema and an honest read-only mark', async () => {
     const { result } = await ask({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
 
     expect(result.tools.map((tool: { name: string }) => tool.name)).toEqual([
@@ -146,10 +181,13 @@ describe('the tools an agent sees', () => {
       'list_assigned_tasks',
       'get_task',
       'list_task_time',
+      'list_time_activities',
+      'log_time',
+      'update_task',
+      'get_proposal',
     ]);
     for (const tool of result.tools) {
       expect(tool.inputSchema.type).toBe('object');
-      expect(tool.annotations.readOnlyHint).toBe(true);
       expect(tool.annotations.destructiveHint).toBe(false);
     }
   });
@@ -246,7 +284,7 @@ describe('the answers an agent gets when a call cannot be made', () => {
     const unknown = await ask(call('list_assigned_tasks', { server: 'Office' }));
     expect(unknown.result.content[0].text).toBe('No server is called Office. The servers are: Work, Home.');
 
-    const none = await ask(call('list_assigned_tasks'), { host: { servers: () => [], access: () => null } });
+    const none = await ask(call('list_assigned_tasks'), { host: { ...host(), servers: () => [], access: () => null } });
     expect(none.result.content[0].text).toBe('No server is shown in the app. Name a server, such as one of: none.');
   });
 
@@ -281,6 +319,127 @@ describe('the answers an agent gets when a call cannot be made', () => {
 
     expect(getTask.inputSchema.additionalProperties).toBe(false);
     expect(getTask.inputSchema.required).toEqual(['taskId']);
+  });
+});
+
+describe('the changes an agent may propose', () => {
+  it('lists the activities that time can be logged under', async () => {
+    const { data } = await toolResult('list_time_activities');
+
+    expect(data.activities).toEqual([
+      { id: 9, name: 'Development' },
+      { id: 10, name: 'Review' },
+    ]);
+  });
+
+  it('proposes a log entry, and does not save it in Redmine', async () => {
+    const writes = api();
+    const { isError, data } = await toolResult(
+      'log_time',
+      { taskId: 7, hours: 1.5, activityId: 9, spentOn: '2026-10-20', comments: 'Reproduced' },
+      { api: writes }
+    );
+
+    expect(isError).toBe(false);
+    expect(data).toMatchObject({ proposalId: 'p1', status: 'waiting' });
+    expect(data.summary).toBe('Log 1.5 h on task #7 “Fix login”, activity Development, on 2026-10-20. Comment: “Reproduced”.');
+    expect(writes.createLogEntry).not.toHaveBeenCalled();
+    expect(proposals[0].change).toEqual({
+      kind: 'log_time',
+      taskId: 7,
+      spentOn: '2026-10-20',
+      hours: 1.5,
+      activityId: 9,
+      comments: 'Reproduced',
+    });
+  });
+
+  it('dates a log entry today when no day is given', async () => {
+    const { data } = await toolResult('log_time', { taskId: 7, hours: 1, activityId: 9 });
+
+    expect(proposals[0].change).toMatchObject({ kind: 'log_time', spentOn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+    expect(data.status).toBe('waiting');
+  });
+
+  it('refuses a log entry that cannot be made, before it proposes anything', async () => {
+    for (const args of [
+      { taskId: 7, hours: 0, activityId: 9 },
+      { taskId: 7, hours: 25, activityId: 9 },
+      { taskId: 7, hours: '2', activityId: 9 },
+      { taskId: 7, hours: 1, activityId: 9, spentOn: '2026-02-30' },
+      { taskId: 7, hours: 1, activityId: 9, comments: 'x'.repeat(1001) },
+    ]) {
+      const reply = await ask(call('log_time', args));
+      expect(reply.result.isError, JSON.stringify(args)).toBe(true);
+    }
+    expect(proposals).toHaveLength(0);
+  });
+
+  it('refuses an activity that the server does not have, and says where to look', async () => {
+    const reply = await ask(call('log_time', { taskId: 7, hours: 1, activityId: 99 }));
+
+    expect(reply.result.content[0].text).toBe(
+      'Activity 99 is not one of the activities of Work. Use list_time_activities to see them.'
+    );
+    expect(proposals).toHaveLength(0);
+  });
+
+  it('proposes a status, a % done and a note on a task, by the status name', async () => {
+    const { data } = await toolResult('update_task', { taskId: 7, status: 'in progress', doneRatio: 60, notes: 'Found the cause' });
+
+    expect(data).toMatchObject({ proposalId: 'p1', status: 'waiting' });
+    expect(data.summary).toBe('Change task #7 “Fix login”: status New → In progress, 60 % done, a note “Found the cause”.');
+    expect(proposals[0].change).toEqual({ kind: 'update_task', taskId: 7, statusId: 2, doneRatio: 60, notes: 'Found the cause' });
+  });
+
+  it('refuses an update that names no change, and a status that the task does not have', async () => {
+    const empty = await ask(call('update_task', { taskId: 7 }));
+    expect(empty.result.content[0].text).toBe('Name at least one change: a status, a % done, or a note.');
+
+    const unknown = await ask(call('update_task', { taskId: 7, status: 'Done' }));
+    expect(unknown.result.content[0].text).toBe('No status is called Done. The statuses are: New, In progress.');
+    expect(proposals).toHaveLength(0);
+  });
+
+  it('follows a proposal to its outcome, and says when there is none', async () => {
+    await toolResult('log_time', { taskId: 7, hours: 1, activityId: 9 });
+    proposals[0].status = 'done';
+    proposals[0].outcome = 'Logged 1 h on task #7.';
+
+    const { data } = await toolResult('get_proposal', { proposalId: 'p1' });
+    expect(data).toEqual({
+      proposalId: 'p1',
+      kind: 'log_time',
+      taskId: 7,
+      server: 'Work',
+      status: 'done',
+      summary: proposals[0].summary,
+      outcome: 'Logged 1 h on task #7.',
+    });
+
+    const unknown = await ask(call('get_proposal', { proposalId: 'p9' }));
+    expect(unknown.result.content[0].text).toBe('There is no change with that proposalId.');
+  });
+
+  it('passes on the refusal of the app when too many changes are waiting', async () => {
+    const full = {
+      ...host(),
+      propose: () => {
+        throw new Error(`${MAX_WAITING_PROPOSALS} changes are already waiting for the user.`);
+      },
+    };
+
+    const reply = await ask(call('log_time', { taskId: 7, hours: 1, activityId: 9 }), { host: full });
+
+    expect(reply.result.isError).toBe(true);
+    expect(reply.result.content[0].text).toBe(`${MAX_WAITING_PROPOSALS} changes are already waiting for the user.`);
+  });
+
+  it('lists the write tools as not read-only, and the reads as read-only', async () => {
+    const { result } = await ask({ jsonrpc: '2.0', id: 4, method: 'tools/list' });
+    const annotations = Object.fromEntries(result.tools.map((tool: { name: string; annotations: { readOnlyHint: boolean } }) => [tool.name, tool.annotations.readOnlyHint]));
+
+    expect(annotations).toMatchObject({ log_time: false, update_task: false, get_proposal: true, list_time_activities: true });
   });
 });
 

@@ -1,8 +1,8 @@
-// The tools an agent can call. Every one of them reads: nothing here changes Redmine, so each is marked read-only.
-// A write (logging time, changing a task) needs the user's approval in the app first, and is not offered yet.
+// The tools an agent can call. The reads answer at once. The two changes only propose: the user approves each one in the
+// app, and nothing reaches Redmine before that (see proposals.ts).
 
 import type { RedmineIssue, RedmineIssueDetails, RedmineReference, RedmineTimeEntry } from '../redmine/types';
-import type { McpDeps, McpServerInfo } from './host';
+import type { McpDeps, McpServerInfo, Proposal, ProposedChange } from './host';
 
 /** Lists longer than this are cut, so that one answer stays small enough for an agent to read. */
 export const MAX_ITEMS = 100;
@@ -20,6 +20,8 @@ export interface McpTool {
 }
 
 const READ_ONLY = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
+/** A proposal changes the endpoint's own list of waiting changes, so it is not read-only, but it changes nothing in Redmine. */
+const PROPOSES = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true };
 
 const SERVER_ARGUMENT = {
   server: {
@@ -69,6 +71,60 @@ export function resolveServer(host: McpDeps['host'], reference: unknown) {
   const access = host.access(info.id);
   if (!access) throw new Error(`You are not signed in to ${info.name}. Sign in to it in the app first.`);
   return { info, access };
+}
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Today's date on this computer, as YYYY-MM-DD. */
+function localToday(): string {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/** The day that time is logged on: given, or today. It must be a real calendar day. */
+function spentOn(args: Args): string {
+  const value = args.spentOn ?? localToday();
+  const real = typeof value === 'string' && DATE.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+  if (!real) throw new Error('The date is YYYY-MM-DD, such as 2026-10-26.');
+  return value as string;
+}
+
+/** The hours of a log entry, to two decimals: above 0, up to a working day. */
+function hours(args: Args): number {
+  const value = args.hours;
+  const rounded = typeof value === 'number' && Number.isFinite(value) ? Math.round(value * 100) / 100 : NaN;
+  if (!(rounded > 0 && rounded <= 24)) throw new Error('The hours are a number above 0 and up to 24, such as 1.5.');
+  return rounded;
+}
+
+function positiveInt(value: unknown, name: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) throw new Error(`${name} is a whole number from 1.`);
+  return value;
+}
+
+function optionalString(value: unknown, name: string, max: number): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.length > max) throw new Error(`${name} is text of up to ${max} characters.`);
+  return value;
+}
+
+function optionalInt(value: unknown, name: string, min: number, max: number): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
+    throw new Error(`${name} is a whole number from ${min} to ${max}.`);
+  }
+  return value;
+}
+
+/** What a proposing tool answers: the id to follow it with, and what the agent must tell the user. */
+function waiting(proposal: Proposal) {
+  return {
+    proposalId: proposal.id,
+    status: proposal.status,
+    summary: proposal.summary,
+    message: 'Waiting for the user to approve it in Gemiredmine. Nothing has changed in Redmine yet. Check it with get_proposal.',
+  };
 }
 
 function taskId(args: Args): number {
@@ -188,5 +244,124 @@ const taskTime: McpTool = {
   },
 };
 
+const timeActivities: McpTool = {
+  name: 'list_time_activities',
+  description: 'The activities that time can be logged under on one server. Use one of their ids for log_time.',
+  inputSchema: schema(SERVER_ARGUMENT),
+  annotations: READ_ONLY,
+  async run(args, deps) {
+    const { info, access } = resolveServer(deps.host, args.server);
+    const activities = await deps.api.listTimeActivities(access);
+    return { server: info.name, activities: activities.map(({ id, name }) => ({ id, name })) };
+  },
+};
+
+const logTime: McpTool = {
+  name: 'log_time',
+  description:
+    'Proposes a log entry of time on a task. The user approves it in the app before it is saved in Redmine. Use list_time_activities for the activity id. Follow it with get_proposal.',
+  inputSchema: schema(
+    {
+      ...SERVER_ARGUMENT,
+      ...TASK_ARGUMENT,
+      hours: { type: 'number', exclusiveMinimum: 0, maximum: 24, description: 'The hours, such as 1.5. Up to two decimals.' },
+      activityId: { type: 'integer', minimum: 1, description: 'The id of the activity, from list_time_activities.' },
+      spentOn: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: 'The day, YYYY-MM-DD. Today when it is left out.' },
+      comments: { type: 'string', maxLength: 1000, description: 'A comment for the log entry.' },
+    },
+    ['taskId', 'hours', 'activityId']
+  ),
+  annotations: PROPOSES,
+  async run(args, deps) {
+    const { info, access } = resolveServer(deps.host, args.server);
+    const id = taskId(args);
+    const amount = hours(args);
+    const activityId = positiveInt(args.activityId, 'activityId');
+    const day = spentOn(args);
+    const comments = optionalString(args.comments, 'comments', 1000) ?? '';
+
+    // The task and the activity are checked now, so that the user is asked about a change that can be made.
+    const [{ issue }, activities] = await Promise.all([deps.api.getTask(access, id), deps.api.listTimeActivities(access)]);
+    const activity = activities.find((candidate) => candidate.id === activityId);
+    if (!activity) {
+      throw new Error(`Activity ${activityId} is not one of the activities of ${info.name}. Use list_time_activities to see them.`);
+    }
+    const change: ProposedChange = { kind: 'log_time', taskId: id, spentOn: day, hours: amount, activityId, comments };
+    const summary =
+      `Log ${amount} h on task #${id} “${issue.subject}”, activity ${activity.name}, on ${day}.` +
+      (comments ? ` Comment: “${comments}”.` : '');
+    return waiting(deps.host.propose({ serverId: info.id, serverName: info.name, change, summary }));
+  },
+};
+
+const updateTask: McpTool = {
+  name: 'update_task',
+  description:
+    'Proposes a change to a task: its status, its % done, or a note added to its history. The user approves it in the app before Redmine is changed. Follow it with get_proposal.',
+  inputSchema: schema(
+    {
+      ...SERVER_ARGUMENT,
+      ...TASK_ARGUMENT,
+      status: { type: 'string', maxLength: 100, description: 'The new status, by its name, such as In progress.' },
+      doneRatio: { type: 'integer', minimum: 0, maximum: 100, description: 'The new % done.' },
+      notes: { type: 'string', maxLength: 2000, description: 'A note to add to the history of the task.' },
+    },
+    ['taskId']
+  ),
+  annotations: PROPOSES,
+  async run(args, deps) {
+    const { info, access } = resolveServer(deps.host, args.server);
+    const id = taskId(args);
+    const statusName = optionalString(args.status, 'status', 100);
+    const doneRatio = optionalInt(args.doneRatio, 'doneRatio', 0, 100);
+    const notes = optionalString(args.notes, 'notes', 2000) ?? '';
+    if (statusName === undefined && doneRatio === undefined && notes === '') {
+      throw new Error('Name at least one change: a status, a % done, or a note.');
+    }
+
+    const { issue } = await deps.api.getTask(access, id);
+    const parts: string[] = [];
+    let statusId: number | null = null;
+    if (statusName !== undefined) {
+      const { statuses } = await deps.api.listTaskOptions(access);
+      const matches = statuses.filter((status) => status.name.toLowerCase() === statusName.toLowerCase());
+      if (matches.length !== 1) {
+        throw new Error(`No status is called ${statusName}. The statuses are: ${statuses.map((status) => status.name).join(', ')}.`);
+      }
+      statusId = matches[0].id;
+      parts.push(`status ${issue.status.name} → ${matches[0].name}`);
+    }
+    if (doneRatio !== undefined) parts.push(`${doneRatio} % done`);
+    if (notes !== '') parts.push(`a note “${notes}”`);
+
+    const change: ProposedChange = { kind: 'update_task', taskId: id, statusId, doneRatio: doneRatio ?? null, notes };
+    const summary = `Change task #${id} “${issue.subject}”: ${parts.join(', ')}.`;
+    return waiting(deps.host.propose({ serverId: info.id, serverName: info.name, change, summary }));
+  },
+};
+
+const followProposal: McpTool = {
+  name: 'get_proposal',
+  description: 'Whether a change you proposed is still waiting for the user, was approved and ran, failed, or was rejected, and what it did.',
+  inputSchema: schema({ proposalId: { type: 'string', description: 'The proposalId that the proposing tool returned.' } }, ['proposalId']),
+  annotations: READ_ONLY,
+  async run(args, deps) {
+    const id = args.proposalId;
+    if (typeof id !== 'string' || id === '') throw new Error('The change is named by the proposalId that the proposing tool returned.');
+    const proposal = deps.host.proposal(id);
+    if (!proposal) throw new Error('There is no change with that proposalId.');
+    return {
+      proposalId: proposal.id,
+      kind: proposal.change.kind,
+      taskId: proposal.change.taskId,
+      server: proposal.serverName,
+      status: proposal.status,
+      summary: proposal.summary,
+      outcome: proposal.outcome,
+    };
+  },
+};
+
 /** Every tool the endpoint offers, in the order the agent sees them. */
-export const TOOLS: readonly McpTool[] = [serverList, assignedTasks, getTask, taskTime];
+export const TOOLS: readonly McpTool[] = [serverList, assignedTasks, getTask, taskTime, timeActivities, logTime, updateTask, followProposal];
+

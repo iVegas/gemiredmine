@@ -18,7 +18,7 @@ const agents = read('src', 'shared', 'agents.ts');
 describe('the endpoint commands', () => {
   it('are all offered to the webview', () => {
     const handler = /generate_handler!\[([\s\S]*?)\]/.exec(libRs)![1];
-    for (const command of ['mcp_token', 'mcp_start', 'mcp_stop', 'mcp_respond']) {
+    for (const command of ['mcp_token', 'mcp_reset_token', 'mcp_start', 'mcp_stop', 'mcp_respond']) {
       expect(handler, command).toContain(command);
     }
   });
@@ -26,7 +26,7 @@ describe('the endpoint commands', () => {
   it('are the ones the webview calls, by the same names', () => {
     const called = [...mcpHost.matchAll(/invoke(?:<[^>]*>)?\('(mcp_\w+)'/g)].map((match) => match[1]);
 
-    expect(new Set(called)).toEqual(new Set(['mcp_token', 'mcp_start', 'mcp_stop', 'mcp_respond']));
+    expect(new Set(called)).toEqual(new Set(['mcp_token', 'mcp_reset_token', 'mcp_start', 'mcp_stop', 'mcp_respond']));
   });
 
   it('send the arguments the commands take', () => {
