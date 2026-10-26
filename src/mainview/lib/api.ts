@@ -31,4 +31,6 @@ export const redmineApi: GemiBackend = {
   setBiometricUnlock: (enabled) => backend().setBiometricUnlock(enabled),
   getAgentSettings: () => backend().getAgentSettings(),
   saveAgentSettings: (settings) => backend().saveAgentSettings(settings),
+  listAgentProposals: () => backend().listAgentProposals(),
+  saveAgentProposal: (proposal) => backend().saveAgentProposal(proposal),
 };

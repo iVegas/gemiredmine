@@ -12,6 +12,7 @@ import { currentLabel } from '../window-transport';
 import {
   agentProposals,
   agentsAvailable,
+  loadAgentProposals,
   agentToken,
   approveAgentProposal,
   rejectAgentProposal,
@@ -36,6 +37,8 @@ vi.mock('../api', () => ({
     listTaskLogEntries: vi.fn(async () => []),
     createLogEntry: vi.fn(async () => {}),
     updateTask: vi.fn(async () => {}),
+    listAgentProposals: vi.fn(async () => []),
+    saveAgentProposal: vi.fn(async () => {}),
   },
 }));
 vi.mock('../bridge', () => ({ hasDesktopBackend: vi.fn(() => true) }));
@@ -275,6 +278,83 @@ describe('the changes that wait for the user', () => {
 
   it('gives no proposal for an id it does not have', () => {
     expect(storeHost.proposal('p-missing')).toBeNull();
+  });
+});
+
+describe('keeping the changes in the app', () => {
+  const change = { kind: 'log_time' as const, taskId: 7, spentOn: '2026-10-20', hours: 1, activityId: 9, comments: '' };
+
+  beforeEach(() => {
+    agentProposals.set([]);
+    vi.mocked(redmineApi.createLogEntry).mockReset().mockResolvedValue(undefined);
+    vi.mocked(redmineApi.saveAgentProposal).mockReset().mockResolvedValue(undefined);
+    vi.mocked(redmineApi.listAgentProposals).mockReset().mockResolvedValue([]);
+  });
+
+  it('keeps a change when it is proposed, and each time its status changes', async () => {
+    const proposed = storeHost.propose({ serverId: 'srv-1', serverName: 'Work', change, summary: 'Log 1 h' });
+    await approveAgentProposal(proposed.id);
+
+    const statuses = vi.mocked(redmineApi.saveAgentProposal).mock.calls.map(([kept]) => kept.status);
+    expect(statuses).toEqual(['waiting', 'running', 'done']);
+    expect(vi.mocked(redmineApi.saveAgentProposal).mock.calls.at(-1)![0]).toMatchObject({ id: proposed.id, outcome: 'Logged 1 h on task #7.' });
+  });
+
+  it('gives every change its own id, so that a change kept by an earlier run is not overwritten', () => {
+    const first = storeHost.propose({ serverId: 'srv-1', serverName: 'Work', change, summary: 'a' });
+    const second = storeHost.propose({ serverId: 'srv-1', serverName: 'Work', change, summary: 'b' });
+
+    expect(first.id).not.toBe(second.id);
+    expect(first.id).not.toMatch(/^p\d+$/);
+  });
+
+  it('shows the changes the app kept, and keeps them waiting for the user after a restart', async () => {
+    vi.mocked(redmineApi.listAgentProposals).mockResolvedValue([
+      { id: 'old', serverId: 'srv-1', serverName: 'Work', change, summary: 'Log yesterday', status: 'waiting', outcome: null, createdAt: '2026-10-25T00:00:00Z' },
+    ]);
+
+    await loadAgentProposals();
+
+    expect(readStore(agentProposals)).toEqual([expect.objectContaining({ id: 'old', status: 'waiting' })]);
+  });
+
+  it('marks a change that was running when the app stopped as failed, and does not run it again', async () => {
+    vi.mocked(redmineApi.listAgentProposals).mockResolvedValue([
+      { id: 'cut', serverId: 'srv-1', serverName: 'Work', change, summary: 'Log 1 h', status: 'running', outcome: null, createdAt: '2026-10-25T00:00:00Z' },
+    ]);
+
+    await loadAgentProposals();
+
+    expect(readStore(agentProposals)[0]).toMatchObject({ id: 'cut', status: 'failed' });
+    expect(readStore(agentProposals)[0].outcome).toContain('The app stopped before this change finished.');
+    expect(redmineApi.createLogEntry).not.toHaveBeenCalled();
+    expect(redmineApi.saveAgentProposal).toHaveBeenCalledWith(expect.objectContaining({ id: 'cut', status: 'failed' }));
+  });
+
+  it('loads the kept changes even when the endpoint is off, so that they can still be decided', async () => {
+    vi.mocked(redmineApi.getAgentSettings).mockResolvedValue({ enabled: false, port: 47831 });
+    vi.mocked(redmineApi.listAgentProposals).mockResolvedValue([
+      { id: 'kept', serverId: 'srv-1', serverName: 'Work', change, summary: 'Log 1 h', status: 'waiting', outcome: null, createdAt: '2026-10-25T00:00:00Z' },
+    ]);
+
+    await restoreAgentEndpoint();
+
+    expect(readStore(agentProposals)).toEqual([expect.objectContaining({ id: 'kept' })]);
+    expect(invoke).not.toHaveBeenCalledWith('mcp_start', expect.anything());
+  });
+
+  it('records a change that could not be kept, and keeps it on screen', async () => {
+    vi.mocked(redmineApi.saveAgentProposal).mockRejectedValue(new Error('The database is locked.'));
+
+    const proposed = storeHost.propose({ serverId: 'srv-1', serverName: 'Work', change, summary: 'Log 1 h' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(storeHost.proposal(proposed.id)).not.toBeNull();
+    expect(redmineApi.recordDiagnostic).toHaveBeenCalledWith(
+      'error',
+      'mcp',
+      'A proposed change could not be kept: The database is locked.'
+    );
   });
 });
 

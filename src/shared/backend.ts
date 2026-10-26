@@ -135,6 +135,7 @@ export interface CredentialOptions {
 }
 
 import type { AgentSettings } from './agents';
+import type { Proposal } from './proposals';
 
 export interface GemiBackend {
   signIn(params: SignInParams): Promise<SignInResponse>;
@@ -179,6 +180,10 @@ export interface GemiBackend {
   setBiometricUnlock(enabled: boolean): Promise<void>;
   /** The settings of the endpoint that AI agents connect to. Off unless the user turned it on. */
   getAgentSettings(): Promise<AgentSettings>;
+  /** The changes that AI agents proposed and the app has kept, the newest first. Rejects where the app has no storage. */
+  listAgentProposals(): Promise<Proposal[]>;
+  /** Keeps a proposed change, or its new status, replacing the one kept before. */
+  saveAgentProposal(proposal: Proposal): Promise<void>;
   /** Keeps the settings of the endpoint. Rejects with a sentence the user can read when the port cannot be used. */
   saveAgentSettings(settings: AgentSettings): Promise<void>;
 }
