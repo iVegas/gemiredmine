@@ -24,6 +24,8 @@ const fake = vi.hoisted(() => {
     'deleteCredential',
     'getCredentialOptions',
     'setBiometricUnlock',
+    'getAgentSettings',
+    'saveAgentSettings',
   ] as const;
   return {
     methods,
@@ -112,6 +114,8 @@ describe('in the desktop app', () => {
       deleteCredential: ['s1'],
       getCredentialOptions: [],
       setBiometricUnlock: [true],
+      getAgentSettings: [],
+      saveAgentSettings: [{ enabled: true, port: 47831 }],
     };
 
     for (const name of fake.methods) {

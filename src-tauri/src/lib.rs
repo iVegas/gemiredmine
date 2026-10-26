@@ -5,11 +5,12 @@
 //! unit tests and the Android build reach it.
 
 mod credentials;
+mod mcp;
 mod pointer;
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use tauri::Manager;
@@ -136,6 +137,92 @@ async fn credential_delete(
     on_credentials(credentials, move |store| store.remove(&server_id)).await
 }
 
+/// The state of the MCP endpoint (src/mcp.rs): the requests that wait for the webview, and the endpoint while it runs.
+pub struct McpState {
+    bridge: Arc<mcp::Bridge>,
+    endpoint: Mutex<Option<mcp::Endpoint>>,
+}
+
+impl McpState {
+    fn new() -> Self {
+        McpState {
+            bridge: Arc::new(mcp::Bridge::default()),
+            endpoint: Mutex::new(None),
+        }
+    }
+
+    fn start(&self, app: tauri::AppHandle, token: String, port: u16) -> Result<(), String> {
+        let mut endpoint = self
+            .endpoint
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if endpoint
+            .as_ref()
+            .is_some_and(|running| running.port() == port)
+        {
+            return Ok(());
+        }
+        // The new endpoint binds first. A port that is taken fails here, and the endpoint that runs stays as it was.
+        let next = mcp::start(app, Arc::clone(&self.bridge), token, port)?;
+        *endpoint = Some(next);
+        Ok(())
+    }
+
+    fn stop(&self) {
+        *self
+            .endpoint
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+    }
+}
+
+/// The bearer token of the MCP endpoint, made on first use. The settings show it to the user.
+#[tauri::command]
+async fn mcp_token(
+    credentials: tauri::State<'_, Arc<credentials::Credentials>>,
+) -> Result<String, String> {
+    on_credentials(credentials, |store| store.mcp_token()).await
+}
+
+/// Starts the MCP endpoint on a port of 127.0.0.1, or moves it to another port.
+#[tauri::command]
+async fn mcp_start(
+    app: tauri::AppHandle,
+    credentials: tauri::State<'_, Arc<credentials::Credentials>>,
+    mcp: tauri::State<'_, Arc<McpState>>,
+    port: u16,
+) -> Result<(), String> {
+    if port < 1024 {
+        return Err("The MCP port must be 1024 or more.".to_string());
+    }
+    let token = on_credentials(credentials, |store| store.mcp_token()).await?;
+    let mcp = mcp.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || mcp.start(app, token, port))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+/// Stops the MCP endpoint. Nothing listens after this returns.
+#[tauri::command]
+fn mcp_stop(mcp: tauri::State<'_, Arc<McpState>>) {
+    mcp.stop();
+}
+
+/// The webview's answer to a request that the MCP endpoint forwarded, by the id it came with. An empty answer means
+/// the request was a notification, which has no reply.
+#[tauri::command]
+fn mcp_respond(mcp: tauri::State<'_, Arc<McpState>>, id: u64, body: String) -> Result<(), String> {
+    const LIMIT: usize = 4 * 1024 * 1024;
+    if body.len() > LIMIT {
+        return Err("The answer is too large.".to_string());
+    }
+    if mcp.bridge.respond(id, body) {
+        Ok(())
+    } else {
+        Err("No request is waiting for that answer. It may have timed out.".to_string())
+    }
+}
+
 /// Brings the main window forward, for a second start of the app.
 #[cfg(desktop)]
 fn show_main_window(app: &tauri::AppHandle) {
@@ -177,7 +264,11 @@ pub fn run() {
             prepare_storage_dir,
             credential_save,
             credential_load,
-            credential_delete
+            credential_delete,
+            mcp_token,
+            mcp_start,
+            mcp_stop,
+            mcp_respond
         ])
         .on_window_event(|window, event| {
             // View windows belong to the main window: when it is gone the app ends, whatever else is open.
@@ -192,6 +283,7 @@ pub fn run() {
                 service,
                 credentials::native_store,
             )));
+            app.manage(Arc::new(McpState::new()));
             // The capability files scope file access to the channel's own data folder. A folder chosen
             // with GEMIREDMINE_DATA_DIR is outside it, so allow that one explicitly.
             if let Some(dir) = data_dir_override() {

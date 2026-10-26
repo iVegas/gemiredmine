@@ -13,6 +13,17 @@ use keyring_core::{CredentialStore, Entry, Error};
 /// A Redmine API key has 40 characters. The limit keeps a mistake from filling the store.
 const MAX_TOKEN_LEN: usize = 1024;
 
+/// The name of the MCP endpoint's token in the store. It is not a server, so it has no `server:` prefix.
+const MCP_TOKEN_NAME: &str = "mcp-token";
+
+/// A new bearer token: 32 random bytes, as 64 hex digits.
+fn new_token() -> Result<String, String> {
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes)
+        .map_err(|error| format!("The system's random numbers could not be read: {error}"))?;
+    Ok(bytes.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
 /// What the webview calls a server: its id, which is a UUID. Anything else is refused, so a request cannot
 /// name an entry of some other kind.
 fn valid_server_id(id: &str) -> bool {
@@ -110,6 +121,11 @@ impl Credentials {
         if !valid_server_id(server_id) {
             return Err(format!("{server_id:?} is not a server id"));
         }
+        self.named_entry(&format!("server:{server_id}"))
+    }
+
+    /// An entry by its name in the store. The names of servers begin with `server:`, so this never reaches them.
+    fn named_entry(&self, name: &str) -> Result<Entry, String> {
         let store = {
             let mut guard = self
                 .store
@@ -120,9 +136,22 @@ impl Credentials {
             }
             guard.clone().expect("the store was just opened")
         };
-        store
-            .build(&self.service, &format!("server:{server_id}"), None)
-            .map_err(describe)
+        store.build(&self.service, name, None).map_err(describe)
+    }
+
+    /// The bearer token of the MCP endpoint (src/mcp.rs). Made on first use and kept, so that an agent configured once
+    /// keeps working after the app restarts.
+    pub fn mcp_token(&self) -> Result<String, String> {
+        let entry = self.named_entry(MCP_TOKEN_NAME)?;
+        match entry.get_password() {
+            Ok(token) => Ok(token),
+            Err(Error::NoEntry) => {
+                let token = new_token()?;
+                entry.set_password(&token).map_err(describe)?;
+                Ok(token)
+            }
+            Err(error) => Err(describe(error)),
+        }
     }
 
     /// Keeps the key of a server, replacing the one it had.

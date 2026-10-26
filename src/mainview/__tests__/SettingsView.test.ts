@@ -1,10 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, fireEvent } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import SettingsView from '../SettingsView.svelte';
 import { servers, activeServerId } from '../lib/store';
 import { activeView, openView, resetViews } from '../lib/views';
 import { redmineApi } from '../lib/api';
+import { agentsAvailable, startAgentEndpoint, stopAgentEndpoint } from '../lib/mcp-host';
+
+vi.mock('../lib/mcp-host', () => ({
+  agentsAvailable: vi.fn(() => false),
+  startAgentEndpoint: vi.fn(async () => {}),
+  stopAgentEndpoint: vi.fn(async () => {}),
+  agentToken: vi.fn(async () => 'token-123'),
+}));
 
 vi.mock('../lib/api', () => ({
   redmineApi: {
@@ -15,6 +23,8 @@ vi.mock('../lib/api', () => ({
     listAssignedTasks: vi.fn(),
     getCredentialOptions: vi.fn(async () => ({ biometric: null })),
     setBiometricUnlock: vi.fn(async () => {}),
+    getAgentSettings: vi.fn(async () => ({ enabled: false, port: 47831 })),
+    saveAgentSettings: vi.fn(async () => {}),
   },
 }));
 
@@ -179,6 +189,92 @@ describe('SettingsView: the fingerprint or face unlock', () => {
 
     expect(box).toBeChecked();
     expect(await view.findByRole('alert')).toHaveTextContent('The change was not saved: The unlock did not finish: Cancel');
+  });
+});
+
+describe('SettingsView: AI agents', () => {
+  beforeEach(() => {
+    servers.set([dev, prod]);
+    activeServerId.set('1');
+    resetViews();
+    vi.mocked(agentsAvailable).mockReturnValue(true);
+    vi.mocked(redmineApi.getAgentSettings).mockResolvedValue({ enabled: false, port: 47831 });
+    vi.mocked(redmineApi.saveAgentSettings).mockReset().mockResolvedValue(undefined);
+    vi.mocked(startAgentEndpoint).mockReset().mockResolvedValue(undefined);
+    vi.mocked(stopAgentEndpoint).mockReset().mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.mocked(agentsAvailable).mockReturnValue(false);
+  });
+
+  it('is not shown where the app cannot run an endpoint', async () => {
+    vi.mocked(agentsAvailable).mockReturnValue(false);
+    const view = render(SettingsView);
+    await vi.waitFor(() => expect(view.queryByRole('heading', { name: 'AI agents' })).toBeNull());
+
+    expect(redmineApi.getAgentSettings).not.toHaveBeenCalled();
+  });
+
+  it('shows the switch and the port, off, with the default port', async () => {
+    const view = render(SettingsView);
+
+    expect(await view.findByRole('checkbox', { name: 'Let AI agents connect on this computer' })).not.toBeChecked();
+    expect(view.getByLabelText('Port on 127.0.0.1')).toHaveValue(47831);
+    expect(view.queryByText(/mcp$/)).toBeNull();
+  });
+
+  it('starts the endpoint and shows where to connect and the token, once turned on', async () => {
+    const view = render(SettingsView);
+    const box = await view.findByRole('checkbox', { name: 'Let AI agents connect on this computer' });
+
+    await fireEvent.click(box);
+
+    expect(startAgentEndpoint).toHaveBeenCalledWith(47831);
+    expect(redmineApi.saveAgentSettings).toHaveBeenCalledWith({ enabled: true, port: 47831 });
+    expect(await view.findByText('http://127.0.0.1:47831/mcp')).toBeInTheDocument();
+    // The token stays hidden until the user asks to see it.
+    expect(view.queryByText('token-123', { exact: false })).toBeNull();
+    await fireEvent.click(view.getByRole('button', { name: 'Show' }));
+    // Shown in the token field and in the example command.
+    expect(view.getAllByText('token-123', { exact: false })).toHaveLength(2);
+    expect(box).toBeChecked();
+  });
+
+  it('keeps the endpoint off, and says why, when it cannot start', async () => {
+    vi.mocked(startAgentEndpoint).mockRejectedValue(new Error('Port 47831 is not free for the MCP endpoint.'));
+    const view = render(SettingsView);
+    const box = await view.findByRole('checkbox', { name: 'Let AI agents connect on this computer' });
+
+    await fireEvent.click(box);
+
+    expect(box).not.toBeChecked();
+    expect(redmineApi.saveAgentSettings).not.toHaveBeenCalled();
+    expect(await view.findByRole('alert')).toHaveTextContent(
+      'The agent endpoint could not be started: Port 47831 is not free for the MCP endpoint.'
+    );
+  });
+
+  it('refuses a port outside 1024 to 65535 and goes back to the port that works', async () => {
+    const view = render(SettingsView);
+    const port = await view.findByLabelText('Port on 127.0.0.1');
+
+    await fireEvent.input(port, { target: { value: '80' } });
+    await fireEvent.change(port);
+
+    expect(await view.findByRole('alert')).toHaveTextContent('The port must be a whole number from 1024 to 65535.');
+    expect(port).toHaveValue(47831);
+    expect(redmineApi.saveAgentSettings).not.toHaveBeenCalled();
+  });
+
+  it('starts again when it is shown while on, so that a failure at launch is seen', async () => {
+    vi.mocked(redmineApi.getAgentSettings).mockResolvedValue({ enabled: true, port: 47831 });
+    vi.mocked(startAgentEndpoint).mockRejectedValue(new Error('Port 47831 is not free for the MCP endpoint.'));
+
+    const view = render(SettingsView);
+
+    expect(await view.findByRole('alert')).toHaveTextContent('The agent endpoint could not be started: Port 47831');
+    expect(startAgentEndpoint).toHaveBeenCalledWith(47831);
   });
 });
 
