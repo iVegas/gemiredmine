@@ -1,6 +1,7 @@
 # Builds the build environments and their dependencies, and pushes them to GHCR. The release workflows pull these
 # images, so no run downloads a toolchain, an SDK or a package. Tags come from scripts/release/image-tags.sh: they are
-# the hashes of what each image is built from, so an image is rebuilt only when its inputs change.
+# the hashes of what each image is built from, so an image is rebuilt only when its inputs change. A tag that is already
+# published is not pushed again (scripts/release/build-image-once.sh).
 name: Build images
 
 on:
@@ -38,9 +39,9 @@ jobs:
         run: |
           set -eu
           eval "$(scripts/release/image-tags.sh android)"
-          docker buildx build -f docker/android/env.Dockerfile -t "$ENV" --push .
-          docker buildx build -f docker/android/deps.Dockerfile --build-arg "ENV_IMAGE=$ENV" -t "$DEPS" --push .
-          echo "Pushed $ENV and $DEPS"
+          scripts/release/build-image-once.sh "$ENV" -f docker/android/env.Dockerfile
+          scripts/release/build-image-once.sh "$DEPS" -f docker/android/deps.Dockerfile --build-arg "ENV_IMAGE=$ENV"
+          echo "Published $ENV and $DEPS"
 
   flatpak:
     runs-on: ubuntu-latest
@@ -61,5 +62,5 @@ jobs:
         run: |
           set -eu
           eval "$(scripts/release/image-tags.sh flatpak)"
-          docker buildx build -f docker/flatpak/env.Dockerfile -t "$ENV" --push .
-          echo "Pushed $ENV"
+          scripts/release/build-image-once.sh "$ENV" -f docker/flatpak/env.Dockerfile
+          echo "Published $ENV"
