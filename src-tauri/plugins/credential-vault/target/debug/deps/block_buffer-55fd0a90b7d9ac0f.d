@@ -1,8 +1,0 @@
-/home/user/gemiredmine/src-tauri/plugins/credential-vault/target/debug/deps/block_buffer-55fd0a90b7d9ac0f.d: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/block-buffer-0.10.4/src/lib.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/block-buffer-0.10.4/src/sealed.rs
-
-/home/user/gemiredmine/src-tauri/plugins/credential-vault/target/debug/deps/libblock_buffer-55fd0a90b7d9ac0f.rlib: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/block-buffer-0.10.4/src/lib.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/block-buffer-0.10.4/src/sealed.rs
-
-/home/user/gemiredmine/src-tauri/plugins/credential-vault/target/debug/deps/libblock_buffer-55fd0a90b7d9ac0f.rmeta: /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/block-buffer-0.10.4/src/lib.rs /root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/block-buffer-0.10.4/src/sealed.rs
-
-/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/block-buffer-0.10.4/src/lib.rs:
-/root/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/block-buffer-0.10.4/src/sealed.rs:
