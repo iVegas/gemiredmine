@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { invoke } from '@tauri-apps/api/core';
 import { sep } from '@tauri-apps/api/path';
 import { fetch as pluginFetch } from '@tauri-apps/plugin-http';
@@ -264,6 +264,65 @@ describe('tauriCredentials', () => {
       expect(failure).toBeInstanceOf(Error);
       expect((failure as Error).message).toContain('Secret Service');
     }
+  });
+});
+
+describe('tauriCredentials on Android', () => {
+  const android = 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36';
+  let userAgent: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset().mockResolvedValue(undefined);
+    userAgent = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue(android);
+  });
+
+  afterEach(() => {
+    userAgent.mockRestore();
+  });
+
+  it('keeps the keys in the credential vault, not in the Rust credential store', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({ token: '0123456789abcdef' });
+    expect(await tauriCredentials.get('server-1')).toBe('0123456789abcdef');
+    expect(invoke).toHaveBeenLastCalledWith('plugin:credential-vault|load', { serverId: 'server-1' });
+
+    vi.mocked(invoke).mockResolvedValueOnce({ token: null });
+    expect(await tauriCredentials.get('server-2')).toBeNull();
+
+    await tauriCredentials.set('server-1', 'the-key');
+    expect(invoke).toHaveBeenLastCalledWith('plugin:credential-vault|save', { serverId: 'server-1', token: 'the-key' });
+
+    await tauriCredentials.remove('server-1');
+    expect(invoke).toHaveBeenLastCalledWith('plugin:credential-vault|remove', { serverId: 'server-1' });
+    expect(invoke).not.toHaveBeenCalledWith('credential_save', expect.anything());
+  });
+
+  it('reports the unlock option of the device, and sets it through the vault', async () => {
+    vi.mocked(invoke).mockResolvedValueOnce({ available: true, enabled: false });
+    expect(await tauriCredentials.options?.()).toEqual({ biometric: { available: true, enabled: false } });
+    expect(invoke).toHaveBeenLastCalledWith('plugin:credential-vault|status', undefined);
+
+    await tauriCredentials.setBiometric?.(true);
+    expect(invoke).toHaveBeenLastCalledWith('plugin:credential-vault|biometric', { enabled: true });
+  });
+
+  it('gives the reason the vault refused, as an Error', async () => {
+    vi.mocked(invoke).mockRejectedValue('The unlock did not finish: Cancel');
+
+    const failure = await tauriCredentials.get('server-1').catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect((failure as Error).message).toBe('The unlock did not finish: Cancel');
+  });
+});
+
+describe('tauriCredentials on desktop', () => {
+  beforeEach(() => {
+    vi.mocked(invoke).mockReset().mockResolvedValue(undefined);
+  });
+
+  it('offers no unlock option, and refuses to set one', async () => {
+    expect(await tauriCredentials.options?.()).toEqual({ biometric: null });
+    await expect(tauriCredentials.setBiometric?.(true)).rejects.toThrow('not available on this device');
+    expect(invoke).not.toHaveBeenCalled();
   });
 });
 

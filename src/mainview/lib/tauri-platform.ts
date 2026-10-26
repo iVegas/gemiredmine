@@ -150,12 +150,25 @@ export async function openDatabase(): Promise<SqlDatabase> {
 }
 
 /**
- * The system's credential store, through the Rust side (src-tauri/src/credentials.rs): Windows Credential Manager, or
- * the Secret Service on Linux. The Rust side answers with a message when the store cannot be used.
+ * Whether the webview runs on Android. The WebView says so in its user agent, which can be read synchronously; the
+ * environment the shell reports is only available asynchronously.
+ */
+export function isAndroidWebview(): boolean {
+  return typeof navigator !== 'undefined' && /\bAndroid\b/.test(navigator.userAgent);
+}
+
+/** The Android side of the credential vault (src-tauri/plugins/credential-vault), which keeps the keys encrypted. */
+const vault = <T = void>(command: string, args?: Record<string, unknown>) => invoke<T>(`plugin:credential-vault|${command}`, args);
+
+/**
+ * The API keys, kept in the system's credential store through the Rust side (src-tauri/src/credentials.rs): Windows
+ * Credential Manager, or the Secret Service on Linux. On Android they are kept by the credential vault instead, which
+ * has the fingerprint or face unlock. The Rust side answers with a message when the store cannot be used.
  */
 export const tauriCredentials: CredentialStore = {
   async get(serverId) {
     try {
+      if (isAndroidWebview()) return (await vault<{ token: string | null }>('load', { serverId })).token;
       return await invoke<string | null>('credential_load', { serverId });
     } catch (error) {
       throw toError(error);
@@ -164,7 +177,8 @@ export const tauriCredentials: CredentialStore = {
 
   async set(serverId, apiKey) {
     try {
-      await invoke('credential_save', { serverId, token: apiKey });
+      if (isAndroidWebview()) await vault('save', { serverId, token: apiKey });
+      else await invoke('credential_save', { serverId, token: apiKey });
     } catch (error) {
       throw toError(error);
     }
@@ -172,7 +186,27 @@ export const tauriCredentials: CredentialStore = {
 
   async remove(serverId) {
     try {
-      await invoke('credential_delete', { serverId });
+      if (isAndroidWebview()) await vault('remove', { serverId });
+      else await invoke('credential_delete', { serverId });
+    } catch (error) {
+      throw toError(error);
+    }
+  },
+
+  async options() {
+    if (!isAndroidWebview()) return { biometric: null };
+    try {
+      const status = await vault<{ available: boolean; enabled: boolean }>('status');
+      return { biometric: { available: status.available, enabled: status.enabled } };
+    } catch (error) {
+      throw toError(error);
+    }
+  },
+
+  async setBiometric(enabled) {
+    if (!isAndroidWebview()) throw new Error('A fingerprint or face unlock is not available on this device.');
+    try {
+      await vault('biometric', { enabled });
     } catch (error) {
       throw toError(error);
     }

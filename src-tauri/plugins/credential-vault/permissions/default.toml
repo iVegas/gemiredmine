@@ -1,0 +1,5 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = "Lets the app keep and read the API keys of its servers in the Android Keystore, and set the fingerprint or face unlock."
+permissions = ["allow-save", "allow-load", "allow-remove", "allow-status", "allow-biometric"]

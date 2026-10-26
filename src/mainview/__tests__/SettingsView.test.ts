@@ -4,6 +4,7 @@ import { get } from 'svelte/store';
 import SettingsView from '../SettingsView.svelte';
 import { servers, activeServerId } from '../lib/store';
 import { activeView, openView, resetViews } from '../lib/views';
+import { redmineApi } from '../lib/api';
 
 vi.mock('../lib/api', () => ({
   redmineApi: {
@@ -12,6 +13,8 @@ vi.mock('../lib/api', () => ({
     listTimeEntries: vi.fn(),
     listOpenTasks: vi.fn(),
     listAssignedTasks: vi.fn(),
+    getCredentialOptions: vi.fn(async () => ({ biometric: null })),
+    setBiometricUnlock: vi.fn(async () => {}),
   },
 }));
 
@@ -127,3 +130,55 @@ describe('SettingsView Component', () => {
     expect(view.queryByLabelText('Server Name')).not.toBeInTheDocument();
   });
 });
+
+describe('SettingsView: the fingerprint or face unlock', () => {
+  const unlock = /Unlock saved sign-ins with a fingerprint or face/;
+
+  beforeEach(() => {
+    servers.set([dev, prod]);
+    activeServerId.set('1');
+    resetViews();
+    vi.mocked(redmineApi.getCredentialOptions).mockResolvedValue({ biometric: null });
+    vi.mocked(redmineApi.setBiometricUnlock).mockReset().mockResolvedValue(undefined);
+  });
+
+  it('is not shown where the device has no unlock option', async () => {
+    const view = render(SettingsView);
+    await vi.waitFor(() => expect(redmineApi.getCredentialOptions).toHaveBeenCalled());
+
+    expect(view.queryByRole('heading', { name: 'Security' })).toBeNull();
+  });
+
+  it('turns the unlock on when the user asks for it', async () => {
+    vi.mocked(redmineApi.getCredentialOptions).mockResolvedValue({ biometric: { available: true, enabled: false } });
+    const view = render(SettingsView);
+    const box = await view.findByRole('checkbox', { name: unlock });
+
+    expect(box).not.toBeChecked();
+    await fireEvent.click(box);
+
+    expect(redmineApi.setBiometricUnlock).toHaveBeenCalledExactlyOnceWith(true);
+    expect(box).toBeChecked();
+  });
+
+  it('says why it cannot be used when the device has no fingerprint or face set up', async () => {
+    vi.mocked(redmineApi.getCredentialOptions).mockResolvedValue({ biometric: { available: false, enabled: false } });
+    const view = render(SettingsView);
+
+    expect(await view.findByRole('checkbox', { name: unlock })).toBeDisabled();
+    expect(view.getByText('Set up a fingerprint or face in the system settings to use this.')).toBeInTheDocument();
+  });
+
+  it('goes back to the old setting, and says why, when the change is refused', async () => {
+    vi.mocked(redmineApi.getCredentialOptions).mockResolvedValue({ biometric: { available: true, enabled: true } });
+    vi.mocked(redmineApi.setBiometricUnlock).mockRejectedValue(new Error('The unlock did not finish: Cancel'));
+    const view = render(SettingsView);
+    const box = await view.findByRole('checkbox', { name: unlock });
+
+    await fireEvent.click(box);
+
+    expect(box).toBeChecked();
+    expect(await view.findByRole('alert')).toHaveTextContent('The change was not saved: The unlock did not finish: Cancel');
+  });
+});
+

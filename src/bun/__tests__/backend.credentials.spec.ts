@@ -52,6 +52,28 @@ function setup(platform: Partial<BackendPlatform> = {}, options: BackendOptions 
   return { backend, fetchMock };
 }
 
+describe('the fingerprint or face unlock of the saved sign-ins', () => {
+  it('is not offered where the store has no unlock', async () => {
+    const { store } = memoryCredentials();
+    const { backend } = setup({ credentials: store });
+
+    await expect(backend.getCredentialOptions()).resolves.toEqual({ biometric: null });
+    await expect(backend.setBiometricUnlock(true)).rejects.toThrow('no fingerprint or face unlock');
+  });
+
+  it('reports the store\'s options, and passes a change on to the store', async () => {
+    const { store } = memoryCredentials();
+    const setBiometric = vi.fn(async () => {});
+    store.options = async () => ({ biometric: { available: true, enabled: false } });
+    store.setBiometric = setBiometric;
+    const { backend } = setup({ credentials: store });
+
+    await expect(backend.getCredentialOptions()).resolves.toEqual({ biometric: { available: true, enabled: false } });
+    await backend.setBiometricUnlock(true);
+    expect(setBiometric).toHaveBeenCalledExactlyOnceWith(true);
+  });
+});
+
 describe('the API keys kept in the credential store', () => {
   it('keeps a key for a server, returns it, and forgets it', async () => {
     const { store, kept } = memoryCredentials();
