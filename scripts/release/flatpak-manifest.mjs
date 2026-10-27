@@ -84,6 +84,9 @@ export function flatpakManifest(info, { env = process.env, projectLicense = pack
 
   return {
     'app-id': appId,
+    // flatpak-builder runs appstream-compose on the metainfo file below, and the GNOME 50 SDK does not ship that tool, so
+    // the build stopped there. The file is still installed; only flatpak-builder's catalogue step (share/app-info) is skipped.
+    'appstream-compose': false,
     runtime: RUNTIME.platform,
     'runtime-version': RUNTIME.version,
     sdk: RUNTIME.sdk,
