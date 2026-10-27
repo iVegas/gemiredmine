@@ -603,6 +603,13 @@ keeps the wrapped key out of Android backups (a restored copy cannot be opened, 
 
 Verified here: `npm test` (68 files, 935 tests) and `npm run typecheck`.
 
+**Flatpak: the software centre shows the version (2026-10-27).** The Flatpak had no AppStream file, so GNOME Software showed
+the branch name (`master`) as the version, and no developer or licence. `scripts/release/flatpak-metainfo.mjs` writes
+`com.github.iVegas.<Channel>.metainfo.xml` with the build's version and date, the developer, the app licence (ISC, from
+`package.json`) and the description. The manifest installs it under `/app/share/metainfo`. The branch name is unchanged, so
+installs keep updating. A remote shows the new file once its AppStream index is regenerated (`flatpak build-update-repo`);
+an installed app shows it after a reinstall. Not checked on a host yet.
+
 ## Recipes
 
 ### Run the mock Redmine
