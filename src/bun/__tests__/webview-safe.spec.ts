@@ -28,6 +28,8 @@ const portable = [
   ...sourcesIn(join(root, 'windows')),
   // The endpoint for AI agents: its messages are answered from the app's own data, without a platform.
   ...sourcesIn(join(root, 'mcp')),
+  // The AI assistant: its model requests and voice requests are built here and sent by the webview's HTTP client.
+  ...sourcesIn(join(root, 'assistant')),
 ];
 
 const withoutComments = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');

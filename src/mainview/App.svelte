@@ -7,6 +7,7 @@
   import DashboardView from './DashboardView.svelte';
   import CalendarView from './CalendarView.svelte';
   import TodoView from './TodoView.svelte';
+  import AssistantView from './AssistantView.svelte';
   import SettingsView from './SettingsView.svelte';
   import AboutView from './AboutView.svelte';
   import RecordPanel from './RecordPanel.svelte';
@@ -102,6 +103,8 @@
             <CalendarView server={$activeServer} />
           {:else if view === 'todo' && $activeServer}
             <TodoView server={$activeServer} />
+          {:else if view === 'assistant'}
+            <AssistantView />
           {:else if view === 'settings'}
             <SettingsView />
           {:else if view === 'about'}

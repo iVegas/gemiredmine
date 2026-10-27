@@ -47,4 +47,9 @@ export const redmineApi: GemiBackend = {
   saveAgentSettings: (settings) => backend().saveAgentSettings(settings),
   listAgentProposals: () => backend().listAgentProposals(),
   saveAgentProposal: (proposal) => backend().saveAgentProposal(proposal),
+  getAssistantSettings: () => backend().getAssistantSettings(),
+  saveAssistantSettings: (settings) => backend().saveAssistantSettings(settings),
+  loadAssistantKey: (slot) => backend().loadAssistantKey(slot),
+  saveAssistantKey: (slot, apiKey) => backend().saveAssistantKey(slot, apiKey),
+  deleteAssistantKey: (slot) => backend().deleteAssistantKey(slot),
 };

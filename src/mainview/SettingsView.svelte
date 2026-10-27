@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import AddServerForm from './AddServerForm.svelte';
+  import AssistantSettings from './components/AssistantSettings.svelte';
   import { redmineApi } from './lib/api';
   import { servers, activeServerId, removeServer, remembersSignIn, updateServer, type ServerConnection } from './lib/store';
   import { openView } from './lib/views';
@@ -444,4 +445,11 @@
       {/if}
     </section>
   {/if}
+
+  <section aria-labelledby="settings-assistant-heading" class="rounded-lg border border-gray-200 bg-white p-4 shadow">
+    <h3 id="settings-assistant-heading" class="text-lg font-semibold text-gray-900">AI assistant</h3>
+    <div class="mt-3">
+      <AssistantSettings />
+    </div>
+  </section>
 </div>
