@@ -5,6 +5,7 @@ import DashboardView from '../DashboardView.svelte';
 import { redmineApi } from '../lib/api';
 import { monthBounds, toDateKey } from '../lib/calendar';
 import { openViews, activeView, resetViews } from '../lib/views';
+import { noteRedmineChange } from '../lib/data-changes';
 import type { RedmineIssue, RedmineTimeEntry } from '../../bun/redmine/types';
 
 vi.mock('../lib/api', () => ({
@@ -146,5 +147,14 @@ describe('DashboardView Component', () => {
     await vi.waitFor(() =>
       expect(open).toHaveAccessibleDescription('Could not load your tasks: Redmine API request failed: 500 Internal Server Error')
     );
+  });
+
+  it('loads the calendar again after a write in this window, such as an approved change', async () => {
+    render(DashboardView, { props: { server } });
+    await vi.waitFor(() => expect(api.listTimeEntries).toHaveBeenCalledTimes(1));
+
+    noteRedmineChange();
+
+    await vi.waitFor(() => expect(api.listTimeEntries).toHaveBeenCalledTimes(2));
   });
 });
