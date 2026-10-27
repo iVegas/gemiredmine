@@ -59,7 +59,7 @@ fn app_environment() -> AppEnvironment {
 #[tauri::command]
 fn assistant_system_setup(app: tauri::AppHandle) -> Vec<ai_setup::SystemAiSetup> {
     let home = app.path().home_dir().ok();
-    ai_setup::findings(home.as_deref(), |path| ai_setup::read_small_file(path))
+    ai_setup::findings(home.as_deref(), ai_setup::read_small_file)
 }
 
 /// The folder that holds a channel's database: the `GEMIREDMINE_DATA_DIR` folder when that is set, otherwise the
