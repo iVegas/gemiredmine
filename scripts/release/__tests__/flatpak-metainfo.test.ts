@@ -62,4 +62,10 @@ describe('the AppStream file of the Flatpak app', () => {
     );
     expect(app.sources).toContainEqual({ type: 'inline', contents: xml, 'dest-filename': `${appId}.metainfo.xml` });
   });
+
+  it("turns off flatpak-builder's appstream-compose step, which the GNOME 50 SDK cannot run", () => {
+    const manifest = flatpakManifest(info, { env: {} }) as { 'appstream-compose'?: boolean };
+
+    expect(manifest['appstream-compose']).toBe(false);
+  });
 });
