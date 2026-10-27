@@ -30,6 +30,12 @@ describe('the Flatpak manifest', () => {
       expect(matches(pattern, `/share/applications/${info.appName}.desktop`), pattern).toBe(false);
     }
   });
+
+  it('lets the sandbox reach the audio server, which the microphone of the voice input needs', () => {
+    const manifest = flatpakManifest(info, { env: {} }) as { 'finish-args': readonly string[] };
+
+    expect(manifest['finish-args']).toContain('--socket=pulseaudio');
+  });
 });
 
 describe('flatpak-build.sh', () => {

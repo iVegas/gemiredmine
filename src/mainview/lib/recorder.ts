@@ -2,8 +2,23 @@
 // the caller says so instead of failing without a reason.
 
 /**
+ * What the user is told when the microphone cannot be opened. The system's own reason decides the sentence: a missing
+ * device, a refused permission, and anything else each need a different fix.
+ */
+export function microphoneProblem(error: unknown): string {
+  const name = typeof error === 'object' && error !== null && 'name' in error ? String((error as { name: unknown }).name) : '';
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+    return 'No microphone was found. Connect one, then try again.';
+  }
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
+    return 'The app may not use the microphone. Allow the microphone for Gemiredmine in the system’s settings, then try again. A Flatpak app needs audio access, which the bundle asks for.';
+  }
+  return `The microphone could not be started${name ? ` (${name})` : ''}. Type the message instead.`;
+}
+
+/**
  * Starts recording. The returned function stops the recording and gives what was said, as a Blob. Rejects with a sentence
- * for the user when this window cannot record, or when the user does not allow the microphone.
+ * for the user when this window cannot record, or when the microphone cannot be opened.
  */
 export async function startRecording(): Promise<() => Promise<Blob>> {
   if (typeof MediaRecorder === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
@@ -13,8 +28,8 @@ export async function startRecording(): Promise<() => Promise<Blob>> {
   let stream: MediaStream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  } catch {
-    throw new Error('The microphone is not available. Allow it for Gemiredmine, then try again.');
+  } catch (error) {
+    throw new Error(microphoneProblem(error));
   }
 
   const recorder = new MediaRecorder(stream);

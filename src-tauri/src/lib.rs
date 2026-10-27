@@ -6,6 +6,7 @@
 
 mod credentials;
 mod mcp;
+mod microphone;
 mod pointer;
 
 use std::ffi::OsString;
@@ -333,6 +334,12 @@ pub fn run() {
             #[cfg(target_os = "linux")]
             if let Ok(app_id) = std::env::var("FLATPAK_ID") {
                 gdk::set_program_class(&app_id);
+            }
+            // The assistant's voice input records from the main window. WebKitGTK refuses the microphone there unless the
+            // app allows it (microphone.rs).
+            #[cfg(target_os = "linux")]
+            if let Some(main) = app.get_webview_window("main") {
+                microphone::allow_for(&main)?;
             }
             Ok(())
         })
