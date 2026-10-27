@@ -37,6 +37,9 @@ export interface ModelRequest {
 
 const UNREADABLE = 'The model answered in a format the app does not read.';
 
+/** The on-device model is not reached over HTTP: the webview prompts it directly (mainview/lib/on-device-ai.ts). */
+const NO_REQUEST = 'The model on this device answers without a request to a server.';
+
 const baseUrl = (settings: AssistantSettings) => settings.baseUrl.replace(/\/+$/, '');
 
 /** The key as a header, when there is one. A local server may need none. */
@@ -57,6 +60,8 @@ export function buildModelRequest(
       return anthropicRequest(settings, apiKey, conversation, tools, system);
     case 'gemini':
       return geminiRequest(settings, apiKey, conversation, tools, system);
+    case 'on-device':
+      throw new Error(NO_REQUEST);
   }
 }
 
@@ -69,6 +74,8 @@ export function parseModelReply(provider: AssistantProvider, response: unknown):
       return parseAnthropic(response);
     case 'gemini':
       return parseGemini(response);
+    case 'on-device':
+      throw new Error(NO_REQUEST);
   }
 }
 

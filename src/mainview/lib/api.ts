@@ -52,4 +52,7 @@ export const redmineApi: GemiBackend = {
   loadAssistantKey: (slot) => backend().loadAssistantKey(slot),
   saveAssistantKey: (slot, apiKey) => backend().saveAssistantKey(slot, apiKey),
   deleteAssistantKey: (slot) => backend().deleteAssistantKey(slot),
+  findLocalModelServers: () => backend().findLocalModelServers(),
+  findSystemAiSetup: () => backend().findSystemAiSetup(),
+  openAssistantKeyPage: (provider) => backend().openAssistantKeyPage(provider),
 };

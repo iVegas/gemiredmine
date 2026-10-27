@@ -128,6 +128,9 @@ describe('in the desktop app', () => {
       loadAssistantKey: ['chat'],
       saveAssistantKey: ['voice', 'key'],
       deleteAssistantKey: ['chat'],
+      findLocalModelServers: [],
+      findSystemAiSetup: [],
+      openAssistantKeyPage: ['gemini'],
       listAgentProposals: [],
       saveAgentProposal: [
         {

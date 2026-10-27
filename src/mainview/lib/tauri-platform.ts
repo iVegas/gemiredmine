@@ -9,6 +9,7 @@ import type { BackendPlatform, CredentialStore } from '../../bun/backend';
 import type { DataFs } from '../../bun/diagnostics/fs';
 import type { FetchLike } from '../../bun/redmine/client';
 import type { SqlDatabase, SqlRow } from '../../bun/storage/database';
+import type { SystemAiSetup } from '../../shared/assistant';
 
 // The desktop shell runs the backend inside the webview. These are its hands: Rust-side HTTP and
 // file plugins (the webview itself may not connect anywhere, see the CSP), and the system browser.
@@ -213,6 +214,12 @@ export const tauriCredentials: CredentialStore = {
   },
 };
 
+/**
+ * The model services this computer is already set up for (src-tauri/src/ai_setup.rs): a key in the environment or in
+ * the configuration of another tool of the same service. Only the Rust side can look; the webview has no environment.
+ */
+export const tauriSystemAiSetup = (): Promise<SystemAiSetup[]> => invoke<SystemAiSetup[]>('assistant_system_setup');
+
 /** The backend's platform inside the Tauri webview. */
 export function tauriPlatform(): BackendPlatform {
   return {
@@ -222,6 +229,7 @@ export function tauriPlatform(): BackendPlatform {
     database: openDatabase,
     credentials: tauriCredentials,
     openUrl: (url) => openUrl(url),
+    systemAiSetup: tauriSystemAiSetup,
     environment: async () => toEnvironment(await readAppEnvironment()),
   };
 }

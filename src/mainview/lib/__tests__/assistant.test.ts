@@ -107,3 +107,46 @@ describe('asking the assistant from the app', () => {
     expect(api.getAssistantSettings).not.toHaveBeenCalled();
   });
 });
+
+describe('asking the model on this device', () => {
+  const onDevice: AssistantSettings = { provider: 'on-device', baseUrl: '', model: '', voice: null };
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    conversation.set([]);
+    assistantError.set(null);
+    asking.set(false);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    delete (window as unknown as { LanguageModel?: unknown }).LanguageModel;
+  });
+
+  it('prompts the built-in model of the webview instead of a server, and keeps the answer', async () => {
+    api.getAssistantSettings.mockResolvedValue(onDevice);
+    const fetch = stubModel([]);
+    const session = { prompt: vi.fn(async () => 'I cannot read Redmine from here.'), destroy: vi.fn() };
+    (window as unknown as { LanguageModel?: unknown }).LanguageModel = { availability: async () => 'available', create: async () => session };
+
+    const answered = await askAssistant('What is due?');
+
+    expect(answered).toBe(true);
+    expect(session.prompt).toHaveBeenCalledWith('What is due?');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(get(conversation)).toEqual([
+      { role: 'user', content: 'What is due?' },
+      { role: 'assistant', content: 'I cannot read Redmine from here.', toolCalls: [] },
+    ]);
+    expect(api.loadAssistantKey).not.toHaveBeenCalled();
+  });
+
+  it('says where to set a model up when this webview has no built-in one', async () => {
+    api.getAssistantSettings.mockResolvedValue(onDevice);
+
+    const answered = await askAssistant('What is due?');
+
+    expect(answered).toBe(false);
+    expect(get(assistantError)).toBe('This device has no built-in model. Choose a model service in Settings.');
+  });
+});

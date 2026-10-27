@@ -45,6 +45,9 @@ vi.mock('../lib/api', () => ({
     loadAssistantKey: vi.fn(async () => null),
     saveAssistantKey: vi.fn(async () => {}),
     deleteAssistantKey: vi.fn(async () => {}),
+    findLocalModelServers: vi.fn(async () => []),
+    findSystemAiSetup: vi.fn(async () => []),
+    openAssistantKeyPage: vi.fn(async () => {}),
   },
 }));
 

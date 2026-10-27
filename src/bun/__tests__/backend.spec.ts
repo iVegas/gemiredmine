@@ -42,6 +42,22 @@ function setup(options: BackendOptions = {}) {
   return { backend, fetchMock, openUrl, files };
 }
 
+/** A platform that can say what this computer is set up for, as the desktop shell's does. */
+function setupWithSystemAiSetup(systemAiSetup: NonNullable<BackendPlatform['systemAiSetup']>) {
+  const files = createMemoryDataFs();
+  const fetchMock = vi.fn<FetchLike>();
+  const openUrl = vi.fn(async () => {});
+  const platform: BackendPlatform = {
+    fetch: fetchMock,
+    fs: files,
+    dataDir: async () => DATA_DIR,
+    openUrl,
+    systemAiSetup,
+    environment: async () => ({ platform: 'linux', arch: 'x64', runtime: 'test 1.0' }),
+  };
+  return { backend: createBackend(platform, { buildInfo: info, devPreviewAvailable: true, DevPreviewImpl: DevPreview }), fetchMock, openUrl, files };
+}
+
 const requested = (fetchMock: ReturnType<typeof setup>['fetchMock'], call = 0) => new URL(fetchMock.mock.calls[call][0]);
 const headerOf = (fetchMock: ReturnType<typeof setup>['fetchMock'], name: string, call = 0) =>
   (fetchMock.mock.calls[call][1].headers as Headers).get(name);
@@ -345,5 +361,55 @@ describe('a build without the developer preview', () => {
     await expect(backend.createFeedback({ title: 't', description: 'd', includeLogs: false })).rejects.toThrow('not available');
     await expect(backend.openIssueLink('https://github.com/iVegas/gemiredmine/issues/new?title=x')).rejects.toThrow('not available');
     expect(openUrl).not.toHaveBeenCalled();
+  });
+});
+
+describe('setting the assistant up without the user typing an address or a key', () => {
+  const models = (ids: string[]) => ({ ok: true, status: 200, json: async () => ({ data: ids.map((id) => ({ id })) }) }) as unknown as Response;
+
+  it('reports the local model servers that answer, and the services this computer already has a key for', async () => {
+    const { backend, fetchMock } = setup();
+    fetchMock.mockImplementation(async (url) =>
+      url === 'http://127.0.0.1:11434/v1/models' ? models(['qwen3:8b']) : failed(500, 'Internal Server Error')
+    );
+
+    expect(await backend.findLocalModelServers()).toEqual([
+      { label: 'Ollama', baseUrl: 'http://127.0.0.1:11434/v1', models: ['qwen3:8b'] },
+    ]);
+    expect(await backend.findSystemAiSetup()).toEqual([]);
+  });
+
+  it('asks the address the computer is set up for as well, before the usual ones', async () => {
+    const found = [{ provider: 'openai-compatible' as const, kind: 'address' as const, source: 'the OLLAMA_HOST environment variable', value: 'http://192.168.1.50:11434' }];
+    const { backend, fetchMock } = setupWithSystemAiSetup(async () => found);
+    fetchMock.mockImplementation(async (url) =>
+      url === 'http://192.168.1.50:11434/v1/models' ? models([]) : failed(500, 'Internal Server Error')
+    );
+
+    const servers = await backend.findLocalModelServers();
+
+    expect(servers).toEqual([{ label: 'The address this computer is set up for', baseUrl: 'http://192.168.1.50:11434/v1', models: [] }]);
+    expect(await backend.findSystemAiSetup()).toEqual(found);
+  });
+
+  it('reports nothing found where the platform cannot look, or when the look fails', async () => {
+    const { backend } = setup();
+    expect(await backend.findSystemAiSetup()).toEqual([]);
+
+    const { backend: failing } = setupWithSystemAiSetup(async () => {
+      throw new Error('no environment here');
+    });
+    expect(await failing.findSystemAiSetup()).toEqual([]);
+  });
+
+  it('opens the page of a service by its name, so no link of the webview’s choosing can be opened', async () => {
+    const { backend, openUrl } = setup();
+
+    await backend.openAssistantKeyPage('gemini');
+    expect(openUrl).toHaveBeenCalledExactlyOnceWith('https://aistudio.google.com/apikey');
+
+    await expect(backend.openAssistantKeyPage('https://evil.example' as never)).rejects.toThrow('is not a service this app can use');
+    await expect(backend.openAssistantKeyPage('on-device')).rejects.toThrow('hands out no API key');
+    expect(openUrl).toHaveBeenCalledTimes(1);
   });
 });

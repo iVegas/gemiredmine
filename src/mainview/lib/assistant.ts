@@ -8,11 +8,12 @@ import { ask } from '../../bun/assistant/chat';
 import { transcribe, speak } from '../../bun/assistant/voice';
 import type { ChatMessage } from '../../bun/assistant/providers';
 import type { FetchLike } from '../../bun/redmine/client';
-import { assistantSettingsProblem, type AssistantSettings } from '../../shared/assistant';
+import { assistantSettingsProblem, isOnDeviceProvider, type AssistantSettings } from '../../shared/assistant';
 import { buildInfo } from '../../shared/build-info.generated';
 import { redmineApi } from './api';
 import { hasDesktopBackend } from './bridge';
 import { storeHost } from './mcp-host';
+import { askOnDevice } from './on-device-ai';
 import { tauriFetch } from './tauri-platform';
 
 /** The conversation, as the assistant view shows it. It lasts while the app runs; it is not saved. */
@@ -53,6 +54,12 @@ export async function askAssistant(question: string): Promise<boolean> {
   conversation.update((messages) => [...messages, { role: 'user', content: text }]);
   try {
     const settings = await usableSettings();
+    if (isOnDeviceProvider(settings.provider)) {
+      // The device's own model is prompted in the webview, and it answers without the tools: it reads no Redmine data.
+      const answer = await askOnDevice(get(conversation));
+      conversation.update((messages) => [...messages, { role: 'assistant', content: answer, toolCalls: [] }]);
+      return true;
+    }
     const result = await ask({
       settings,
       apiKey: await redmineApi.loadAssistantKey('chat'),

@@ -24,6 +24,10 @@ tauri-plugin-sql = { version = "~2.5.0", features = ["sqlite"] }
 # builds only register it.
 tauri-plugin-credential-vault = { path = "plugins/credential-vault" }
 serde = { version = "1", features = ["derive"] }
+# Reads the configuration file of another tool when looking for a model service this computer is set up for
+# (src/ai_setup.rs). Already in the tree: Tauri itself uses it.
+serde_json = "1"
+
 # The API keys of the user's servers go in the system's credential store (src/credentials.rs). The stores are
 # separate crates, one per system; the other systems have none yet.
 keyring-core = "~1.0.1"

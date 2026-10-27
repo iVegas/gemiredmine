@@ -3,7 +3,7 @@
 **Start here.** This file says what is done, what is next, and how to check it. The reasoning and the full
 specification of the remaining work are in [`plan.md`](./plan.md).
 
-*Last updated 2026-10-17 (issue #25: user menu layer, task and log tabs in windows, logging time from a task, Secret Service retry). Before: 2026-10-15, after one instance of the app, remembering the sign-in, and the task and log entry views on `claude/sharp-pascal-qbz3f6`. PR 0 and PR 1 are merged (`648fe5b`), and so are pull requests #21, #22 and #23 (PR 2, PR 2b), as `main` shows (`3baf9a8`); the rows below for them were written before that.*
+*Last updated 2026-10-27 (the navigation bar, and an assistant that finds a model on the computer instead of asking for a key). Before: 2026-10-17 (issue #25: user menu layer, task and log tabs in windows, logging time from a task, Secret Service retry). Before: 2026-10-15, after one instance of the app, remembering the sign-in, and the task and log entry views on `claude/sharp-pascal-qbz3f6`. PR 0 and PR 1 are merged (`648fe5b`), and so are pull requests #21, #22 and #23 (PR 2, PR 2b), as `main` shows (`3baf9a8`); the rows below for them were written before that.*
 
 **Keep this file current.** Whoever does a step updates this file in the same pull request: the status table, the
 commit SHAs, anything that went differently from the plan, and what you learned about the environment. Put a decision
@@ -20,6 +20,7 @@ that changes in `plan.md`, with the reason.
 | PR 2b: window layer on Tauri, and native Wayland | **implemented, draft** | `49df48e` `e1cd3f9` `30ebcf9` `c4eceaa` `4af9cbf` `773f908` `47278ab` `5300d47` and a docs commit | Pull request #22, branch `claude/tauri-window-layer`, stacked on `claude/tauri-2-shell`. Verified on a Wayland compositor (sway, headless) and, for the title-bar drop, on X11 with metacity. Open: GNOME and KDE, an NVIDIA machine, Windows, mixed-DPI monitors. See "PR 2b" below |
 | Storage: the app's database, saved servers, certificate asset | **implemented** | `c8d26d9` `3b13a86` `061f2b2` `0fd5a93` and a docs commit | Branch `claude/sharp-pascal-qbz3f6`, from `main` at `3baf9a8`. After the owner's test of Windows unstable build 10. See "Storage" below |
 | One instance, remember me, task and log entry views | **implemented** | `7792380` `57b6b66` `f0b593e` `6d676c4` and a docs commit | Same branch, after the owner's request of 2026-10-15. See "Single instance, remembering the sign-in, task and log entry views" below |
+| Navigation bar, and setting the assistant up without typing | **implemented** | | Branch `ccr-d8f0472d-l5mxth`, after the owner's request of 2026-10-27. See "The navigation bar, and an assistant that sets itself up" below |
 | PR 3: end-to-end tests, rename `src/bun` to `src/core` | optional | | Best at the start of the Android phase |
 | Android on Tauri, retire Capacitor | **started: groundwork** | | Outline in `plan.md`. Done here: `android` in `PLATFORMS` and `BuildInfo`, About text, no window layer on Android (`isAndroidWebview`). **Not done, and not possible in this sandbox:** `tauri android init` (needs the Android SDK), the NDK build of `ring`, the APK. See "Android" below |
 
@@ -413,6 +414,53 @@ recording through the Tauri HTTP plugin. Those need a run in the app with a real
 
 Not done: streaming replies; a calendar in a separate window reloads only after a write in its own window; desktop
 notifications for a waiting approval (the notice is in the app); Web Speech as a voice fallback without an attached model.
+
+### The navigation bar, and an assistant that sets itself up (2026-10-27)
+
+The owner's point: what the app is for was behind a menu, and choosing Gemini asked for an API key without ever looking
+at what the machine already had.
+
+- **`src/mainview/PrimaryNav.svelte`** is a row of the five views the app is for (`PRIMARY_VIEWS` in `lib/views.ts`:
+  Dashboard, Calendar, To-do, Assistant, Settings), always in the header of the main window, above the tabs. A view opens
+  in a tab as before, and the row marks the one that is showing with `aria-current="page"`. The header is two rows now
+  (navigation and the user menu, then the tab strip); a view window keeps its single row with "Move to main window".
+  The user menu lost its "Assistant" entry, since it has a place of its own; it keeps the server, the server context,
+  "Manage servers…" and "About".
+- **`src/bun/assistant/discovery.ts`** asks the usual local addresses (Ollama 11434, LM Studio 1234, Lemonade or vLLM
+  8000, llama.cpp or LocalAI 8080, Jan 1337, GPT4All 4891, text generation web UI 5000) for `/models`, all at once, with
+  a 1.5 s limit each. Portable, so its tests need no network. `backend.findLocalModelServers()` asks any address the
+  environment names first.
+- **`src-tauri/src/ai_setup.rs`** is the only new Rust: `assistant_system_setup` reports the keys and addresses this
+  computer already holds — `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `ANTHROPIC_API_KEY`,
+  `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_API_BASE`, `OLLAMA_HOST`, then `~/.gemini/.env` and
+  `~/.config/io.datasette.llm/keys.json`. It reads nothing else, writes nothing, and its parsers are unit tested
+  (`cargo test --lib ai_setup`, 9 tests). `serde_json` is now a direct dependency; it was already in the tree.
+  The webview reaches it through `BackendPlatform.systemAiSetup?()`, which is optional: a platform without it reports
+  nothing found, and a look that fails is not an error on the screen.
+- **`src/mainview/lib/on-device-ai.ts`** is the model the device carries, through the webview's Prompt API
+  (`LanguageModel`, or the older `window.ai.languageModel`). On Android that is Gemini Nano through the system's AICore,
+  so nothing is downloaded with the app and no key is needed. It is the provider `on-device`: no address, no key, no
+  model name (`assistantSettingsProblem` skips those for it), and it is asked without the tools, so it reads no Redmine
+  data. The Assistant view says so while it is chosen, and `providers.ts` throws for it rather than building a request.
+- **`src/mainview/components/AssistantSettings.svelte`** starts with "What this computer offers" and searches on its own
+  when it is shown: the device's model, the local servers, the keys this computer holds. Each has a button that fills the
+  form in; nothing is saved until the user saves. Next to the key box: "Get a key from Google AI Studio" (through
+  `backend.openAssistantKeyPage(provider)`, which takes a service name, never a link, and is checked in the backend),
+  and, for a service that needs a key, a line offering the device or a running local server instead. The model box
+  suggests the models of the service and of the server at that address.
+- **Setup links** (`assistantSetupLink`, `assistantSetupFrom` in `src/shared/assistant.ts`):
+  `gemiredmine://assistant?provider=gemini&model=…`, or the same settings in JSON, pasted under "Set this up from a
+  link". The link the app hands out carries no key; a link that was given `key=…` fills the key box.
+
+Verified here: `npm test` (89 files, 1156 tests, one skipped), `tsc`, and `cargo test --lib` (47 tests, up from 38).
+Not verified, because it needs the real app: the `assistant_system_setup` command in a running shell, a real local
+server being found, the Prompt API (no webview here offers it), opening the key page in the system browser, and the
+clipboard for the setup link.
+
+Not done, and worth doing next: a server on another machine of the network (mDNS or SSDP, in Rust — only this computer's
+addresses are asked now); reading a setup link from a QR code (needs the camera); registering `gemiredmine://` with the
+system so such a link can be clicked (the deep-link plugin); Gemini Nano through the native ML Kit GenAI API for devices
+whose WebView has no built-in model.
 
 ## How it was verified
 

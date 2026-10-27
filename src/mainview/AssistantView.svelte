@@ -4,7 +4,7 @@
   import { askAssistant, assistantError, asking, conversation, readAloud, transcribeSpeech } from './lib/assistant';
   import { startRecording } from './lib/recorder';
   import { openView } from './lib/views';
-  import { assistantSettingsProblem, type AssistantSettings } from '../shared/assistant';
+  import { assistantSettingsProblem, isOnDeviceProvider, type AssistantSettings } from '../shared/assistant';
 
   let settings: AssistantSettings | null = null;
   let draft = '';
@@ -30,6 +30,8 @@
   $: canListen = ready && settings?.voice != null;
   $: canSpeak = canListen && settings?.voice?.speech != null;
   $: shown = $conversation.filter((message) => message.role !== 'tool');
+  // The model on the device answers without the app's tools, so it never reads Redmine. The view says so once.
+  $: onDevice = settings !== null && isOnDeviceProvider(settings.provider);
 
   const sentence = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -86,6 +88,13 @@
   {#if settings && problem}
     <p class="flex flex-wrap items-center gap-2 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
       <span>The assistant is not set up yet. {problem}</span>
+      <button type="button" class={button} on:click={() => openView('settings')}>Open Settings</button>
+    </p>
+  {/if}
+
+  {#if onDevice}
+    <p class="flex flex-wrap items-center gap-2 rounded border border-gray-200 bg-gray-50 p-3 text-sm text-gray-700">
+      <span>The model on this device answers without reading your tasks or your time. Choose a model service in Settings for answers from Redmine.</span>
       <button type="button" class={button} on:click={() => openView('settings')}>Open Settings</button>
     </p>
   {/if}
