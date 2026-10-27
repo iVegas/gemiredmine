@@ -104,6 +104,24 @@ export interface NewTimeEntry {
   comments: string;
 }
 
+/** The fields of a time entry that can change. Only the ones given are sent. */
+export type TimeEntryChanges = Partial<Omit<NewTimeEntry, 'issue_id'>>;
+
+/** The fields of an issue that can change, and the note that goes with the change. Only the ones given are sent. */
+export interface IssueChanges {
+  subject?: string;
+  description?: string;
+  status_id?: number;
+  priority_id?: number;
+  /** YYYY-MM-DD, or null to clear it */
+  start_date?: string | null;
+  /** YYYY-MM-DD, or null to clear it */
+  due_date?: string | null;
+  done_ratio?: number;
+  estimated_hours?: number | null;
+  notes?: string;
+}
+
 export interface RedmineTimeEntry {
   id: number;
   project: RedmineReference;

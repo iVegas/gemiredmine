@@ -15,6 +15,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REPOSITORY, deriveBuildInfo } from './channels.mjs';
 import { POINTER_TAGS, tagFor } from './policy.mjs';
+import { PUBLISHER, SUMMARY } from './packaging.mjs';
 import { findAppBinary } from './build-output.mjs';
 import { releaseMetadata } from './release-metadata.mjs';
 import { resolveSigning } from './windows-signing.mjs';
@@ -159,8 +160,8 @@ export function packageWindows({
       publisher: signing.publisher,
       version: packageVersion,
       displayName: info.productName,
-      publisherDisplayName: 'Gemiredmine',
-      description: `Redmine client, ${info.label} channel`,
+      publisherDisplayName: PUBLISHER.name,
+      description: `${SUMMARY}, ${info.label} channel`,
       executable,
     })
   );

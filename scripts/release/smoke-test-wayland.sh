@@ -73,7 +73,9 @@ setsid env -u DISPLAY WAYLAND_DISPLAY="$SOCKET" WAYLAND_DEBUG=1 "$@" > "$log" 2>
 app_pid=$!
 
 waited=0
-until grep -q 'xdg_toplevel@[0-9]*\.set_app_id("Gemiredmine' "$log" 2>/dev/null; do
+# libwayland writes object ids as xdg_toplevel@N (older releases) or xdg_toplevel#N (newer ones). The app id is the
+# name the app asks for: "Gemiredmine-Unstable" in the AppImage, or the Flatpak app ID, com.github.iVegas.Gemiredmine.Unstable.
+until grep -q 'xdg_toplevel[@#][0-9]*\.set_app_id("[^"]*Gemiredmine' "$log" 2>/dev/null; do
   kill -0 "$app_pid" 2>/dev/null || fail "The app exited before it opened a window."
   waited=$((waited + 1))
   [ "$waited" -gt "$OPEN_TIMEOUT" ] && fail "The app opened no Wayland window within $OPEN_TIMEOUT seconds."

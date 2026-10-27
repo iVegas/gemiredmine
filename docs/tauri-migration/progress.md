@@ -568,7 +568,11 @@ Plan steps from `plan.md` "Next phase", and where each stands:
 - **2, identity: open.** Still `com.gemiredmine.app` in the Capacitor config; no decision yet.
 - **3, done:** `android` is in `PLATFORMS` (`scripts/release/channels.mjs`) and in `BuildInfo.platform`; `AboutView` says the app does not
   update itself on Android. `androidVersionCode()` and the overlay are not written.
-- **4, network: open.** `network_security_config.xml` needs `gen/android`. TLS roots on Android are not checked.
+- **4, network: TLS roots fixed, cleartext open.** On Android the native-roots loader reads Linux certificate paths (`/etc/ssl/certs`), which do
+  not exist there, so every HTTPS request failed with "error sending request for url (...)" (seen on the owner's APK, golems.team). Android
+  now uses the bundled Mozilla roots (`rustls-tls-webpki-roots`, `src-tauri/Cargo.toml`), and desktop keeps the OS roots. Verified by
+  `cargo tree` (the resolved features per target) and `scripts/release/__tests__/tauri-setup.test.ts`, not on a device. A private CA
+  does not work on Android yet. `network_security_config.xml` (cleartext) still needs `gen/android`.
 - **5, partly:** `toEnvironment` already names "Android System WebView". Icons and the Rust targets are not done.
 - **6, CI: not written.** The workflow needs the SDK on the runner, and keystore secrets as for the Windows PFX.
 - **7, done:** `hasWindowLayer()` is false on Android (`isAndroidWebview()` reads the WebView's user agent, so it can be read
@@ -583,7 +587,48 @@ version code (`androidVersionCode` in `channels.mjs`) grows with every build of 
 the same capabilities as its desktop build. The channel workflows build and publish the APK with the other platforms.
 Not yet run in CI: the first unstable run on `main` after the merge.
 
-Verified here: `npm test` (68 files, 879 tests) and `npm run typecheck`.
+**Saved sign-ins on Android (2026-10-26).** Android had no credential store, so "Remember me" could not keep the API
+key: the app said "Your sign-in could not be remembered" and asked for the password at every start. Now the key is kept
+in `src-tauri/plugins/credential-vault`: the Kotlin plugin encrypts each key with a data key, which an Android Keystore
+key wraps. The Keystore key needs a fingerprint or face only when the user turns that on, in Settings > Security (shown
+only where the device can offer it). With it on, the data key is unlocked once, when the app starts, so the user is
+asked once per start and not once per server. A cancelled prompt leaves the sign-in to the password form, and a changed
+fingerprint or face set forgets the saved keys. Settings are the place for the switch (`getCredentialOptions`,
+`setBiometricUnlock`).
+
+Not verified here: the Kotlin code, the Gradle build of the plugin and the prompt on a device. The Android SDK cannot be
+installed in this sandbox. `scripts/release/__tests__/credential-vault.test.ts` checks that the Kotlin commands, the
+Rust registration, the permissions and the webview calls agree by name. Not done: lock on background, a backup rule that
+keeps the wrapped key out of Android backups (a restored copy cannot be opened, and is forgotten), and Windows Hello.
+
+Verified here: `npm test` (68 files, 935 tests) and `npm run typecheck`.
+
+**Flatpak: the software centre shows the version (2026-10-27).** The Flatpak had no AppStream file, so GNOME Software showed
+the branch name (`master`) as the version, and no developer or licence. `scripts/release/flatpak-metainfo.mjs` writes
+`com.github.iVegas.<Channel>.metainfo.xml` with the build's version and date, the developer, the app licence (ISC, from
+`package.json`) and the description. The manifest installs it under `/app/share/metainfo`. The branch name is unchanged, so
+installs keep updating. A remote shows the new file once its AppStream index is regenerated (`flatpak build-update-repo`);
+an installed app shows it after a reinstall. Not checked on a host yet.
+
+**Packaging facts in one place (2026-10-27).** `scripts/release/packaging.mjs` holds the developer's name and id, the one-line
+and long descriptions, the category and the licence of the descriptions. Each platform reads them: the Flatpak's AppStream
+file, the Windows package (`PublisherDisplayName`, which was `Gemiredmine`, is now the developer's name), the Windows
+executable's properties (Tauri takes `CompanyName` and `LegalCopyright` from the bundle settings, which were missing, so the
+executable said `gemiredmine` as its company), and the Tauri bundle settings of every channel. The Windows signing identity
+(`CN=Gemiredmine`) is not changed: it is what upgrades are matched on. Android's package carries only its name, version and
+icon; the developer and copyright have no place in an APK's install screen, so the Android overlay carries them without showing them.
+
+**AI agents: the MCP endpoint (2026-10-26).** The desktop app runs a local endpoint that AI agents connect to, over MCP
+(Streamable HTTP, bearer token). The Rust side (`src-tauri/src/mcp.rs`) listens on 127.0.0.1 only, checks the Host, the
+Origin and the token before it reads a body, and passes each request to the main window as an `mcp-request` event. The
+window answers with `mcp_respond`. The message handler is portable (`src/bun/mcp/`): four read-only tools over the
+servers the user added, and two tools that propose a change (`log_time`, `update_task`). A proposal runs only when the user
+approves it under AI agents in Settings, with the user's own key (`src/bun/mcp/proposals.ts`). The token can be replaced,
+which restarts a running endpoint. Proposals are kept in the app's SQLite database (migration 3, the `proposals` table): a
+waiting change survives a restart, and one that was running is marked failed, not run again. The user guide is
+`docs/ai-agents.md`.
+Not done: a run with a real agent against a running app. The Rust module also compiles for Android, which is unverified:
+the settings section, and so the start, is not shown on Android.
 
 ## Recipes
 

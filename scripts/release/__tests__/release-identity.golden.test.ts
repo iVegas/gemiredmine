@@ -105,7 +105,7 @@ describe.each(channels)('%s channel', (channel) => {
               publisher: PUBLISHER,
               version: packageVersion,
               displayName: windows.productName,
-              publisherDisplayName: 'Gemiredmine',
+              publisherDisplayName: 'iVegas',
               description: `Redmine client, ${windows.label} channel`,
               // The executable is the one thing a change of desktop shell is allowed to move.
               executable: `${windows.appName}.exe`,

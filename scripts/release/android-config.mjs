@@ -16,6 +16,7 @@ const info = deriveBuildInfo({
   channel: env.CHANNEL || 'dev',
   platform: 'android',
   buildNumber: Number(env.GITHUB_RUN_NUMBER || 0),
+  buildDate: env.BUILD_DATE || new Date().toISOString(),
 });
 
 const part = process.argv[2] ?? 'config';

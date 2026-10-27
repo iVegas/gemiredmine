@@ -181,12 +181,16 @@ describe('versions', () => {
 describe('the crate', () => {
   const cargo = read('src-tauri', 'Cargo.toml');
 
-  it('talks to Redmine through rustls with the OS trust store and without a cookie jar', () => {
-    const http = /tauri-plugin-http = \{[^}]*\}/s.exec(cargo)?.[0] ?? '';
-    expect(http).toContain('default-features = false');
-    expect(http).toContain('"rustls-tls-native-roots"');
-    expect(http).toContain('"gzip"');
-    expect(http).not.toContain('cookies');
+  it('talks to Redmine through rustls without a cookie jar, with the OS trust store on desktop', () => {
+    const [desktop, android] = [...cargo.matchAll(/tauri-plugin-http = \{[^}]*\}/gs)].map((match) => match[0]);
+    expect(desktop).toContain('default-features = false');
+    expect(desktop).toContain('"rustls-tls-native-roots"');
+    expect(desktop).toContain('"gzip"');
+    expect(desktop).not.toContain('cookies');
+    expect(cargo).toContain(`[target.'cfg(not(target_os = "android"))'.dependencies]`);
+    expect(cargo).toContain(`[target.'cfg(target_os = "android")'.dependencies]`);
+    expect(android).toContain('"rustls-tls-webpki-roots"');
+    expect(android).not.toContain('native-roots');
   });
 
   it('keeps its data in SQLite, built into the app, and in no other kind of database', () => {
@@ -265,7 +269,7 @@ describe('the build workflows', () => {
     // No X server to fall back to, and the app's own request for a toplevel window is what proves a Wayland client.
     expect(smoke).toContain('env -u DISPLAY');
     expect(smoke).toContain('WAYLAND_DEBUG=1');
-    expect(smoke).toContain('xdg_toplevel@[0-9]*\\.set_app_id("Gemiredmine');
+    expect(smoke).toContain('xdg_toplevel[@#][0-9]*\\.set_app_id("[^"]*Gemiredmine');
   });
 
   it('runs the Wayland smoke test script as a command and refuses to run without one', () => {

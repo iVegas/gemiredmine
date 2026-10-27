@@ -73,6 +73,42 @@ export interface TimeActivity {
   name: string;
 }
 
+/** The fields of a log entry the user can change. */
+export interface LogEntryChanges {
+  /** YYYY-MM-DD */
+  spentOn: string;
+  hours: number;
+  activityId: number;
+  comments: string;
+}
+
+/** A status or a priority a task can take on this server. */
+export interface TaskOption {
+  id: number;
+  name: string;
+}
+
+export interface TaskOptions {
+  statuses: TaskOption[];
+  priorities: TaskOption[];
+}
+
+/** The fields of a task the user can change. `null` clears a date or the estimate. */
+export interface TaskChanges {
+  subject: string;
+  description: string;
+  statusId: number;
+  priorityId: number;
+  /** YYYY-MM-DD */
+  startDate: string | null;
+  /** YYYY-MM-DD */
+  dueDate: string | null;
+  doneRatio: number;
+  estimatedHours: number | null;
+  /** A note that is added to the task's history with the change. Empty for none. */
+  notes: string;
+}
+
 /** A log entry the user is adding to a task. */
 export interface NewLogEntry {
   taskId: number;
@@ -90,6 +126,17 @@ export interface LoadedCredentials {
   problem: string | null;
 }
 
+/**
+ * How the saved sign-ins are kept on this device. `biometric` is null where the platform has no fingerprint or face
+ * unlock, so the setting is not offered there. Otherwise it says whether this device can use one, and whether it is on.
+ */
+export interface CredentialOptions {
+  biometric: { available: boolean; enabled: boolean } | null;
+}
+
+import type { AgentSettings } from './agents';
+import type { Proposal } from './proposals';
+
 export interface GemiBackend {
   signIn(params: SignInParams): Promise<SignInResponse>;
   getCurrentUser(access: ServerAccess): Promise<CurrentUserSummary>;
@@ -104,6 +151,12 @@ export interface GemiBackend {
   getLogEntry(access: ServerAccess, entryId: number): Promise<RedmineTimeEntry>;
   /** The activities that time can be logged under on this server. */
   listTimeActivities(access: ServerAccess): Promise<TimeActivity[]>;
+  /** Changes a log entry. Rejects with a sentence the user can read, such as when Redmine does not allow the change. */
+  updateLogEntry(access: ServerAccess, entryId: number, changes: LogEntryChanges): Promise<void>;
+  /** The statuses and priorities a task can take on this server. */
+  listTaskOptions(access: ServerAccess): Promise<TaskOptions>;
+  /** Changes a task. Rejects with a sentence the user can read, such as when Redmine does not allow the change. */
+  updateTask(access: ServerAccess, taskId: number, changes: TaskChanges): Promise<void>;
   /** Logs time on a task. Rejects when the server refuses it, such as for a user without the right to log time. */
   createLogEntry(access: ServerAccess, entry: NewLogEntry): Promise<void>;
   getDevPreviewStatus(): Promise<DevPreviewStatus>;
@@ -121,4 +174,16 @@ export interface GemiBackend {
   saveCredential(serverId: string, apiKey: string): Promise<void>;
   /** Forgets the API key of a server. A server that has none is fine. */
   deleteCredential(serverId: string): Promise<void>;
+  /** How the saved sign-ins are kept here, and whether a fingerprint or face is asked for before they are read. */
+  getCredentialOptions(): Promise<CredentialOptions>;
+  /** Asks for a fingerprint or face before the saved sign-ins are read, or stops asking. Rejects with a sentence the user can read. */
+  setBiometricUnlock(enabled: boolean): Promise<void>;
+  /** The settings of the endpoint that AI agents connect to. Off unless the user turned it on. */
+  getAgentSettings(): Promise<AgentSettings>;
+  /** The changes that AI agents proposed and the app has kept, the newest first. Rejects where the app has no storage. */
+  listAgentProposals(): Promise<Proposal[]>;
+  /** Keeps a proposed change, or its new status, replacing the one kept before. */
+  saveAgentProposal(proposal: Proposal): Promise<void>;
+  /** Keeps the settings of the endpoint. Rejects with a sentence the user can read when the port cannot be used. */
+  saveAgentSettings(settings: AgentSettings): Promise<void>;
 }

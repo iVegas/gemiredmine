@@ -4,7 +4,7 @@
 #
 #   docker build -f docker/flatpak/env.Dockerfile -t gemiredmine-flatpak-env .
 #
-# The runtimes are the Flathub branches for GNOME 51 (freedesktop 26.08). Rust is not in them: the app's manifest
+# The runtimes are the Flathub branches for GNOME 50 (freedesktop 25.08). Rust is not in them: the app's manifest
 # installs the Rust release that rust-toolchain.toml pins.
 FROM node:24-bookworm
 
@@ -15,7 +15,7 @@ ARG CARGO_GENERATOR_SHA256=0a2db6be87d75910facef28ab46d4d6460802e8419ab850d0caa6
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       flatpak flatpak-builder git ca-certificates curl python3 python3-venv \
-      xz-utils elfutils xvfb xauth weston \
+      xz-utils elfutils xvfb xauth weston dbus \
  && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m venv /opt/generators \
@@ -30,9 +30,9 @@ RUN python3 -m venv /opt/generators \
 RUN flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo \
  && for attempt in 1 2 3 4; do \
       flatpak install --system -y --noninteractive flathub \
-        org.gnome.Platform//51 \
-        org.gnome.Sdk//51 \
-        org.freedesktop.Sdk.Extension.node24//26.08 && break; \
+        org.gnome.Platform//50 \
+        org.gnome.Sdk//50 \
+        org.freedesktop.Sdk.Extension.node24//25.08 && break; \
       [ "$attempt" = 4 ] && exit 1; sleep 30; \
     done
 

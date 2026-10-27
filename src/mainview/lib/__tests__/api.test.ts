@@ -22,6 +22,12 @@ const fake = vi.hoisted(() => {
     'loadCredentials',
     'saveCredential',
     'deleteCredential',
+    'getCredentialOptions',
+    'setBiometricUnlock',
+    'getAgentSettings',
+    'saveAgentSettings',
+    'listAgentProposals',
+    'saveAgentProposal',
   ] as const;
   return {
     methods,
@@ -36,7 +42,10 @@ const fake = vi.hoisted(() => {
 
 vi.mock('@tauri-apps/api/core', () => ({ isTauri: vi.fn() }));
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => ({ label: fake.window.label }) }));
-vi.mock('../tauri-platform', () => ({ tauriPlatform: () => fake.platform }));
+vi.mock('../tauri-platform', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../tauri-platform')>()),
+  tauriPlatform: () => fake.platform,
+}));
 vi.mock('../window-layer', () => ({
   startMainLayer: vi.fn(() => ({ api: fake.mainApi })),
   remoteWindowApi: () => fake.remoteApi,
@@ -91,6 +100,9 @@ describe('in the desktop app', () => {
       listTaskLogEntries: [access, 42],
       getLogEntry: [access, 7],
       listTimeActivities: [access],
+      updateLogEntry: [access, 7, { spentOn: '2026-10-17', hours: 2, activityId: 8, comments: '' }],
+      listTaskOptions: [access],
+      updateTask: [access, 42, { subject: 'Fix', description: '', statusId: 2, priorityId: 4, startDate: null, dueDate: null, doneRatio: 0, estimatedHours: null, notes: '' }],
       createLogEntry: [access, { taskId: 42, spentOn: '2026-10-17', hours: 1.5, activityId: 8, comments: 'Review' }],
       getDevPreviewStatus: [],
       setDevPreviewEnabled: [true],
@@ -102,6 +114,23 @@ describe('in the desktop app', () => {
       loadCredentials: [['s1', 's2']],
       saveCredential: ['s1', 'key'],
       deleteCredential: ['s1'],
+      getCredentialOptions: [],
+      setBiometricUnlock: [true],
+      getAgentSettings: [],
+      saveAgentSettings: [{ enabled: true, port: 47831 }],
+      listAgentProposals: [],
+      saveAgentProposal: [
+        {
+          id: 'p1',
+          serverId: 'srv-1',
+          serverName: 'Work',
+          change: { kind: 'log_time', taskId: 7, spentOn: '2026-10-20', hours: 1, activityId: 9, comments: '' },
+          summary: 'Log 1 h',
+          status: 'waiting',
+          outcome: null,
+          createdAt: '2026-10-26T00:00:00Z',
+        },
+      ],
     };
 
     for (const name of fake.methods) {

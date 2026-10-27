@@ -1,4 +1,6 @@
-import type { GemiBackend, HistoryNames, LoadedCredentials, ServerAccess } from '../shared/backend';
+import { AGENT_SETTINGS_KEY, agentSettingsFrom, isAgentPort, type AgentSettings } from '../shared/agents';
+import type { Proposal } from '../shared/proposals';
+import type { CredentialOptions, GemiBackend, HistoryNames, LoadedCredentials, ServerAccess } from '../shared/backend';
 import type { BuildInfo } from '../shared/build-info';
 import { buildInfo as generatedBuildInfo, DEV_PREVIEW_AVAILABLE } from '../shared/build-info.generated';
 import { DevPreview as GeneratedDevPreview } from './dev-preview.generated';
@@ -18,6 +20,7 @@ export const REDMINE_TIMEOUT_MS = 30_000;
 const NOT_AVAILABLE = 'The developer preview is not available in this build.';
 const NO_STORAGE = 'This build cannot save data between runs.';
 const NO_CREDENTIALS = 'This build has no credential store to remember a sign-in in.';
+const NO_BIOMETRIC = 'This device has no fingerprint or face unlock for the saved sign-ins.';
 
 /**
  * Where the API keys of the user's servers are kept: the system's credential store, such as Windows Credential
@@ -29,6 +32,10 @@ export interface CredentialStore {
   set(serverId: string, apiKey: string): Promise<void>;
   /** Forgets the key. A server that has none is fine. */
   remove(serverId: string): Promise<void>;
+  /** Only where the platform has a fingerprint or face unlock: the store then says what it offers. */
+  options?(): Promise<CredentialOptions>;
+  /** Only where `options` is given: turns the unlock on or off. */
+  setBiometric?(enabled: boolean): Promise<void>;
 }
 
 /**
@@ -109,6 +116,16 @@ async function historyNames(client: RedmineClient, issue: RedmineIssueDetails): 
     })
   );
   return names;
+}
+
+/** Redmine answers 403 to a change the user has no permission for. Says so in words the user can act on. */
+function refusedBy(what: string) {
+  return (error: unknown): never => {
+    if (error instanceof RedmineApiError && error.status === 403) {
+      throw new Error(`Redmine does not let you change ${what}. Ask a project member who may change it.`);
+    }
+    throw error;
+  };
 }
 
 export function createBackend(platform: BackendPlatform, options: BackendOptions = {}): GemiBackend {
@@ -260,6 +277,44 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
       authorized(access, (transport) => clientFor(access, transport).getTimeEntry(entryId))
     ),
 
+    updateLogEntry: traced('updateLogEntry', (access, entryId, changes) =>
+      authorized(access, (transport) =>
+        clientFor(access, transport).updateTimeEntry(entryId, {
+          spent_on: changes.spentOn,
+          hours: changes.hours,
+          activity_id: changes.activityId,
+          comments: changes.comments,
+        })
+      ).catch(refusedBy('this log entry'))
+    ),
+
+    listTaskOptions: traced('listTaskOptions', (access) =>
+      authorized(access, async (transport) => {
+        const client = clientFor(access, transport);
+        const [statuses, priorities] = await Promise.all([client.getIssueStatuses(), client.getIssuePriorities()]);
+        return {
+          statuses: statuses.issue_statuses.map(({ id, name }) => ({ id, name })),
+          priorities: priorities.issue_priorities.map(({ id, name }) => ({ id, name })),
+        };
+      })
+    ),
+
+    updateTask: traced('updateTask', (access, taskId, changes) =>
+      authorized(access, (transport) =>
+        clientFor(access, transport).updateIssue(taskId, {
+          subject: changes.subject,
+          description: changes.description,
+          status_id: changes.statusId,
+          priority_id: changes.priorityId,
+          start_date: changes.startDate,
+          due_date: changes.dueDate,
+          done_ratio: changes.doneRatio,
+          estimated_hours: changes.estimatedHours,
+          notes: changes.notes,
+        })
+      ).catch(refusedBy('this task'))
+    ),
+
     listTimeActivities: traced('listTimeActivities', (access) =>
       authorized(access, async (transport) => {
         const { time_entry_activities } = await clientFor(access, transport).getTimeEntryActivities();
@@ -323,6 +378,30 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
     saveCredential: traced('saveCredential', async (serverId, apiKey) => credentialStore().set(serverId, apiKey)),
 
     deleteCredential: traced('deleteCredential', async (serverId) => credentialStore().remove(serverId)),
+
+    getCredentialOptions: traced('getCredentialOptions', async (): Promise<CredentialOptions> => {
+      const store = platform.credentials;
+      return store?.options ? store.options() : { biometric: null };
+    }),
+
+    getAgentSettings: traced('getAgentSettings', async (): Promise<AgentSettings> =>
+      agentSettingsFrom(await (await appStorage()).getSetting(AGENT_SETTINGS_KEY))
+    ),
+
+    listAgentProposals: traced('listAgentProposals', async (): Promise<Proposal[]> => (await appStorage()).listProposals()),
+
+    saveAgentProposal: traced('saveAgentProposal', async (proposal) => (await appStorage()).saveProposal(proposal)),
+
+    saveAgentSettings: traced('saveAgentSettings', async (settings) => {
+      if (!isAgentPort(settings.port)) throw new Error('The port must be a whole number from 1024 to 65535.');
+      await (await appStorage()).setSetting(AGENT_SETTINGS_KEY, { enabled: settings.enabled === true, port: settings.port });
+    }),
+
+    setBiometricUnlock: traced('setBiometricUnlock', async (enabled) => {
+      const store = credentialStore();
+      if (!store.setBiometric) throw new Error(NO_BIOMETRIC);
+      await store.setBiometric(enabled);
+    }),
 
     async openIssueLink(url) {
       if (!previewAvailable) throw new Error(NOT_AVAILABLE);

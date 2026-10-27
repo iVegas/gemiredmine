@@ -29,4 +29,7 @@ cd "$scratch"
 flatpak-builder --force-clean --disable-rofiles-fuse --repo=repo build manifest.json
 flatpak build-bundle repo "$out/bundle.flatpak" "$app_id"
 echo "$app_id" > "$out/app-id.txt"
+# This runs as root in the container, so the bundle and the folders above it are root's in the mounted checkout. The
+# packaging step runs as the runner's user and could not write into dist/. Give them back to the checkout's owner.
+chown -R "$(stat -c '%u:%g' /work)" /work/dist
 echo "bundle: $out/bundle.flatpak ($app_id)"

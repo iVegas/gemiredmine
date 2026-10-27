@@ -1,0 +1,15 @@
+[package]
+name = "tauri-plugin-credential-vault"
+version = "0.1.0"
+description = "Keeps the Redmine API keys on Android, encrypted with the Android Keystore, with an optional fingerprint or face unlock."
+edition = "2024"
+rust-version = "1.90"
+publish = false
+# Lets the app build read the permissions this crate generates (the same key the Tauri plugins use).
+links = "tauri-plugin-credential-vault"
+
+[dependencies]
+tauri = "~2.12.4"
+
+[build-dependencies]
+tauri-plugin = { version = "~2.7.2", features = ["build"] }

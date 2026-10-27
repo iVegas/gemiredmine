@@ -52,6 +52,23 @@ export const MIGRATIONS: readonly Migration[] = [
     version: 2,
     steps: [addColumn('servers', 'remember', 'INTEGER NOT NULL DEFAULT 1')],
   },
+  {
+    // The changes that AI agents proposed, which wait for the user to approve them. The change is kept as JSON. No API
+    // key is ever kept here: a proposal names the server, and the key stays with the server (see 2).
+    version: 3,
+    steps: [
+      `CREATE TABLE IF NOT EXISTS proposals (
+        id TEXT PRIMARY KEY NOT NULL,
+        server_id TEXT NOT NULL,
+        server_name TEXT NOT NULL,
+        change_json TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        status TEXT NOT NULL,
+        outcome TEXT,
+        created_at TEXT NOT NULL
+      )`,
+    ],
+  },
 ];
 
 /** The data was written by a newer version of the app, which changed the schema in a way this one cannot read. */

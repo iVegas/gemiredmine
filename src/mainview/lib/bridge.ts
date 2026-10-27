@@ -3,7 +3,7 @@ import { createBackend } from '../../bun/backend';
 import type { GemiBackend } from '../../shared/backend';
 import type { WindowMessages } from '../../shared/window-contract';
 import { expireSignIn } from './sign-in';
-import { tauriPlatform } from './tauri-platform';
+import { isAndroidWebview, tauriPlatform } from './tauri-platform';
 import { remotePreview, remoteWindowApi, startMainLayer, type WindowApi } from './window-layer';
 import { MAIN_LABEL, currentLabel, isViewLabel, receiveMessages } from './window-transport';
 
@@ -34,13 +34,7 @@ export function backend(): GemiBackend {
   }));
 }
 
-/**
- * Whether the webview runs on Android. The WebView says so in its user agent, which can be read synchronously; the
- * environment the shell reports is only available asynchronously.
- */
-export function isAndroidWebview(): boolean {
-  return typeof navigator !== 'undefined' && /\bAndroid\b/.test(navigator.userAgent);
-}
+export { isAndroidWebview };
 
 /**
  * Whether view tabs can open in windows of their own: in the desktop app's main window and in those windows.
