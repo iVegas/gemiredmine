@@ -2,6 +2,7 @@
   import { onDestroy } from 'svelte';
   import WelcomeScreen from './WelcomeScreen.svelte';
   import ViewTabs from './ViewTabs.svelte';
+  import PrimaryNav from './PrimaryNav.svelte';
   import UserMenu from './UserMenu.svelte';
   import ServerLogin from './ServerLogin.svelte';
   import DashboardView from './DashboardView.svelte';
@@ -37,14 +38,12 @@
 {:else}
   <div class="flex h-screen w-full flex-col bg-gray-50 font-sans">
     <!-- A view window can be dragged by the empty part of its header too, back onto the main window's tabs. -->
-    <header
-      class="flex items-end justify-between gap-4 border-b border-gray-200 bg-white px-4 pt-2"
-      data-tauri-drag-region={windowView ? '' : undefined}
-    >
+    <header class="border-b border-gray-200 bg-white" data-tauri-drag-region={windowView ? '' : undefined}>
       <h1 class="sr-only">{buildInfo.productName}</h1>
-      <ViewTabs movable={!windowView} />
-      <div class="pb-1.5">
+      <!-- The main window keeps the app's views in a row of their own, above the tabs, where they are always in reach. -->
+      <div class="flex items-center gap-4 px-4 pt-2 {windowView ? 'justify-end' : 'justify-between'}">
         {#if windowView}
+          <!-- A view window shows one view, so it has nothing to navigate to. -->
           <button
             type="button"
             title="Puts this view back in the main window's tabs. You can also drag this window onto them."
@@ -54,8 +53,12 @@
             Move to main window
           </button>
         {:else}
+          <PrimaryNav />
           <UserMenu />
         {/if}
+      </div>
+      <div class="flex items-end px-4 pt-1" data-tauri-drag-region={windowView ? '' : undefined}>
+        <ViewTabs movable={!windowView} />
       </div>
     </header>
 

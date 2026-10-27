@@ -138,4 +138,12 @@ describe('the assistant view', () => {
 
     expect(await view.findByRole('alert')).toHaveTextContent('The model service answered 500.');
   });
+
+  it('says that the model on this device answers without reading Redmine', async () => {
+    api.getAssistantSettings.mockResolvedValue({ provider: 'on-device', baseUrl: '', model: '', voice: null });
+    const view = render(AssistantView);
+
+    expect(await view.findByText(/answers without reading your tasks or your time/)).toBeInTheDocument();
+    expect(view.queryByText(/The assistant is not set up yet/)).toBeNull();
+  });
 });

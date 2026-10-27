@@ -1571,6 +1571,7 @@ dependencies = [
  "gtk",
  "keyring-core",
  "serde",
+ "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-credential-vault",

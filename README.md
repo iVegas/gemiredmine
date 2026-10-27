@@ -51,9 +51,9 @@ Android builds are not part of the current release pipeline.
 
 Once you have downloaded and installed **gemiredmine**, follow these steps to get started:
 
-1. **Add Your Redmine Server:** On first start the app welcomes you and asks for your Redmine server. Add more servers, switch between them, sign out or remove them in **Settings**, which you open from the user menu in the top right. The user menu also shows the current server and lets you switch the server context.
+1. **Add Your Redmine Server:** On first start the app welcomes you and asks for your Redmine server. Add more servers, switch between them, sign out or remove them in **Settings**. Every view of the app — Dashboard, Calendar, To-do, Assistant and Settings — is one click away in the navigation bar at the top left; the user menu in the top right shows the current server, lets you switch the server context and opens the About screen.
 2. **Authenticate:** Enter your Redmine login and password. The app will use this to retrieve your API token and never stores your password. The API token is kept in your system's credential store only if **Remember me on this computer** is checked (it is by default). (Alternatively, you can use the KeePass integration).
-3. **Configure Gemini AI:** To utilize the AI features, navigate to the settings and configure your Gemini API integration. This will enable smart time logging, reminders, and context-aware task assistance.
+3. **Configure Gemini AI:** Open **Settings** and look at **AI assistant**. It first says what this computer already offers: a model this device can run itself, a local server such as Ollama, LM Studio or Lemonade that is running, and any API key the computer is already set up with. One click uses what it found. Otherwise choose a service, where a link takes you straight to the page that hands out a key. See [`docs/ai-assistant.md`](./docs/ai-assistant.md).
 4. **Start Working:** You are all set! You can now manage your Redmine tasks, log time with Gemini's assistance, and switch servers as needed.
 
 ## 🏗️ Architecture

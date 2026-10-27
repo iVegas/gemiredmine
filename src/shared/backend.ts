@@ -135,7 +135,8 @@ export interface CredentialOptions {
 }
 
 import type { AgentSettings } from './agents';
-import type { AssistantKeySlot, AssistantSettings } from './assistant';
+import type { AssistantKeySlot, AssistantProvider, AssistantSettings, SystemAiSetup } from './assistant';
+import type { LocalModelServer } from '../bun/assistant/discovery';
 import type { Proposal } from './proposals';
 
 export interface GemiBackend {
@@ -197,4 +198,10 @@ export interface GemiBackend {
   saveAssistantKey(slot: AssistantKeySlot, apiKey: string): Promise<void>;
   /** Removes an API key from the system's credential store. */
   deleteAssistantKey(slot: AssistantKeySlot): Promise<void>;
+  /** The local model servers that answer on this computer, found by asking the usual addresses. Empty when none does. */
+  findLocalModelServers(): Promise<LocalModelServer[]>;
+  /** The model services this computer is already set up for: a key in the environment or in another tool's settings. */
+  findSystemAiSetup(): Promise<SystemAiSetup[]>;
+  /** Opens the page where a service hands out an API key, in the system browser. */
+  openAssistantKeyPage(provider: AssistantProvider): Promise<void>;
 }

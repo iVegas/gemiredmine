@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, fireEvent } from '@testing-library/svelte';
+import { render, fireEvent, within } from '@testing-library/svelte';
 import App from '../App.svelte';
 import { servers, activeServerId } from '../lib/store';
 import { get } from 'svelte/store';
@@ -19,6 +19,9 @@ vi.mock('../lib/api', () => ({
     listTaskLogEntries: vi.fn(),
     getDevPreviewStatus: vi.fn(),
     getAssistantSettings: vi.fn(async () => ({ provider: 'openai-compatible', baseUrl: 'https://api.openai.com/v1', model: '', voice: null })),
+    findLocalModelServers: vi.fn(async () => []),
+    findSystemAiSetup: vi.fn(async () => []),
+    openAssistantKeyPage: vi.fn(async () => {}),
     loadAssistantKey: vi.fn(async () => null),
   },
 }));
@@ -250,7 +253,7 @@ describe('App', () => {
 
     expect(await view.findByRole('tab', { name: 'Dashboard' })).toHaveAttribute('aria-selected', 'true');
     expect(view.getByRole('tabpanel', { name: 'Dashboard' })).toBeVisible();
-    expect(view.getByRole('button', { name: 'Calendar' })).toBeInTheDocument();
+    expect(within(view.getByRole('tabpanel', { name: 'Dashboard' })).getByRole('button', { name: 'Calendar' })).toBeInTheDocument();
     expect(view.queryByRole('heading', { name: 'Welcome to Gemiredmine' })).not.toBeInTheDocument();
   });
 
@@ -275,7 +278,7 @@ describe('App', () => {
     const view = render(App);
 
     expect(view.getByRole('heading', { name: 'Sign in to Dev' })).toBeInTheDocument();
-    expect(view.queryByRole('button', { name: 'Calendar' })).not.toBeInTheDocument();
+    expect(within(view.getByRole('tabpanel', { name: 'Dashboard' })).queryByRole('button', { name: 'Calendar' })).not.toBeInTheDocument();
   });
 
   it('puts server info and context in the user menu rather than the page', async () => {
@@ -295,7 +298,7 @@ describe('App', () => {
     activeServerId.set('1');
     const view = render(App);
 
-    await fireEvent.click(view.getByRole('button', { name: 'Calendar' }));
+    await fireEvent.click(within(view.getByRole('tabpanel', { name: 'Dashboard' })).getByRole('button', { name: 'Calendar' }));
 
     expect(view.getByRole('tab', { name: 'Calendar' })).toHaveAttribute('aria-selected', 'true');
     expect(view.getByRole('group', { name: 'Show on calendar' })).toBeVisible();
@@ -311,7 +314,7 @@ describe('App', () => {
     servers.set([signedIn]);
     activeServerId.set('1');
     const view = render(App);
-    await fireEvent.click(view.getByRole('button', { name: 'Calendar' }));
+    await fireEvent.click(within(view.getByRole('tabpanel', { name: 'Dashboard' })).getByRole('button', { name: 'Calendar' }));
     await fireEvent.click(view.getByRole('button', { name: 'Next month' }));
     const shownMonth = view.getByRole('heading', { level: 2, name: /\d{4}/ }).textContent;
 
@@ -326,10 +329,24 @@ describe('App', () => {
     activeServerId.set('1');
     const view = render(App);
 
-    await fireEvent.click(view.getByRole('button', { name: 'To-do' }));
+    await fireEvent.click(within(view.getByRole('tabpanel', { name: 'Dashboard' })).getByRole('button', { name: 'To-do' }));
 
     expect(view.getByRole('tab', { name: 'To-do' })).toHaveAttribute('aria-selected', 'true');
     expect(await view.findByText('No open tasks are assigned to you.')).toBeVisible();
+  });
+
+  it('opens the views the app is for from the navigation bar, with no menu to find first', async () => {
+    servers.set([signedIn]);
+    activeServerId.set('1');
+    const view = render(App);
+    const nav = within(view.getByRole('navigation', { name: 'Views of the app' }));
+
+    await fireEvent.click(nav.getByRole('button', { name: 'Assistant' }));
+    expect(view.getByRole('tab', { name: 'Assistant' })).toHaveAttribute('aria-selected', 'true');
+
+    await fireEvent.click(nav.getByRole('button', { name: 'Settings' }));
+    expect(view.getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true');
+    expect(view.getByRole('heading', { name: 'Settings' })).toBeVisible();
   });
 
   it('manages servers in the Settings tab', async () => {

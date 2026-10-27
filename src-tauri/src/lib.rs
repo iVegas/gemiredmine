@@ -4,6 +4,7 @@
 //! Keep it that way: anything about Redmine, diagnostics or the UI belongs in `src/`, where the
 //! unit tests and the Android build reach it.
 
+mod ai_setup;
 mod credentials;
 mod mcp;
 mod microphone;
@@ -51,6 +52,14 @@ fn app_environment() -> AppEnvironment {
         os: std::env::consts::OS,
         arch: std::env::consts::ARCH,
     }
+}
+
+/// The model services this computer is already set up for: a key in the environment, or in the configuration of
+/// another tool of the same service. The settings screen offers them instead of asking the user for a key.
+#[tauri::command]
+fn assistant_system_setup(app: tauri::AppHandle) -> Vec<ai_setup::SystemAiSetup> {
+    let home = app.path().home_dir().ok();
+    ai_setup::findings(home.as_deref(), |path| ai_setup::read_small_file(path))
 }
 
 /// The folder that holds a channel's database: the `GEMIREDMINE_DATA_DIR` folder when that is set, otherwise the
@@ -298,6 +307,7 @@ pub fn run() {
         .plugin(tauri_plugin_sql::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             app_environment,
+            assistant_system_setup,
             primary_button_down,
             prepare_storage_dir,
             credential_save,

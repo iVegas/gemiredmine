@@ -1,16 +1,21 @@
 import { AGENT_SETTINGS_KEY, agentSettingsFrom, isAgentPort, type AgentSettings } from '../shared/agents';
 import {
+  ASSISTANT_PROVIDER_INFO,
+  ASSISTANT_PROVIDERS,
   ASSISTANT_SETTINGS_KEY,
   assistantKeyId,
   assistantSettingsFrom,
   assistantSettingsProblem,
   type AssistantKeySlot,
+  type AssistantProvider,
   type AssistantSettings,
+  type SystemAiSetup,
 } from '../shared/assistant';
 import type { Proposal } from '../shared/proposals';
 import type { CredentialOptions, GemiBackend, HistoryNames, LoadedCredentials, ServerAccess } from '../shared/backend';
 import type { BuildInfo } from '../shared/build-info';
 import { buildInfo as generatedBuildInfo, DEV_PREVIEW_AVAILABLE } from '../shared/build-info.generated';
+import { LOCAL_MODEL_CANDIDATES, findLocalModelServers, openAiAddress, type LocalModelServer } from './assistant/discovery';
 import { DevPreview as GeneratedDevPreview } from './dev-preview.generated';
 import { isAllowedIssueUrl } from './diagnostics/feedback';
 import type { DataFs } from './diagnostics/fs';
@@ -67,6 +72,11 @@ export interface BackendPlatform {
   credentials?: CredentialStore;
   /** Opens a link in the system browser */
   openUrl(url: string): Promise<void>;
+  /**
+   * What this computer is already set up for: keys in the environment, or in the configuration of another tool. Only
+   * the desktop shell can look; a platform without this reports nothing found.
+   */
+  systemAiSetup?(): Promise<SystemAiSetup[]>;
   /** Describes the machine and runtime, for feedback reports */
   environment(): Promise<{ platform: string; arch: string; runtime: string }>;
 }
@@ -209,6 +219,17 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
         throw error;
       }
     };
+  }
+
+  /** What this computer is set up for, or nothing where the platform cannot look. A failed look reports nothing. */
+  async function systemAiSetup(): Promise<SystemAiSetup[]> {
+    if (!platform.systemAiSetup) return [];
+    try {
+      return await platform.systemAiSetup();
+    } catch {
+      // Finding nothing is the usual case, so a look that fails is not worth an error on the settings screen.
+      return [];
+    }
   }
 
   /** Runs Redmine calls with the platform's HTTP client, giving up when the server does not answer in time. */
@@ -424,6 +445,25 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
     }),
 
     deleteAssistantKey: traced('deleteAssistantKey', async (slot: AssistantKeySlot) => credentialStore().remove(assistantKeyId(slot))),
+
+    findLocalModelServers: traced('findLocalModelServers', async (): Promise<LocalModelServer[]> => {
+      // The addresses of a local server that the environment already names are asked as well, before the usual ones.
+      const named = (await systemAiSetup())
+        .filter((found) => found.kind === 'address')
+        .map((found) => ({ label: 'The address this computer is set up for', baseUrl: openAiAddress(found.value) }))
+        .filter((candidate) => candidate.baseUrl !== '');
+      return findLocalModelServers(platform.fetch, { candidates: [...named, ...LOCAL_MODEL_CANDIDATES] });
+    }),
+
+    findSystemAiSetup: traced('findSystemAiSetup', systemAiSetup),
+
+    openAssistantKeyPage: traced('openAssistantKeyPage', async (provider: AssistantProvider) => {
+      // The webview names a service, never an address, so no link of its choosing can be opened this way.
+      if (!ASSISTANT_PROVIDERS.includes(provider)) throw new Error(`"${provider}" is not a service this app can use.`);
+      const page = ASSISTANT_PROVIDER_INFO[provider].keyPage;
+      if (!page) throw new Error('That service hands out no API key.');
+      await platform.openUrl(page);
+    }),
 
     setBiometricUnlock: traced('setBiometricUnlock', async (enabled) => {
       const store = credentialStore();
