@@ -26,6 +26,8 @@ const portable = [
   ...sourcesIn(join(root, 'storage')),
   // The window manager runs in the main window's webview.
   ...sourcesIn(join(root, 'windows')),
+  // The endpoint for AI agents: its messages are answered from the app's own data, without a platform.
+  ...sourcesIn(join(root, 'mcp')),
 ];
 
 const withoutComments = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '$1');

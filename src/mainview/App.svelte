@@ -12,6 +12,7 @@
   import RecordPanel from './RecordPanel.svelte';
   import StorageNotice from './StorageNotice.svelte';
   import { credentialProblem, credentialsRestoring } from './lib/credentials';
+  import { restoreAgentEndpoint } from './lib/mcp-host';
   import { serversRestored, startPersistence, storageProblem } from './lib/persistence';
   import { servers, activeServer } from './lib/store';
   import { activeView, closeView, isDetailView, needsServer, openViews, viewPanelId, viewTabId } from './lib/views';
@@ -23,6 +24,8 @@
   onDestroy(windowView ? startViewWindow(windowView) : startMainWindow());
   // The servers of an earlier run are loaded by the main window only; a view window gets them from it.
   onDestroy(windowView ? () => {} : startPersistence());
+  // The endpoint for AI agents runs from the main window, and only when the user turned it on in the settings.
+  if (!windowView) void restoreAgentEndpoint();
 </script>
 
 {#if (windowView && !$sessionReady) || (!windowView && !$serversRestored)}

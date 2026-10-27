@@ -1,4 +1,5 @@
 import type { SavedServer, SavedServers } from '../../shared/backend';
+import { PROPOSAL_STATUSES, type Proposal, type ProposalStatus, type ProposedChange } from '../../shared/proposals';
 import type { SqlDatabase, SqlRow, SqlValue } from './database';
 import { migrate } from './migrations';
 
@@ -16,9 +17,46 @@ export interface AppStorage {
   getSetting<T = unknown>(key: string): Promise<T | undefined>;
   /** Saves a setting as JSON, replacing the value it had. */
   setSetting(key: string, value: unknown): Promise<void>;
+  /** The changes agents proposed, the newest first. Every one that waits is here; of the decided ones, the latest are. */
+  listProposals(): Promise<Proposal[]>;
+  /** Keeps a proposed change, or its new status, replacing the one it had. */
+  saveProposal(proposal: Proposal): Promise<void>;
 }
 
+/** How many decided changes are kept. Those still waiting are always kept. */
+export const KEPT_DECIDED_PROPOSALS = 200;
+
+
 const text = (value: SqlValue | undefined) => (typeof value === 'string' ? value : '');
+
+/** A stored change, if it is one the app can read. A row that is not is skipped rather than shown wrongly. */
+function changeFrom(value: unknown): ProposedChange | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const change = value as Record<string, unknown>;
+  if ((change.kind !== 'log_time' && change.kind !== 'update_task') || typeof change.taskId !== 'number') return null;
+  return change as unknown as ProposedChange;
+}
+
+function proposalFrom(row: SqlRow): Proposal | null {
+  let change: ProposedChange | null;
+  try {
+    change = changeFrom(JSON.parse(text(row.change_json)));
+  } catch {
+    return null;
+  }
+  const status = PROPOSAL_STATUSES.find((candidate) => candidate === row.status);
+  if (!change || !status) return null;
+  return {
+    id: text(row.id),
+    serverId: text(row.server_id),
+    serverName: text(row.server_name),
+    change,
+    summary: text(row.summary),
+    status: status as ProposalStatus,
+    outcome: typeof row.outcome === 'string' ? row.outcome : null,
+    createdAt: text(row.created_at),
+  };
+}
 
 function serverFrom(row: SqlRow): SavedServer {
   // Anything but an explicit 0 means remembered, which is the default.
@@ -115,5 +153,44 @@ export async function openAppStorage(db: SqlDatabase): Promise<AppStorage> {
     getSetting: (key) => inOrder(() => getSettingNow(key)),
 
     setSetting: (key, value) => inOrder(() => setSettingNow(key, value)),
+
+    listProposals: () =>
+      inOrder(async () => {
+        const rows = await db.select('SELECT * FROM proposals ORDER BY created_at DESC, id DESC');
+        return rows.map(proposalFrom).filter((proposal): proposal is Proposal => proposal !== null);
+      }),
+
+    saveProposal: (proposal) =>
+      inOrder(async () => {
+        if (typeof proposal.id !== 'string' || proposal.id === '' || proposal.id.length > 64) {
+          throw new Error('A proposed change has an id of 1 to 64 characters.');
+        }
+        if (!PROPOSAL_STATUSES.includes(proposal.status)) throw new Error(`There is no status ${proposal.status}.`);
+        // Only these columns are written, whatever else the object carries.
+        await db.execute(
+          `INSERT INTO proposals (id, server_id, server_name, change_json, summary, status, outcome, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+             server_id = excluded.server_id, server_name = excluded.server_name, change_json = excluded.change_json,
+             summary = excluded.summary, status = excluded.status, outcome = excluded.outcome`,
+          [
+            proposal.id,
+            proposal.serverId,
+            proposal.serverName,
+            JSON.stringify(proposal.change),
+            proposal.summary,
+            proposal.status,
+            proposal.outcome,
+            proposal.createdAt,
+          ]
+        );
+        // Decided changes beyond the latest few are forgotten; the ones still waiting are never removed.
+        await db.execute(
+          `DELETE FROM proposals WHERE status IN ('done', 'failed', 'rejected') AND id NOT IN (
+             SELECT id FROM proposals WHERE status IN ('done', 'failed', 'rejected')
+             ORDER BY created_at DESC, id DESC LIMIT ?)`,
+          [KEPT_DECIDED_PROPOSALS]
+        );
+      }),
   };
 }
