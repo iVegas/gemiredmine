@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CHANNELS, deriveBuildInfo } from '../channels.mjs';
 import { androidBuildFeatures, tauriAndroidConfig, tauriBuildArgs, tauriChannelConfig } from '../tauri-config.mjs';
+import { bundlePackaging, PUBLISHER } from '../packaging.mjs';
 
 const ROOT = resolve(fileURLToPath(import.meta.url), '../../../..');
 const TAURI_DIR = join(ROOT, 'src-tauri');
@@ -73,9 +74,10 @@ describe.each(Object.entries(CHANNELS))('tauriChannelConfig for %s', (channel, c
 });
 
 describe('the base config', () => {
-  it('is the dev channel, apart from the version that Tauri reads from package.json', () => {
-    const merged = mergePatch(baseConfig, tauriChannelConfig(infoFor('dev')));
-    expect(merged).toEqual({ ...baseConfig, version: infoFor('dev').version });
+  it('is the dev channel, apart from the version and the packaging facts that Tauri reads from package.json and packaging.mjs', () => {
+    const info = infoFor('dev');
+    const merged = mergePatch(baseConfig, tauriChannelConfig(info));
+    expect(merged).toEqual({ ...baseConfig, version: info.version, bundle: { ...baseConfig.bundle, ...bundlePackaging(info) } });
     expect(baseConfig.version).toBe('../package.json');
   });
 

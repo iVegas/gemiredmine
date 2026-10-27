@@ -603,6 +603,21 @@ keeps the wrapped key out of Android backups (a restored copy cannot be opened, 
 
 Verified here: `npm test` (68 files, 935 tests) and `npm run typecheck`.
 
+**Flatpak: the software centre shows the version (2026-10-27).** The Flatpak had no AppStream file, so GNOME Software showed
+the branch name (`master`) as the version, and no developer or licence. `scripts/release/flatpak-metainfo.mjs` writes
+`com.github.iVegas.<Channel>.metainfo.xml` with the build's version and date, the developer, the app licence (ISC, from
+`package.json`) and the description. The manifest installs it under `/app/share/metainfo`. The branch name is unchanged, so
+installs keep updating. A remote shows the new file once its AppStream index is regenerated (`flatpak build-update-repo`);
+an installed app shows it after a reinstall. Not checked on a host yet.
+
+**Packaging facts in one place (2026-10-27).** `scripts/release/packaging.mjs` holds the developer's name and id, the one-line
+and long descriptions, the category and the licence of the descriptions. Each platform reads them: the Flatpak's AppStream
+file, the Windows package (`PublisherDisplayName`, which was `Gemiredmine`, is now the developer's name), the Windows
+executable's properties (Tauri takes `CompanyName` and `LegalCopyright` from the bundle settings, which were missing, so the
+executable said `gemiredmine` as its company), and the Tauri bundle settings of every channel. The Windows signing identity
+(`CN=Gemiredmine`) is not changed: it is what upgrades are matched on. Android's package carries only its name, version and
+icon; the developer and copyright have no place in an APK's install screen, so the Android overlay carries them without showing them.
+
 **AI agents: the MCP endpoint (2026-10-26).** The desktop app runs a local endpoint that AI agents connect to, over MCP
 (Streamable HTTP, bearer token). The Rust side (`src-tauri/src/mcp.rs`) listens on 127.0.0.1 only, checks the Host, the
 Origin and the token before it reads a body, and passes each request to the main window as an `mcp-request` event. The

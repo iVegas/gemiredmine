@@ -7,8 +7,14 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deriveBuildInfo } from './channels.mjs';
+import { metainfoXml } from './flatpak-metainfo.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+
+/** The licence of the app's code, as package.json names it. */
+export function packageLicense() {
+  return JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).license;
+}
 
 /** Rust is not in the Flathub runtimes, so the manifest installs the release that rust-toolchain.toml pins. */
 export const RUST = Object.freeze({
@@ -58,7 +64,7 @@ export const FINISH_ARGS = Object.freeze([
   '--talk-name=org.freedesktop.secrets', // the sign-in is kept in the system keyring
 ]);
 
-export function flatpakManifest(info, { env = process.env } = {}) {
+export function flatpakManifest(info, { env = process.env, projectLicense = packageLicense() } = {}) {
   const appId = flatpakAppId(info);
   const appName = info.appName;
   const desktop = [
@@ -73,6 +79,8 @@ export function flatpakManifest(info, { env = process.env } = {}) {
     'Categories=Development;',
     '',
   ].join('\n');
+  // The software centres show the version, developer and licence from this file (flatpak-metainfo.mjs).
+  const metainfo = metainfoXml(info, { appId, projectLicense });
 
   return {
     'app-id': appId,
@@ -115,6 +123,7 @@ export function flatpakManifest(info, { env = process.env } = {}) {
           `install -Dm755 src-tauri/target/release/${appName} /app/bin/${appName}`,
           `install -Dm644 assets/icons/${info.channel}.png /app/share/icons/hicolor/512x512/apps/${appId}.png`,
           `install -Dm644 ${appId}.desktop /app/share/applications/${appId}.desktop`,
+          `install -Dm644 ${appId}.metainfo.xml /app/share/metainfo/${appId}.metainfo.xml`,
         ],
         sources: [
           { type: 'dir', path: 'src' },
@@ -122,6 +131,7 @@ export function flatpakManifest(info, { env = process.env } = {}) {
           'cargo-sources.json',
           'node-sources.json',
           { type: 'inline', contents: desktop, 'dest-filename': `${appId}.desktop` },
+          { type: 'inline', contents: metainfo, 'dest-filename': `${appId}.metainfo.xml` },
         ],
       },
     ],

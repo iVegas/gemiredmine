@@ -8,6 +8,7 @@
 // every channel shares from the base file. Arrays are replaced whole, so `windows` is complete.
 
 import { androidVersionCode } from './channels.mjs';
+import { bundlePackaging } from './packaging.mjs';
 
 /**
  * The size of the main window, as before the move to Tauri. The app takes no files dropped on it, and Tauri's
@@ -37,6 +38,8 @@ export function tauriChannelConfig(info) {
     },
     bundle: {
       icon: [`../assets/icons/${info.channel}.png`, `../assets/icons/${info.channel}.ico`],
+      // Who makes the app, and what it is, for the executable's properties and the bundles (packaging.mjs).
+      ...bundlePackaging(info),
     },
   };
 }
