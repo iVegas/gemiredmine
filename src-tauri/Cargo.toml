@@ -63,6 +63,8 @@ tauri-plugin-single-instance = "~2.5.4"
 [target.'cfg(target_os = "linux")'.dependencies]
 gdk = "0.18"
 gtk = "0.18"
+# The microphone permission of the main window (src/microphone.rs). The version is the one wry's webview uses.
+webkit2gtk = "2.0"
 # The Secret Service (GNOME Keyring, KDE Wallet), through D-Bus, in Rust only: no library to install.
 zbus-secret-service-keyring-store = { version = "~1.0.1", features = ["crypto-rust"] }
 

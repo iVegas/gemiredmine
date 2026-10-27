@@ -61,6 +61,7 @@ export const FINISH_ARGS = Object.freeze([
   '--share=ipc',
   '--socket=wayland',
   '--device=dri', // GPU rendering in WebKitGTK
+  '--socket=pulseaudio', // the microphone of the assistant's voice input (PipeWire serves this socket too)
   '--talk-name=org.freedesktop.secrets', // the sign-in is kept in the system keyring
 ]);
 
