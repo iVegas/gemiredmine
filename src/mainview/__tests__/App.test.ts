@@ -18,6 +18,8 @@ vi.mock('../lib/api', () => ({
     getTask: vi.fn(),
     listTaskLogEntries: vi.fn(),
     getDevPreviewStatus: vi.fn(),
+    getAssistantSettings: vi.fn(async () => ({ provider: 'openai-compatible', baseUrl: 'https://api.openai.com/v1', model: '', voice: null })),
+    loadAssistantKey: vi.fn(async () => null),
   },
 }));
 

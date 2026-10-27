@@ -390,6 +390,30 @@ prove only that the app starts.
 - The windows of the window layer after this change were not driven: a view window never reads or writes a credential, but a 401 seen there signs the
   server out through the shared session, which the unit tests cover and the real app did not.
 
+### AI assistant (2026-10-27)
+
+- The Assistant view is a chat with a model: Anthropic, Google Gemini, or any OpenAI-compatible server (OpenAI, Lemonade,
+  Ollama, LM Studio). The user names the model and, for a local server, its address. The guide is `docs/ai-assistant.md`.
+- The model calls the MCP endpoint's tools (`src/bun/mcp/tools.ts`), so it reads Redmine the way an agent does. Its
+  time entries and task changes are proposals, and they wait in the approval notice like any other: nothing is written
+  without an approval.
+- The request and reply formats of the three services are in `src/bun/assistant/providers.ts`, the loop that runs tool
+  calls in `chat.ts` (at most eight model replies per question), and the voice requests in `voice.ts`. They are portable
+  and their tests need no network.
+- A voice model is optional and attached in Settings. Speech goes to its speech-to-text model; replies are read aloud
+  only with a text-to-speech model. Each of the chat and the voice has its own key in the credential store
+  (`assistant-chat`, `assistant-voice`).
+- The approval notice is shown in every view of the main window now, not only in Settings. The calendars and the to-do list
+  reload after a write made in the same window, so an approved change shows at once.
+
+Verified here: the unit tests (the formats of the three services, the tool loop, a refused key, a proposal that never reaches
+Redmine directly, the voice requests, the settings rules, the view and the settings form) and the typecheck. Not verified: a
+live model or voice server, the microphone in the desktop app on Linux, Windows and Android, and the multipart upload of the
+recording through the Tauri HTTP plugin. Those need a run in the app with a real service.
+
+Not done: streaming replies; a calendar in a separate window reloads only after a write in its own window; desktop
+notifications for a waiting approval (the notice is in the app); Web Speech as a voice fallback without an attached model.
+
 ## How it was verified
 
 - All suites pass with the default channel and with `CHANNEL=stable`; `tsc` and the webview build are clean. This was

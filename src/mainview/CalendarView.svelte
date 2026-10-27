@@ -2,6 +2,7 @@
   import type { ServerConnection } from './lib/store';
   import type { RedmineIssue, RedmineTimeEntry } from '../bun/redmine/types';
   import { redmineApi } from './lib/api';
+  import { redmineChanges } from './lib/data-changes';
   import {
     WEEKDAY_LABELS,
     buildMonthGrid,
@@ -30,7 +31,8 @@
   // Each load gets a number so responses for a month the user already left are ignored.
   let latestRequest = 0;
 
-  $: loadMonth(server.url, server.apiToken, year, month);
+  // Reloads after a write in this window, see CalendarPreview.svelte.
+  $: void $redmineChanges, loadMonth(server.url, server.apiToken, year, month);
 
   async function loadMonth(baseUrl: string, apiKey: string | undefined, year: number, month: number) {
     if (!apiKey) return;

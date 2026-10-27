@@ -2,6 +2,7 @@
   import type { ServerConnection } from './lib/store';
   import type { RedmineIssue } from '../bun/redmine/types';
   import { redmineApi } from './lib/api';
+  import { redmineChanges } from './lib/data-changes';
   import { formatDueDate, groupTasksByPriority, isOverdue } from './lib/todo';
   import { openTask } from './lib/views';
 
@@ -13,7 +14,8 @@
   // Responses for a server the user already switched away from are ignored.
   let latestRequest = 0;
 
-  $: load(server.url, server.apiToken);
+  // Reloads after a write in this window, such as an approved task change (see CalendarPreview.svelte).
+  $: void $redmineChanges, load(server.url, server.apiToken);
 
   async function load(baseUrl: string, apiKey: string | undefined) {
     if (!apiKey) return;

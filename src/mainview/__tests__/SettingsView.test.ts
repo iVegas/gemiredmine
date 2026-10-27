@@ -40,6 +40,11 @@ vi.mock('../lib/api', () => ({
     setBiometricUnlock: vi.fn(async () => {}),
     getAgentSettings: vi.fn(async () => ({ enabled: false, port: 47831 })),
     saveAgentSettings: vi.fn(async () => {}),
+    getAssistantSettings: vi.fn(async () => ({ provider: 'openai-compatible', baseUrl: 'https://api.openai.com/v1', model: '', voice: null })),
+    saveAssistantSettings: vi.fn(async () => {}),
+    loadAssistantKey: vi.fn(async () => null),
+    saveAssistantKey: vi.fn(async () => {}),
+    deleteAssistantKey: vi.fn(async () => {}),
   },
 }));
 

@@ -3,6 +3,7 @@
   import type { ServerConnection } from '../lib/store';
   import type { RedmineIssue, RedmineTimeEntry } from '../../bun/redmine/types';
   import { redmineApi } from '../lib/api';
+  import { redmineChanges } from '../lib/data-changes';
   import { openView } from '../lib/views';
   import {
     WEEKDAY_LABELS,
@@ -29,7 +30,8 @@
   // Responses for a server the user already switched away from are ignored.
   let latestRequest = 0;
 
-  $: load(server.url, server.apiToken);
+  // The write count is read so that an entry or task changed in this window shows here at once, including an approval.
+  $: void $redmineChanges, load(server.url, server.apiToken);
 
   async function load(baseUrl: string, apiKey: string | undefined) {
     if (!apiKey) return;

@@ -1,4 +1,12 @@
 import { AGENT_SETTINGS_KEY, agentSettingsFrom, isAgentPort, type AgentSettings } from '../shared/agents';
+import {
+  ASSISTANT_SETTINGS_KEY,
+  assistantKeyId,
+  assistantSettingsFrom,
+  assistantSettingsProblem,
+  type AssistantKeySlot,
+  type AssistantSettings,
+} from '../shared/assistant';
 import type { Proposal } from '../shared/proposals';
 import type { CredentialOptions, GemiBackend, HistoryNames, LoadedCredentials, ServerAccess } from '../shared/backend';
 import type { BuildInfo } from '../shared/build-info';
@@ -396,6 +404,26 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
       if (!isAgentPort(settings.port)) throw new Error('The port must be a whole number from 1024 to 65535.');
       await (await appStorage()).setSetting(AGENT_SETTINGS_KEY, { enabled: settings.enabled === true, port: settings.port });
     }),
+
+    getAssistantSettings: traced('getAssistantSettings', async (): Promise<AssistantSettings> =>
+      assistantSettingsFrom(await (await appStorage()).getSetting(ASSISTANT_SETTINGS_KEY))
+    ),
+
+    saveAssistantSettings: traced('saveAssistantSettings', async (settings) => {
+      const problem = assistantSettingsProblem(settings);
+      if (problem) throw new Error(problem);
+      await (await appStorage()).setSetting(ASSISTANT_SETTINGS_KEY, assistantSettingsFrom(settings));
+    }),
+
+    loadAssistantKey: traced('loadAssistantKey', async (slot: AssistantKeySlot) => credentialStore().get(assistantKeyId(slot))),
+
+    saveAssistantKey: traced('saveAssistantKey', async (slot: AssistantKeySlot, apiKey: string) => {
+      const key = apiKey.trim();
+      if (!key) throw new Error('The API key is empty.');
+      await credentialStore().set(assistantKeyId(slot), key);
+    }),
+
+    deleteAssistantKey: traced('deleteAssistantKey', async (slot: AssistantKeySlot) => credentialStore().remove(assistantKeyId(slot))),
 
     setBiometricUnlock: traced('setBiometricUnlock', async (enabled) => {
       const store = credentialStore();

@@ -95,6 +95,13 @@
         <button
           type="button"
           class="rounded-md px-3 py-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          on:click={() => show('assistant')}
+        >
+          Assistant
+        </button>
+        <button
+          type="button"
+          class="rounded-md px-3 py-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           on:click={() => show('about')}
         >
           About

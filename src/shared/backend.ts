@@ -135,6 +135,7 @@ export interface CredentialOptions {
 }
 
 import type { AgentSettings } from './agents';
+import type { AssistantKeySlot, AssistantSettings } from './assistant';
 import type { Proposal } from './proposals';
 
 export interface GemiBackend {
@@ -186,4 +187,14 @@ export interface GemiBackend {
   saveAgentProposal(proposal: Proposal): Promise<void>;
   /** Keeps the settings of the endpoint. Rejects with a sentence the user can read when the port cannot be used. */
   saveAgentSettings(settings: AgentSettings): Promise<void>;
+  /** The settings of the AI assistant, without its API keys. */
+  getAssistantSettings(): Promise<AssistantSettings>;
+  /** Keeps the settings of the AI assistant. Rejects with a sentence the user can read when they cannot be used. */
+  saveAssistantSettings(settings: AssistantSettings): Promise<void>;
+  /** The API key of the chat model or of the voice model, from the system's credential store, or null when there is none. */
+  loadAssistantKey(slot: AssistantKeySlot): Promise<string | null>;
+  /** Keeps an API key in the system's credential store. Rejects when the store cannot be used. */
+  saveAssistantKey(slot: AssistantKeySlot, apiKey: string): Promise<void>;
+  /** Removes an API key from the system's credential store. */
+  deleteAssistantKey(slot: AssistantKeySlot): Promise<void>;
 }

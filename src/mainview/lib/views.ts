@@ -1,7 +1,7 @@
 import { writable, get } from 'svelte/store';
 
 /** The views that exist once. */
-export type StaticViewId = 'dashboard' | 'calendar' | 'todo' | 'settings' | 'about';
+export type StaticViewId = 'dashboard' | 'calendar' | 'todo' | 'assistant' | 'settings' | 'about';
 
 /**
  * A view of one task or one log entry of one server: `task:<server id>:<number>` or `log:<server id>:<number>`. The
@@ -17,6 +17,7 @@ export const VIEW_TITLES: Record<StaticViewId, string> = {
   dashboard: 'Dashboard',
   calendar: 'Calendar',
   todo: 'To-do',
+  assistant: 'Assistant',
   settings: 'Settings',
   about: 'About',
 };

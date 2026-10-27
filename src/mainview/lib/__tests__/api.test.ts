@@ -28,6 +28,11 @@ const fake = vi.hoisted(() => {
     'saveAgentSettings',
     'listAgentProposals',
     'saveAgentProposal',
+    'getAssistantSettings',
+    'saveAssistantSettings',
+    'loadAssistantKey',
+    'saveAssistantKey',
+    'deleteAssistantKey',
   ] as const;
   return {
     methods,
@@ -118,6 +123,11 @@ describe('in the desktop app', () => {
       setBiometricUnlock: [true],
       getAgentSettings: [],
       saveAgentSettings: [{ enabled: true, port: 47831 }],
+      getAssistantSettings: [],
+      saveAssistantSettings: [{ provider: 'anthropic', baseUrl: 'https://api.anthropic.com/v1', model: 'm', voice: null }],
+      loadAssistantKey: ['chat'],
+      saveAssistantKey: ['voice', 'key'],
+      deleteAssistantKey: ['chat'],
       listAgentProposals: [],
       saveAgentProposal: [
         {

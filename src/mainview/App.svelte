@@ -7,9 +7,11 @@
   import DashboardView from './DashboardView.svelte';
   import CalendarView from './CalendarView.svelte';
   import TodoView from './TodoView.svelte';
+  import AssistantView from './AssistantView.svelte';
   import SettingsView from './SettingsView.svelte';
   import AboutView from './AboutView.svelte';
   import RecordPanel from './RecordPanel.svelte';
+  import ApprovalNotice from './ApprovalNotice.svelte';
   import StorageNotice from './StorageNotice.svelte';
   import { credentialProblem, credentialsRestoring } from './lib/credentials';
   import { restoreAgentEndpoint } from './lib/mcp-host';
@@ -62,6 +64,11 @@
       <div class="space-y-2 border-b border-gray-200 bg-white px-4 py-2"><StorageNotice /></div>
     {/if}
 
+    <!-- A change an agent proposed waits for the user on every tab, so approving it does not need a trip to Settings. -->
+    {#if !windowView}
+      <ApprovalNotice />
+    {/if}
+
     <main class="flex-1 overflow-auto">
       <!-- Open tabs stay mounted, so a view keeps its state (such as the calendar month) while hidden. -->
       {#each $openViews as view (view)}
@@ -96,6 +103,8 @@
             <CalendarView server={$activeServer} />
           {:else if view === 'todo' && $activeServer}
             <TodoView server={$activeServer} />
+          {:else if view === 'assistant'}
+            <AssistantView />
           {:else if view === 'settings'}
             <SettingsView />
           {:else if view === 'about'}
