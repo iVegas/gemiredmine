@@ -60,7 +60,7 @@ exports[`canary channel > names and describes the Windows package and its feed 1
 
   <Properties>
     <DisplayName>Gemiredmine Canary</DisplayName>
-    <PublisherDisplayName>Gemiredmine</PublisherDisplayName>
+    <PublisherDisplayName>iVegas</PublisherDisplayName>
     <Description>Redmine client, Canary channel</Description>
     <Logo>Assets\\StoreLogo.png</Logo>
   </Properties>
@@ -163,7 +163,7 @@ exports[`dev channel > names and describes the Windows package and its feed 1`] 
 
   <Properties>
     <DisplayName>Gemiredmine Dev</DisplayName>
-    <PublisherDisplayName>Gemiredmine</PublisherDisplayName>
+    <PublisherDisplayName>iVegas</PublisherDisplayName>
     <Description>Redmine client, Dev channel</Description>
     <Logo>Assets\\StoreLogo.png</Logo>
   </Properties>
@@ -276,7 +276,7 @@ exports[`stable channel > names and describes the Windows package and its feed 1
 
   <Properties>
     <DisplayName>Gemiredmine</DisplayName>
-    <PublisherDisplayName>Gemiredmine</PublisherDisplayName>
+    <PublisherDisplayName>iVegas</PublisherDisplayName>
     <Description>Redmine client, Stable channel</Description>
     <Logo>Assets\\StoreLogo.png</Logo>
   </Properties>
@@ -387,7 +387,7 @@ exports[`unstable channel > names and describes the Windows package and its feed
 
   <Properties>
     <DisplayName>Gemiredmine Unstable</DisplayName>
-    <PublisherDisplayName>Gemiredmine</PublisherDisplayName>
+    <PublisherDisplayName>iVegas</PublisherDisplayName>
     <Description>Redmine client, Unstable channel</Description>
     <Logo>Assets\\StoreLogo.png</Logo>
   </Properties>

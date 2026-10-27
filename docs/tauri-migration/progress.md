@@ -610,6 +610,14 @@ the branch name (`master`) as the version, and no developer or licence. `scripts
 installs keep updating. A remote shows the new file once its AppStream index is regenerated (`flatpak build-update-repo`);
 an installed app shows it after a reinstall. Not checked on a host yet.
 
+**Packaging facts in one place (2026-10-27).** `scripts/release/packaging.mjs` holds the developer's name and id, the one-line
+and long descriptions, the category and the licence of the descriptions. Each platform reads them: the Flatpak's AppStream
+file, the Windows package (`PublisherDisplayName`, which was `Gemiredmine`, is now the developer's name), the Windows
+executable's properties (Tauri takes `CompanyName` and `LegalCopyright` from the bundle settings, which were missing, so the
+executable said `gemiredmine` as its company), and the Tauri bundle settings of every channel. The Windows signing identity
+(`CN=Gemiredmine`) is not changed: it is what upgrades are matched on. Android's package carries only its name, version and
+icon; the developer and copyright have no place in an APK's install screen, so the Android overlay carries them without showing them.
+
 ## Recipes
 
 ### Run the mock Redmine
