@@ -24,9 +24,10 @@ export const VIEW_TITLES: Record<StaticViewId, string> = {
 
 /**
  * The views the app is for, in the order the navigation bar shows them. Everything a user comes here to do is one click
- * away: nothing of this is hidden in a menu. "About" is not here; it belongs with the account, in the user menu.
+ * away: nothing of this is hidden in a menu. "About" is not here; it belongs with the account, in the user menu. The
+ * assistant is not here either: it floats over every view instead (components/AssistantDock.svelte).
  */
-export const PRIMARY_VIEWS: readonly StaticViewId[] = ['dashboard', 'calendar', 'todo', 'assistant', 'settings'];
+export const PRIMARY_VIEWS: readonly StaticViewId[] = ['dashboard', 'calendar', 'todo', 'settings'];
 
 const DETAIL_VIEW = /^(task|log):([A-Za-z0-9_-]{1,64}):([1-9]\d{0,14})$/;
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { microphoneProblem, startRecording } from '../recorder';
+import { NO_RECORDER, RecordingUnsupportedError, microphoneProblem, startRecording } from '../recorder';
 
 /** The browser's microphone and recorder, as far as the recorder uses them. */
 function stubMicrophone(getUserMedia: () => Promise<unknown>) {
@@ -53,5 +53,36 @@ describe('starting a recording', () => {
     vi.stubGlobal('MediaRecorder', undefined);
 
     await expect(startRecording()).rejects.toThrow('This window cannot record sound');
+  });
+});
+
+describe('a window whose recorder is only a name', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('says voice input is not available, and releases the microphone it had opened', async () => {
+    const track = { stop: vi.fn() };
+    stubMicrophone(async () => ({ getTracks: () => [track] }));
+    // WebKitGTK has the class but throws when one is made.
+    vi.stubGlobal(
+      'MediaRecorder',
+      class {
+        constructor() {
+          throw new TypeError('The MediaRecorder is unsupported on this platform');
+        }
+      }
+    );
+
+    await expect(startRecording()).rejects.toThrow(NO_RECORDER);
+    await expect(startRecording()).rejects.toBeInstanceOf(RecordingUnsupportedError);
+    expect(track.stop).toHaveBeenCalledTimes(2);
+  });
+
+  it('says the same where there is no recorder at all', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', { value: { getUserMedia: vi.fn() }, configurable: true });
+    vi.stubGlobal('MediaRecorder', undefined);
+
+    await expect(startRecording()).rejects.toBeInstanceOf(RecordingUnsupportedError);
   });
 });

@@ -5,11 +5,17 @@ import AssistantView from '../AssistantView.svelte';
 import { redmineApi } from '../lib/api';
 import { askAssistant, assistantError, asking, conversation, readAloud } from '../lib/assistant';
 import { openViews, activeView, resetViews } from '../lib/views';
+import { RecordingUnsupportedError, startRecording } from '../lib/recorder';
 import type { AssistantSettings } from '../../shared/assistant';
 
 vi.mock('../lib/api', () => ({
   redmineApi: { getAssistantSettings: vi.fn() },
 }));
+
+vi.mock('../lib/recorder', async () => {
+  const actual = await vi.importActual<typeof import('../lib/recorder')>('../lib/recorder');
+  return { ...actual, startRecording: vi.fn() };
+});
 
 vi.mock('../lib/assistant', async () => {
   const { writable } = await import('svelte/store');
@@ -145,5 +151,18 @@ describe('the assistant view', () => {
 
     expect(await view.findByText(/answers without reading your tasks or your time/)).toBeInTheDocument();
     expect(view.queryByText(/The assistant is not set up yet/)).toBeNull();
+  });
+
+  it('stops offering to speak in a window whose recorder is only a name, and says so once', async () => {
+    api.getAssistantSettings.mockResolvedValue(withVoice);
+    vi.mocked(startRecording).mockRejectedValue(new RecordingUnsupportedError());
+    const view = render(AssistantView);
+
+    await fireEvent.click(await view.findByRole('button', { name: 'Speak' }));
+
+    expect(view.getByRole('alert')).toHaveTextContent('This window cannot record sound');
+    expect(view.queryByRole('button', { name: 'Speak' })).toBeNull();
+    // The replies can still be read aloud: that needs no microphone.
+    expect(view.getByRole('checkbox', { name: 'Read replies aloud' })).toBeInTheDocument();
   });
 });

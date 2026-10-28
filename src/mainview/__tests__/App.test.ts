@@ -341,12 +341,33 @@ describe('App', () => {
     const view = render(App);
     const nav = within(view.getByRole('navigation', { name: 'Views of the app' }));
 
-    await fireEvent.click(nav.getByRole('button', { name: 'Assistant' }));
-    expect(view.getByRole('tab', { name: 'Assistant' })).toHaveAttribute('aria-selected', 'true');
+    await fireEvent.click(nav.getByRole('button', { name: 'To-do' }));
+    expect(view.getByRole('tab', { name: 'To-do' })).toHaveAttribute('aria-selected', 'true');
 
     await fireEvent.click(nav.getByRole('button', { name: 'Settings' }));
     expect(view.getByRole('tab', { name: 'Settings' })).toHaveAttribute('aria-selected', 'true');
     expect(view.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  });
+
+  it('keeps the assistant in reach of every view as a floating button, and out of its own settings', async () => {
+    servers.set([signedIn]);
+    activeServerId.set('1');
+    const view = render(App);
+    const nav = within(view.getByRole('navigation', { name: 'Views of the app' }));
+
+    // On the dashboard the button is there, and it opens the chat over the view rather than in a tab of its own.
+    await fireEvent.click(view.getByRole('button', { name: /^Open the assistant/ }));
+    expect(view.getByRole('dialog', { name: 'Assistant' })).toBeInTheDocument();
+    expect(view.queryByRole('tab', { name: 'Assistant' })).not.toBeInTheDocument();
+
+    // Settings is where the assistant is set up, so it does not float over the form there.
+    await fireEvent.click(nav.getByRole('button', { name: 'Settings' }));
+    expect(view.queryByRole('dialog', { name: 'Assistant' })).not.toBeInTheDocument();
+    expect(view.queryByRole('button', { name: /^Open the assistant/ })).not.toBeInTheDocument();
+
+    // Back on a view of its own data, the panel is where it was left.
+    await fireEvent.click(nav.getByRole('button', { name: 'Dashboard' }));
+    expect(view.getByRole('dialog', { name: 'Assistant' })).toBeInTheDocument();
   });
 
   it('manages servers in the Settings tab', async () => {
