@@ -3,7 +3,20 @@
 The Assistant view is a chat with a model of your choice. It answers from your Redmine servers, your assigned tasks and
 your time, and it calls the same tools as the [MCP endpoint](ai-agents.md). It needs no endpoint to be turned on.
 
-Open it from **Assistant** in the navigation bar at the top of the window, and set it up in **Settings → AI assistant**.
+## Where it is
+
+The assistant follows you: a round button sits in the bottom right corner of every view, and it opens a chat panel that
+floats over the view you are working in, so a question about the task in front of you needs no trip to another screen.
+
+- **Roll it up** with the − in its title bar, or with Escape. The panel becomes its own title bar at the bottom of the
+  window; the conversation and the question you were typing stay as they are.
+- **Close it** with the ✕. The button comes back, and it carries a badge when an answer arrived while you were away.
+- **Open it in a tab** with the ↗, for a long conversation at full width. The tab and the panel are the same
+  conversation, so nothing is repeated or lost on the way.
+- The button is not shown in **Settings**, where the assistant is set up and the panel would cover the form, nor over
+  the Assistant tab, which is the same conversation already.
+
+Set the assistant up in **Settings → AI assistant**.
 
 ## What this computer offers
 
@@ -70,7 +83,8 @@ Voice needs a voice model that you attach in the same settings section. It is an
 speech into text and, if it has one, text into speech. OpenAI and local servers such as Lemonade or whisper.cpp both work.
 
 - **Speak** records from the microphone. When you stop, the words go into the message box, so you can check them before
-  you send.
+  you send. A window whose webview has no recorder, such as WebKitGTK on some Linux systems, says so once and then
+  offers no Speak button; replies can still be read aloud there.
 - **Read replies aloud** reads each answer when a text-to-speech model is attached.
 
 The voice model has its own key, and the voice buttons appear only when a voice model is attached. Recording needs a

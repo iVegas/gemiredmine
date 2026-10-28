@@ -3,7 +3,7 @@
 **Start here.** This file says what is done, what is next, and how to check it. The reasoning and the full
 specification of the remaining work are in [`plan.md`](./plan.md).
 
-*Last updated 2026-10-27 (the navigation bar, and an assistant that finds a model on the computer instead of asking for a key). Before: 2026-10-17 (issue #25: user menu layer, task and log tabs in windows, logging time from a task, Secret Service retry). Before: 2026-10-15, after one instance of the app, remembering the sign-in, and the task and log entry views on `claude/sharp-pascal-qbz3f6`. PR 0 and PR 1 are merged (`648fe5b`), and so are pull requests #21, #22 and #23 (PR 2, PR 2b), as `main` shows (`3baf9a8`); the rows below for them were written before that.*
+*Last updated 2026-10-28 (the assistant floats over the app instead of being a tab). Before: 2026-10-27 (the navigation bar, and an assistant that finds a model on the computer instead of asking for a key). Before: 2026-10-17 (issue #25: user menu layer, task and log tabs in windows, logging time from a task, Secret Service retry). Before: 2026-10-15, after one instance of the app, remembering the sign-in, and the task and log entry views on `claude/sharp-pascal-qbz3f6`. PR 0 and PR 1 are merged (`648fe5b`), and so are pull requests #21, #22 and #23 (PR 2, PR 2b), as `main` shows (`3baf9a8`); the rows below for them were written before that.*
 
 **Keep this file current.** Whoever does a step updates this file in the same pull request: the status table, the
 commit SHAs, anything that went differently from the plan, and what you learned about the environment. Put a decision
@@ -21,6 +21,7 @@ that changes in `plan.md`, with the reason.
 | Storage: the app's database, saved servers, certificate asset | **implemented** | `c8d26d9` `3b13a86` `061f2b2` `0fd5a93` and a docs commit | Branch `claude/sharp-pascal-qbz3f6`, from `main` at `3baf9a8`. After the owner's test of Windows unstable build 10. See "Storage" below |
 | One instance, remember me, task and log entry views | **implemented** | `7792380` `57b6b66` `f0b593e` `6d676c4` and a docs commit | Same branch, after the owner's request of 2026-10-15. See "Single instance, remembering the sign-in, task and log entry views" below |
 | Navigation bar, and setting the assistant up without typing | **implemented** | | Branch `ccr-d8f0472d-l5mxth`, after the owner's request of 2026-10-27. See "The navigation bar, and an assistant that sets itself up" below |
+| The assistant floats over the app | **implemented** | | Branch `ccr-d8f0472d-l5mxth`, after the owner's request of 2026-10-28. See "The assistant as a floating panel" below |
 | PR 3: end-to-end tests, rename `src/bun` to `src/core` | optional | | Best at the start of the Android phase |
 | Android on Tauri, retire Capacitor | **started: groundwork** | | Outline in `plan.md`. Done here: `android` in `PLATFORMS` and `BuildInfo`, About text, no window layer on Android (`isAndroidWebview`). **Not done, and not possible in this sandbox:** `tauri android init` (needs the Android SDK), the NDK build of `ring`, the APK. See "Android" below |
 
@@ -461,6 +462,40 @@ Not done, and worth doing next: a server on another machine of the network (mDNS
 addresses are asked now); reading a setup link from a QR code (needs the camera); registering `gemiredmine://` with the
 system so such a link can be clicked (the deep-link plugin); Gemini Nano through the native ML Kit GenAI API for devices
 whose WebView has no built-in model.
+
+### The assistant as a floating panel (2026-10-28)
+
+The owner's point, with a screenshot: the assistant is one of five tabs, so asking about the task in front of you means
+leaving it. It belongs over the app, like the chat windows of a web app.
+
+- **`src/mainview/components/AssistantDock.svelte`**: a round button in the bottom right corner of every view, and a
+  panel that floats over the view (`fixed bottom-0 right-4`, 22rem wide, at most 32rem high). Its title bar rolls it up
+  (− or Escape) and expands it again, ↗ opens the Assistant tab, ✕ closes it back to the button. Rolled up, the panel
+  keeps what was typed: the chat stays mounted and only its body is hidden.
+- **`src/mainview/lib/assistant-dock.ts`** holds where it is (`closed`, `open`, `minimized`), counts the answers that
+  arrived while the user was not looking (the badge on the button and in the title bar), and says where it belongs:
+  `dockFits(view)` is false for `settings`, where the assistant is set up and the panel would cover the form, and for
+  `assistant`, which is the same conversation at full size. `App.svelte` mounts it in the main window only.
+- **`src/mainview/components/AssistantChat.svelte`** is the chat itself, taken out of `AssistantView.svelte`, with a
+  `compact` prop for the panel (the conversation scrolls and follows the newest message) and an `idPrefix` so two chats
+  could never share an element id. The tab and the panel show the same conversation, because it lives in
+  `lib/assistant.ts`; `AssistantView.svelte` is now the heading and this component.
+- The navigation bar is four views again (`PRIMARY_VIEWS`): Dashboard, Calendar, To-do, Settings. The assistant is not a
+  place to go to any more.
+- **A window whose recorder is only a name**: WebKitGTK has `MediaRecorder` but making one throws "The MediaRecorder is
+  unsupported on this platform", which reached the user as a red alert from the browser (it is in the owner's
+  screenshot). `recorder.ts` now makes the recorder inside a try, releases the microphone it had already opened, and
+  throws `RecordingUnsupportedError` with the app's own sentence; the chat then stops offering **Speak** in that window
+  and keeps "Read replies aloud", which needs no microphone.
+
+Verified here: `npm test` (91 files, 1178 tests, one skipped), `tsc`, the webview build, and **the real app**, built for
+the unstable channel and driven on Xvfb against the mock Redmine (see the recipe below): the button on the dashboard,
+the panel over it, the panel rolled up into its title bar, and no button at all in Settings. Screenshots were taken at
+each step. Not verified: the panel on Android and Windows, and a long conversation scrolling in the panel with a real
+model.
+
+Not done: a keyboard shortcut that opens the panel from anywhere; dragging or resizing it; more than one conversation
+at a time (the chat windows of a web app keep several).
 
 ## How it was verified
 

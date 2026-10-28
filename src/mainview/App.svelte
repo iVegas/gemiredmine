@@ -3,6 +3,7 @@
   import WelcomeScreen from './WelcomeScreen.svelte';
   import ViewTabs from './ViewTabs.svelte';
   import PrimaryNav from './PrimaryNav.svelte';
+  import AssistantDock from './components/AssistantDock.svelte';
   import UserMenu from './UserMenu.svelte';
   import ServerLogin from './ServerLogin.svelte';
   import DashboardView from './DashboardView.svelte';
@@ -19,6 +20,7 @@
   import { serversRestored, startPersistence, storageProblem } from './lib/persistence';
   import { servers, activeServer } from './lib/store';
   import { activeView, closeView, isDetailView, needsServer, openViews, viewPanelId, viewTabId } from './lib/views';
+  import { dockFits } from './lib/assistant-dock';
   import { attachToMainWindow, sessionReady, startMainWindow, startViewWindow, viewWindowFromLocation } from './lib/windows';
   import { buildInfo } from '../shared/build-info.generated';
 
@@ -70,6 +72,11 @@
     <!-- A change an agent proposed waits for the user on every tab, so approving it does not need a trip to Settings. -->
     {#if !windowView}
       <ApprovalNotice />
+    {/if}
+
+    <!-- The assistant floats over the view the user is in, except where it would be in the way of its own setup. -->
+    {#if !windowView && dockFits($activeView)}
+      <AssistantDock />
     {/if}
 
     <main class="flex-1 overflow-auto">
