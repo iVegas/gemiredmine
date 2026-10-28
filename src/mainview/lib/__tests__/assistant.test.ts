@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { get } from 'svelte/store';
 import { redmineApi } from '../api';
-import { askAssistant } from '../assistant';
+import { askAssistant, assistantContext } from '../assistant';
 import { chatById, resetChats, startChat, updateChat } from '../chats';
+import { activeServerId, projectSelection } from '../store';
 import type { AssistantSettings } from '../../../shared/assistant';
 
 vi.mock('../api', () => ({
@@ -227,5 +228,44 @@ describe('several chats at once', () => {
 
     expect(await askAssistant('chat-gone', 'What is due?')).toBe(false);
     expect(chatById(id)?.messages).toEqual([]);
+  });
+});
+
+describe('what the app tells the assistant about itself', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    resetChats();
+    activeServerId.set('dev');
+    projectSelection.set({});
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    projectSelection.set({});
+  });
+
+  it('carries the day, the server the app shows and the selected project into the question', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 9, 28, 10, 0));
+    projectSelection.set({ dev: { id: 7, name: 'Nyrkiö' } });
+    api.getAssistantSettings.mockResolvedValue(configured);
+    api.loadAssistantKey.mockResolvedValue(null);
+    const fetch = stubModel([{ choices: [{ message: { content: 'Six hours.' } }] }]);
+    const chat = startChat();
+
+    await askAssistant(chat, 'How many hours have I logged?');
+
+    const sent = JSON.parse(String(fetch.mock.calls[0][1]?.body));
+    expect(sent.messages[0].content).toContain('Today is 2026-10-28 (Wednesday).');
+    expect(sent.messages[0].content).toContain('The app is showing the server "Dev"');
+    expect(sent.messages[0].content).toContain('the project "Nyrkiö" (Redmine id 7)');
+  });
+
+  it('says what the app shows without ever naming an address or a key', () => {
+    const context = assistantContext();
+
+    expect(context.servers).toEqual([{ name: 'Dev', active: true, signedIn: true, login: null }]);
+    expect(JSON.stringify(context)).not.toContain('dev.local');
   });
 });

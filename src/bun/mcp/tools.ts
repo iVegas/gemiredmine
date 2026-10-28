@@ -82,12 +82,52 @@ function localToday(): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
 
+/** Whether the value is a real calendar day, written YYYY-MM-DD. */
+function isDay(value: unknown): value is string {
+  return typeof value === 'string' && DATE.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
+}
+
 /** The day that time is logged on: given, or today. It must be a real calendar day. */
 function spentOn(args: Args): string {
   const value = args.spentOn ?? localToday();
-  const real = typeof value === 'string' && DATE.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
-  if (!real) throw new Error('The date is YYYY-MM-DD, such as 2026-10-26.');
-  return value as string;
+  if (!isDay(value)) throw new Error('The date is YYYY-MM-DD, such as 2026-10-26.');
+  return value;
+}
+
+/** A day an agent gave, or undefined when it gave none. */
+function day(value: unknown, name: string): string | undefined {
+  if (value === undefined || value === '') return undefined;
+  if (!isDay(value)) throw new Error(`${name} is a date written YYYY-MM-DD, such as 2026-10-26.`);
+  return value;
+}
+
+/** The day `days` before `from`. Used for the range that the time of the user covers by default. */
+export function daysBefore(days: number, from: string): string {
+  const date = new Date(`${from}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() - days);
+  return date.toISOString().slice(0, 10);
+}
+
+/** How many days the time of the user covers when an agent names no range. */
+export const MY_TIME_DAYS = 30;
+
+/** Hours to two decimals, so a sum of entries does not come out as 7.299999999999999. */
+const totalOf = (hours: number[]) => Math.round(hours.reduce((sum, value) => sum + value, 0) * 100) / 100;
+
+/** The hours of each key, largest first, as a list an agent can read. */
+function totalsBy<T>(entries: RedmineTimeEntry[], key: (entry: RedmineTimeEntry) => T | null): Array<{ key: T; hours: number }> {
+  const sums = new Map<string, { key: T; hours: number[] }>();
+  for (const entry of entries) {
+    const value = key(entry);
+    if (value === null) continue;
+    const id = JSON.stringify(value);
+    const known = sums.get(id) ?? { key: value, hours: [] };
+    known.hours.push(entry.hours);
+    sums.set(id, known);
+  }
+  return [...sums.values()]
+    .map(({ key: value, hours }) => ({ key: value, hours: totalOf(hours) }))
+    .sort((one, other) => other.hours - one.hours);
 }
 
 /** The hours of a log entry, to two decimals: above 0, up to a working day. */
@@ -244,6 +284,36 @@ const taskTime: McpTool = {
   },
 };
 
+const myTime: McpTool = {
+  name: 'list_my_time',
+  description:
+    'The time the user logged themselves on one server, between two days, with the total hours and the totals per project and per task. This is the tool for “how much have I logged”: it covers every task at once. Without dates it covers the last 30 days, ending today.',
+  inputSchema: schema({
+    ...SERVER_ARGUMENT,
+    from: { type: 'string', description: 'The first day, YYYY-MM-DD. Without it, 30 days before the last day.' },
+    to: { type: 'string', description: 'The last day, YYYY-MM-DD. Without it, today.' },
+  }),
+  annotations: READ_ONLY,
+  async run(args, deps) {
+    const { info, access } = resolveServer(deps.host, args.server);
+    const to = day(args.to, 'The last day') ?? localToday();
+    const from = day(args.from, 'The first day') ?? daysBefore(MY_TIME_DAYS - 1, to);
+    if (from > to) throw new Error(`The first day (${from}) is after the last day (${to}).`);
+    const entries = await deps.api.listTimeEntries(access, { from, to });
+    return {
+      server: info.name,
+      from,
+      to,
+      totalHours: totalOf(entries.map((entry) => entry.hours)),
+      count: entries.length,
+      truncated: entries.length > MAX_ITEMS,
+      byProject: totalsBy(entries, (entry) => named(entry.project)).map(({ key, hours }) => ({ project: key, hours })),
+      byTask: totalsBy(entries, (entry) => entry.issue?.id ?? null).map(({ key, hours }) => ({ taskId: key, hours })),
+      entries: entries.slice(0, MAX_ITEMS).map(timeSummary),
+    };
+  },
+};
+
 const timeActivities: McpTool = {
   name: 'list_time_activities',
   description: 'The activities that time can be logged under on one server. Use one of their ids for log_time.',
@@ -363,5 +433,15 @@ const followProposal: McpTool = {
 };
 
 /** Every tool the endpoint offers, in the order the agent sees them. */
-export const TOOLS: readonly McpTool[] = [serverList, assignedTasks, getTask, taskTime, timeActivities, logTime, updateTask, followProposal];
+export const TOOLS: readonly McpTool[] = [
+  serverList,
+  assignedTasks,
+  getTask,
+  taskTime,
+  myTime,
+  timeActivities,
+  logTime,
+  updateTask,
+  followProposal,
+];
 

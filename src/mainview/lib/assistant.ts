@@ -4,7 +4,7 @@
 
 import { get } from 'svelte/store';
 import { TOOLS } from '../../bun/mcp/tools';
-import { ask } from '../../bun/assistant/chat';
+import { ask, assistantToday, type AssistantContext } from '../../bun/assistant/chat';
 import { transcribe, speak } from '../../bun/assistant/voice';
 import type { FetchLike } from '../../bun/redmine/client';
 import { assistantSettingsProblem, isOnDeviceProvider, type AssistantSettings } from '../../shared/assistant';
@@ -24,6 +24,18 @@ import { tauriFetch } from './tauri-platform';
 const httpFetch: FetchLike = (url, init) => (hasDesktopBackend() ? tauriFetch(url, init) : fetch(url, init));
 
 const sentence = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/**
+ * What the app is showing, so the assistant does not ask the user for what is on their screen: the day, the servers
+ * with the one in front of them, and the project they have selected. No address and no API key is part of it.
+ */
+export function assistantContext(): AssistantContext {
+  return {
+    today: assistantToday(new Date()),
+    servers: storeHost.servers().map(({ name, active, signedIn, login }) => ({ name, active, signedIn, login: login ?? null })),
+    project: get(activeProject),
+  };
+}
 
 /** The settings, when they can be used. Otherwise the reason, as the settings screen words it. */
 async function usableSettings(): Promise<AssistantSettings> {
@@ -68,7 +80,7 @@ export async function askAssistant(chatId: string, question: string): Promise<bo
       tools: TOOLS,
       deps: { host: storeHost, api: redmineApi, version: buildInfo.version },
       fetch: httpFetch,
-      project: get(activeProject),
+      context: assistantContext(),
     });
     updateChat(chatId, { messages: result.conversation });
     return true;

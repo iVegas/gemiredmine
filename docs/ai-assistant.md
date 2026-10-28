@@ -84,6 +84,19 @@ Paste such a link, or the same settings in JSON, into the box and press **Fill i
 carries no API key; a link that somebody added `key=…` to fills the key box too, and saving keeps that key in the
 credential store. The link is not registered with the system yet, so it is pasted rather than clicked.
 
+## What it already knows
+
+The assistant is told what the app is showing before it answers, so it does not ask you for what is on your screen:
+
+- **today's date**, so "this week", "today" and "already" mean what you mean;
+- **the server the app is showing**, and the login you are signed in with there — a question that names no server is
+  about that one, and the other servers are read only when you name them;
+- **the project you have selected** next to the user menu, if any: questions about your tasks and time mean that project.
+
+The addresses of your servers and your API keys are never part of it. The assistant also works dates out for itself, so
+"how much have I logged this month" needs no dates from you: it reads them with `list_my_time`, which totals the time
+you logged across every task, per project and per task.
+
 ## Changes need your approval
 
 The assistant can read everything the MCP endpoint reads. It can also propose a time entry or a task change. A proposal

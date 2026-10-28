@@ -84,6 +84,36 @@ function api(overrides: Partial<McpApi> = {}): McpApi {
     })),
     createLogEntry: vi.fn(async () => {}),
     updateTask: vi.fn(async () => {}),
+    // The time the signed-in user logged themselves, over a range of days.
+    listTimeEntries: vi.fn(async () => [
+      {
+        id: 90,
+        project: { id: 3, name: 'Platform' },
+        issue: { id: 7 },
+        user: { id: 1, name: 'Ana' },
+        activity: { id: 9, name: 'Development' },
+        hours: 1.25,
+        comments: 'Reproduced',
+        spent_on: '2026-10-20',
+      },
+      {
+        id: 92,
+        project: { id: 4, name: 'Website' },
+        issue: { id: 8 },
+        user: { id: 1, name: 'Ana' },
+        activity: { id: 10, name: 'Review' },
+        hours: 2,
+        spent_on: '2026-10-21',
+      },
+      {
+        id: 93,
+        project: { id: 3, name: 'Platform' },
+        user: { id: 1, name: 'Ana' },
+        activity: { id: 9, name: 'Development' },
+        hours: 0.5,
+        spent_on: '2026-10-22',
+      },
+    ]),
     listTaskLogEntries: vi.fn(async () => [
       {
         id: 90,
@@ -181,6 +211,7 @@ describe('the tools an agent sees', () => {
       'list_assigned_tasks',
       'get_task',
       'list_task_time',
+      'list_my_time',
       'list_time_activities',
       'log_time',
       'update_task',
@@ -190,6 +221,50 @@ describe('the tools an agent sees', () => {
       expect(tool.inputSchema.type).toBe('object');
       expect(tool.annotations.destructiveHint).toBe(false);
     }
+  });
+
+  it('totals the time the user logged, by project and by task, over the days it was asked for', async () => {
+    const calls = api();
+    const { data } = await toolResult('list_my_time', { from: '2026-10-19', to: '2026-10-25' }, { api: calls });
+
+    expect(calls.listTimeEntries).toHaveBeenCalledWith(
+      { baseUrl: 'https://redmine.work.example', apiKey: SECRET },
+      { from: '2026-10-19', to: '2026-10-25' }
+    );
+    expect(data).toMatchObject({
+      server: 'Work',
+      from: '2026-10-19',
+      to: '2026-10-25',
+      totalHours: 3.75,
+      count: 3,
+      // The largest total comes first, so an agent reads where the time went without sorting it.
+      byProject: [
+        { project: 'Website', hours: 2 },
+        { project: 'Platform', hours: 1.75 },
+      ],
+      byTask: [
+        { taskId: 8, hours: 2 },
+        { taskId: 7, hours: 1.25 },
+      ],
+    });
+    expect(data.entries).toHaveLength(3);
+  });
+
+  it('covers the last thirty days when it is asked for no days, and refuses a range that runs backwards', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-28T09:00:00'));
+    try {
+      const { data } = await toolResult('list_my_time');
+
+      expect(data).toMatchObject({ from: '2026-09-29', to: '2026-10-28' });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const { isError, raw } = await toolResult('list_my_time', { from: '2026-10-25', to: '2026-10-20' });
+
+    expect(isError).toBe(true);
+    expect(raw).toContain('after the last day');
   });
 
   it('lists the servers the user added, and never the API key', async () => {
