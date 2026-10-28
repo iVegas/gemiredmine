@@ -15,6 +15,7 @@
     serverPage,
   } from './lib/task-details';
   import { openLogEntry, openTask, setViewLabel, taskView } from './lib/views';
+  import { startChatPanel } from './lib/assistant-dock';
   import HoursField from './components/HoursField.svelte';
 
   export let server: ServerConnection;
@@ -31,6 +32,18 @@
   $: load(server.url, server.apiToken, taskId);
 
   const describe = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+  /**
+   * Opens a chat about this task, in a window beside it. The question is started for the user, who finishes it: the
+   * number is in the text, so the assistant reads the task with the same tool an agent would.
+   */
+  function askAboutTask() {
+    const subject = details?.issue.subject ?? '';
+    startChatPanel({
+      title: `Task #${taskId}`,
+      draft: `About task #${taskId}${subject ? ` (${subject})` : ''}: `,
+    });
+  }
 
   async function load(baseUrl: string, apiKey: string | undefined, id: number) {
     if (!apiKey) return;
@@ -283,6 +296,14 @@
             Open in Redmine
           </a>
         {/if}
+        <!-- The assistant opens beside the task, with the question already about it. -->
+        <button
+          type="button"
+          class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          on:click={askAboutTask}
+        >
+          Ask the assistant
+        </button>
         {#if !editingTask}
           <button
             type="button"

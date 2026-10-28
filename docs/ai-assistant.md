@@ -5,16 +5,29 @@ your time, and it calls the same tools as the [MCP endpoint](ai-agents.md). It n
 
 ## Where it is
 
-The assistant follows you: a round button sits in the bottom right corner of every view, and it opens a chat panel that
+The assistant follows you: a round button sits in the bottom right corner of every view, and it opens a chat that
 floats over the view you are working in, so a question about the task in front of you needs no trip to another screen.
+**Control+Shift+A** (⌘⇧A) brings it up from wherever you are.
 
-- **Roll it up** with the − in its title bar, or with Escape. The panel becomes its own title bar at the bottom of the
-  window; the conversation and the question you were typing stay as they are.
-- **Close it** with the ✕. The button comes back, and it carries a badge when an answer arrived while you were away.
-- **Open it in a tab** with the ↗, for a long conversation at full width. The tab and the panel are the same
-  conversation, so nothing is repeated or lost on the way.
-- The button is not shown in **Settings**, where the assistant is set up and the panel would cover the form, nor over
-  the Assistant tab, which is the same conversation already.
+- **Several chats at once.** The **+** above the button starts another one, and up to three sit side by side; opening a
+  fourth rolls the one open longest into its title bar. Each chat keeps its own question, its own answers and its own
+  name, which it takes from the first thing you ask in it.
+- **Move and resize.** Drag a chat by its name to put it anywhere in the window; drag the grip in its top left corner to
+  make it bigger. Enough of the title bar always stays on the screen to drag it back.
+- **Roll it up** with the − in its title bar, by clicking its name, or with Escape. The chat becomes its own title bar at
+  the bottom of the window; what you were typing stays as it is.
+- **Close it** with the ✕. The chat is not lost: it is still in the Assistant tab, and the button in the corner brings it
+  back, with a badge for the answers that arrived while you were away.
+- **Open it in a tab** with the ↗, for a long conversation at full width. The tab lists every chat you have, lets you
+  start or forget one, and **Keep it floating** sends the one you are reading back to a window of its own.
+- The button is not shown in **Settings**, where the assistant is set up and a chat would cover the form, nor over the
+  Assistant tab, which is the same chats already. The shortcut opens the Assistant tab on those two screens.
+
+## Asking about a task
+
+A task opened in its own tab has an **Ask the assistant** button next to **Open in Redmine**. It starts a chat named
+after the task, with the question begun for you (`About task #42 (Fix the login): `) and the window beside the task, so
+you can finish the question in your own words. The assistant reads the task with the same tool an AI agent would.
 
 Set the assistant up in **Settings → AI assistant**.
 
@@ -92,10 +105,11 @@ window that can use the microphone; where it cannot, the app says so and you typ
 
 ## What is not kept
 
-The conversation lasts while the app runs. Closing the app clears it.
+The chats last while the app runs. Closing the app clears them, and so does forgetting a chat in the Assistant tab.
 
 ## Not there yet
 
+- **Chats that outlive the app.** Nothing is written to disk, so a chat is gone at the next start.
 - **A server on another machine of your network.** Only this computer's usual addresses are asked. Finding a server on
   the network needs mDNS or SSDP, which the Rust side would have to do; until then, type its address.
 - **Scanning a QR code.** A setup link is pasted. Reading one from the camera needs the camera, which the app does not

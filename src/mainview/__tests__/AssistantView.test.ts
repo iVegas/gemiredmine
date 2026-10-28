@@ -3,7 +3,9 @@ import { render, fireEvent } from '@testing-library/svelte';
 import { get } from 'svelte/store';
 import AssistantView from '../AssistantView.svelte';
 import { redmineApi } from '../lib/api';
-import { askAssistant, assistantError, asking, conversation, readAloud } from '../lib/assistant';
+import { askAssistant, readAloud } from '../lib/assistant';
+import { chatById, chats, newestChat, resetChats, startChat, updateChat } from '../lib/chats';
+import { panels, resetDock } from '../lib/assistant-dock';
 import { openViews, activeView, resetViews } from '../lib/views';
 import { RecordingUnsupportedError, startRecording } from '../lib/recorder';
 import type { AssistantSettings } from '../../shared/assistant';
@@ -17,17 +19,14 @@ vi.mock('../lib/recorder', async () => {
   return { ...actual, startRecording: vi.fn() };
 });
 
-vi.mock('../lib/assistant', async () => {
-  const { writable } = await import('svelte/store');
-  return {
-    conversation: writable([]),
-    asking: writable(false),
-    assistantError: writable(null),
-    askAssistant: vi.fn(),
-    readAloud: vi.fn(),
-    transcribeSpeech: vi.fn(),
-  };
-});
+vi.mock('../lib/assistant', () => ({
+  askAssistant: vi.fn(),
+  readAloud: vi.fn(),
+  transcribeSpeech: vi.fn(),
+}));
+
+/** The chat the view shows, which it starts itself when the user has none. */
+const shown = () => newestChat(get(chats))!;
 
 const api = vi.mocked(redmineApi);
 
@@ -47,9 +46,8 @@ describe('the assistant view', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     resetViews();
-    conversation.set([]);
-    asking.set(false);
-    assistantError.set(null);
+    resetChats();
+    resetDock();
   });
 
   it('asks the user to set the assistant up, and sends the user to Settings, when no model is set', async () => {
@@ -73,8 +71,7 @@ describe('the assistant view', () => {
     await fireEvent.input(box, { target: { value: 'What is due?' } });
     await fireEvent.keyDown(box, { key: 'Enter' });
 
-    expect(askAssistant).toHaveBeenCalledWith('What is due?');
-    await vi.waitFor(() => expect(box.value).toBe(''));
+    expect(askAssistant).toHaveBeenCalledWith(shown().id, 'What is due?');
   });
 
   it('keeps a new line on Shift+Enter, so the message is not sent', async () => {
@@ -90,12 +87,13 @@ describe('the assistant view', () => {
 
   it('shows the conversation, with the tools each answer used, and no tool results', async () => {
     api.getAssistantSettings.mockResolvedValue(configured);
-    conversation.set([
+    const id = startChat();
+    updateChat(id, { messages: [
       { role: 'user', content: 'What is due?' },
       { role: 'assistant', content: '', toolCalls: [{ id: 'c1', name: 'list_assigned_tasks', args: {} }] },
       { role: 'tool', toolCallId: 'c1', name: 'list_assigned_tasks', content: '{"tasks":[]}' },
       { role: 'assistant', content: 'Nothing is due.', toolCalls: [] },
-    ]);
+    ] });
 
     const view = render(AssistantView);
 
@@ -121,8 +119,8 @@ describe('the assistant view', () => {
 
   it('reads the answer aloud when that is turned on', async () => {
     api.getAssistantSettings.mockResolvedValue(withVoice);
-    vi.mocked(askAssistant).mockImplementation(async () => {
-      conversation.set([{ role: 'user', content: 'Hi' }, { role: 'assistant', content: 'Hello.', toolCalls: [] }]);
+    vi.mocked(askAssistant).mockImplementation(async (chatId: string) => {
+      updateChat(chatId, { messages: [{ role: 'user', content: 'Hi' }, { role: 'assistant', content: 'Hello.', toolCalls: [] }] });
       return true;
     });
     vi.mocked(readAloud).mockResolvedValue(undefined);
@@ -138,7 +136,8 @@ describe('the assistant view', () => {
 
   it('shows the reason of a problem in an alert', async () => {
     api.getAssistantSettings.mockResolvedValue(configured);
-    assistantError.set('The model service answered 500.');
+    const id = startChat();
+    updateChat(id, { error: 'The model service answered 500.' });
 
     const view = render(AssistantView);
 
@@ -164,5 +163,88 @@ describe('the assistant view', () => {
     expect(view.queryByRole('button', { name: 'Speak' })).toBeNull();
     // The replies can still be read aloud: that needs no microphone.
     expect(view.getByRole('checkbox', { name: 'Read replies aloud' })).toBeInTheDocument();
+  });
+});
+
+describe('the chats in the Assistant tab', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    api.getAssistantSettings.mockResolvedValue(configured);
+    resetViews();
+    resetChats();
+    resetDock();
+  });
+
+  it('starts a chat for a user who has none, so there is a box to type in at once', async () => {
+    const view = render(AssistantView);
+
+    expect(await view.findByRole('textbox', { name: 'Message' })).toBeInTheDocument();
+    expect(get(chats)).toHaveLength(1);
+  });
+
+  it('lists every chat and shows the one that is chosen', async () => {
+    const due = startChat({ title: 'What is due?' });
+    updateChat(due, { messages: [{ role: 'assistant', content: 'Two tasks.', toolCalls: [] }] });
+    const time = startChat({ title: 'Hours last week' });
+    updateChat(time, { messages: [{ role: 'assistant', content: 'Six hours.', toolCalls: [] }] });
+    const view = render(AssistantView);
+
+    const list = await view.findByRole('navigation', { name: 'Chats' });
+    expect(list.textContent).toContain('What is due?');
+    expect(list.textContent).toContain('Hours last week');
+    // The newest chat is the one in front until another is chosen.
+    expect(view.getByRole('list', { name: 'Conversation' }).textContent).toContain('Six hours.');
+
+    await fireEvent.click(view.getByRole('button', { name: /^What is due\?/ }));
+
+    expect(view.getByRole('list', { name: 'Conversation' }).textContent).toContain('Two tasks.');
+  });
+
+  it('starts another chat from the tab, which becomes the one in front', async () => {
+    const first = startChat({ title: 'What is due?' });
+    const view = render(AssistantView);
+    await view.findByRole('textbox', { name: 'Message' });
+
+    await fireEvent.click(view.getByRole('button', { name: 'New chat' }));
+
+    expect(get(chats)).toHaveLength(2);
+    expect(chatById(first)?.title).toBe('What is due?');
+    expect(view.getByRole('navigation', { name: 'Chats' }).textContent).toContain('New chat');
+  });
+
+  it('counts a chat as read once it is chosen', async () => {
+    const other = startChat({ title: 'Hours last week' });
+    const chosen = startChat({ title: 'What is due?' });
+    updateChat(other, { unread: 2 });
+    updateChat(chosen, { unread: 1 });
+    const view = render(AssistantView);
+
+    await view.findByRole('textbox', { name: 'Message' });
+    expect(chatById(chosen)?.unread).toBe(0);
+
+    await fireEvent.click(view.getByRole('button', { name: /^Hours last week/ }));
+
+    expect(chatById(other)?.unread).toBe(0);
+  });
+
+  it('forgets a chat the user is done with', async () => {
+    const kept = startChat({ title: 'What is due?' });
+    const gone = startChat({ title: 'Hours last week' });
+    const view = render(AssistantView);
+    await view.findByRole('textbox', { name: 'Message' });
+
+    await fireEvent.click(view.getByRole('button', { name: 'Forget Hours last week' }));
+
+    expect(get(chats).map((chat) => chat.id)).toEqual([kept]);
+  });
+
+  it('hands a chat back to a floating window', async () => {
+    const id = startChat({ title: 'What is due?' });
+    const view = render(AssistantView);
+    await view.findByRole('textbox', { name: 'Message' });
+
+    await fireEvent.click(view.getByRole('button', { name: 'Keep it floating' }));
+
+    expect(get(panels).map((panel) => panel.chatId)).toEqual([id]);
   });
 });

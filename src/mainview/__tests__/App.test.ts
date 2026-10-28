@@ -349,25 +349,42 @@ describe('App', () => {
     expect(view.getByRole('heading', { name: 'Settings' })).toBeVisible();
   });
 
-  it('keeps the assistant in reach of every view as a floating button, and out of its own settings', async () => {
+  it('keeps the assistant in reach of every view as a floating chat, and out of its own settings', async () => {
     servers.set([signedIn]);
     activeServerId.set('1');
     const view = render(App);
     const nav = within(view.getByRole('navigation', { name: 'Views of the app' }));
 
-    // On the dashboard the button is there, and it opens the chat over the view rather than in a tab of its own.
+    // On the dashboard the button is there, and it opens a chat over the view rather than a tab of its own.
     await fireEvent.click(view.getByRole('button', { name: /^Open the assistant/ }));
-    expect(view.getByRole('dialog', { name: 'Assistant' })).toBeInTheDocument();
+    expect(view.getByRole('dialog', { name: 'Assistant: New chat' })).toBeInTheDocument();
     expect(view.queryByRole('tab', { name: 'Assistant' })).not.toBeInTheDocument();
 
-    // Settings is where the assistant is set up, so it does not float over the form there.
+    // Settings is where the assistant is set up, so no chat floats over the form there.
     await fireEvent.click(nav.getByRole('button', { name: 'Settings' }));
-    expect(view.queryByRole('dialog', { name: 'Assistant' })).not.toBeInTheDocument();
+    expect(view.queryByRole('dialog', { name: /^Assistant/ })).not.toBeInTheDocument();
     expect(view.queryByRole('button', { name: /^Open the assistant/ })).not.toBeInTheDocument();
 
-    // Back on a view of its own data, the panel is where it was left.
+    // Back on a view of its own data, the chat window is where it was left.
     await fireEvent.click(nav.getByRole('button', { name: 'Dashboard' }));
-    expect(view.getByRole('dialog', { name: 'Assistant' })).toBeInTheDocument();
+    expect(view.getByRole('dialog', { name: 'Assistant: New chat' })).toBeInTheDocument();
+  });
+
+  it('brings the assistant up with Control+Shift+A from wherever the user is', async () => {
+    servers.set([signedIn]);
+    activeServerId.set('1');
+    const view = render(App);
+    const nav = within(view.getByRole('navigation', { name: 'Views of the app' }));
+
+    await fireEvent.keyDown(window, { key: 'A', ctrlKey: true, shiftKey: true });
+
+    expect(view.getByRole('dialog', { name: 'Assistant: New chat' })).toBeInTheDocument();
+
+    // In Settings, where no chat may float, the shortcut opens the Assistant tab instead.
+    await fireEvent.click(nav.getByRole('button', { name: 'Settings' }));
+    await fireEvent.keyDown(window, { key: 'a', metaKey: true, shiftKey: true });
+
+    expect(view.getByRole('tab', { name: 'Assistant' })).toHaveAttribute('aria-selected', 'true');
   });
 
   it('manages servers in the Settings tab', async () => {

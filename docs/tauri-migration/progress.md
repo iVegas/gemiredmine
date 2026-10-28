@@ -3,7 +3,7 @@
 **Start here.** This file says what is done, what is next, and how to check it. The reasoning and the full
 specification of the remaining work are in [`plan.md`](./plan.md).
 
-*Last updated 2026-10-28 (the assistant floats over the app instead of being a tab). Before: 2026-10-27 (the navigation bar, and an assistant that finds a model on the computer instead of asking for a key). Before: 2026-10-17 (issue #25: user menu layer, task and log tabs in windows, logging time from a task, Secret Service retry). Before: 2026-10-15, after one instance of the app, remembering the sign-in, and the task and log entry views on `claude/sharp-pascal-qbz3f6`. PR 0 and PR 1 are merged (`648fe5b`), and so are pull requests #21, #22 and #23 (PR 2, PR 2b), as `main` shows (`3baf9a8`); the rows below for them were written before that.*
+*Last updated 2026-10-28 (several chat windows, dragged and resized, a keyboard shortcut, and asking about a task). Before: 2026-10-28 (the assistant floats over the app instead of being a tab). Before: 2026-10-27 (the navigation bar, and an assistant that finds a model on the computer instead of asking for a key). Before: 2026-10-17 (issue #25: user menu layer, task and log tabs in windows, logging time from a task, Secret Service retry). Before: 2026-10-15, after one instance of the app, remembering the sign-in, and the task and log entry views on `claude/sharp-pascal-qbz3f6`. PR 0 and PR 1 are merged (`648fe5b`), and so are pull requests #21, #22 and #23 (PR 2, PR 2b), as `main` shows (`3baf9a8`); the rows below for them were written before that.*
 
 **Keep this file current.** Whoever does a step updates this file in the same pull request: the status table, the
 commit SHAs, anything that went differently from the plan, and what you learned about the environment. Put a decision
@@ -22,6 +22,7 @@ that changes in `plan.md`, with the reason.
 | One instance, remember me, task and log entry views | **implemented** | `7792380` `57b6b66` `f0b593e` `6d676c4` and a docs commit | Same branch, after the owner's request of 2026-10-15. See "Single instance, remembering the sign-in, task and log entry views" below |
 | Navigation bar, and setting the assistant up without typing | **implemented** | | Branch `ccr-d8f0472d-l5mxth`, after the owner's request of 2026-10-27. See "The navigation bar, and an assistant that sets itself up" below |
 | The assistant floats over the app | **implemented** | | Branch `ccr-d8f0472d-l5mxth`, after the owner's request of 2026-10-28. See "The assistant as a floating panel" below |
+| Several chats, dragged and resized, and a shortcut | **implemented** | | Branch `ccr-d8f0472d-l5mxth`, after the owner's request of 2026-10-28. See "Chat windows: several at once, moved and resized" below |
 | PR 3: end-to-end tests, rename `src/bun` to `src/core` | optional | | Best at the start of the Android phase |
 | Android on Tauri, retire Capacitor | **started: groundwork** | | Outline in `plan.md`. Done here: `android` in `PLATFORMS` and `BuildInfo`, About text, no window layer on Android (`isAndroidWebview`). **Not done, and not possible in this sandbox:** `tauri android init` (needs the Android SDK), the NDK build of `ring`, the APK. See "Android" below |
 
@@ -496,6 +497,46 @@ model.
 
 Not done: a keyboard shortcut that opens the panel from anywhere; dragging or resizing it; more than one conversation
 at a time (the chat windows of a web app keep several).
+
+### Chat windows: several at once, moved and resized (2026-10-28)
+
+The four things left over from the floating panel, all asked for at once: a keyboard shortcut, dragging and resizing,
+more than one conversation, and asking about the task in front of you.
+
+- **`src/mainview/lib/chats.ts`** is the new model: a `Chat` is a conversation with its own messages, `asking`, `error`,
+  half-typed `draft` and `unread` count, and `chats` is the list of them. A chat takes its name from its first question
+  (`titleFrom`), shortened for a title bar. They last while the app runs, like the single conversation before them.
+- **`lib/assistant.ts`** lost its three singleton stores: `askAssistant(chatId, question)` works on one chat, so two
+  chats can be waiting for an answer at the same time, and an answer for a chat the user has forgotten is dropped.
+- **`lib/assistant-dock.ts`** keeps the windows: `panels` is a list of `{chatId, minimized, right, bottom, width,
+  height}`, anchored by the bottom right corner. `showChat`, `minimizePanel`, `closePanel`, `movePanel` and
+  `resizePanel` are the moves; `movePanel` keeps 48 px of the title bar on the screen and `resizePanel` holds the size
+  between 280×240 and the app window. A fourth open window rolls up the one open longest (`MAX_OPEN_PANELS`). Closing a
+  window keeps the chat, which the Assistant tab still lists. The unread count per chat is kept here too: an answer
+  counts while the chat is rolled up or closed, and not while its window is open or the Assistant tab is the view.
+- **`components/AssistantPanel.svelte`** is one window: the name of the chat is both the button that rolls it up and the
+  handle that drags it, told apart by a 4 px threshold, as `ViewTabs` does for tabs; the grip in the top left corner
+  resizes it. The drag is followed on `svelte:window`, not on the element, which is what works in WebKitGTK.
+- **`components/AssistantChat.svelte`** now takes the chat it shows, and writes the half-typed question back to it, so
+  the same chat in a window and in the tab is the same down to the draft.
+- **`AssistantView.svelte`** is the tab: every chat on the left, the chosen one at full width, **New chat**, **Forget**
+  and **Keep it floating** (which gives a chat back to a floating window).
+- **Control+Shift+A** is handled in `App.svelte`: the floating chat where one belongs, the Assistant tab in Settings and
+  on the Assistant tab itself.
+- **`TaskDetailsView.svelte`** gained **Ask the assistant**, which starts a chat named `Task #42` with the question
+  begun (`About task #42 (Fix the login): `) and opens its window beside the task.
+- Two layout fixes found by running the app: the first window now starts at 80 px from the right edge (`PANEL_EDGE`), so
+  it does not sit under the round button, and the `title` tooltips were removed from the controls that make a window
+  disappear, because WebKitGTK leaves such a tooltip on the screen.
+
+Verified here: `npm test` (92 files, 1217 tests, one skipped), `tsc`, the webview build, and **the real app** on Xvfb
+against the mock Redmine: Control+Shift+A opened a chat, **+** opened a second beside it, a chat was dragged by its name
+to the middle of the window and made bigger by its grip, and ↗ moved it into the Assistant tab with both chats listed.
+Not verified: the windows on Android and Windows, and two models answering two chats at the same time with a live
+service.
+
+Not done: chats that outlive the app (nothing is written to disk), and a window dragged out of the app into a window of
+its own, the way a tab can be.
 
 ## How it was verified
 

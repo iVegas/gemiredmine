@@ -19,8 +19,8 @@
   import { restoreAgentEndpoint } from './lib/mcp-host';
   import { serversRestored, startPersistence, storageProblem } from './lib/persistence';
   import { servers, activeServer } from './lib/store';
-  import { activeView, closeView, isDetailView, needsServer, openViews, viewPanelId, viewTabId } from './lib/views';
-  import { dockFits } from './lib/assistant-dock';
+  import { activeView, closeView, isDetailView, needsServer, openView, openViews, viewPanelId, viewTabId } from './lib/views';
+  import { dockFits, openAssistant } from './lib/assistant-dock';
   import { attachToMainWindow, sessionReady, startMainWindow, startViewWindow, viewWindowFromLocation } from './lib/windows';
   import { buildInfo } from '../shared/build-info.generated';
 
@@ -31,7 +31,20 @@
   onDestroy(windowView ? () => {} : startPersistence());
   // The endpoint for AI agents runs from the main window, and only when the user turned it on in the settings.
   if (!windowView) void restoreAgentEndpoint();
+
+  /**
+   * Control+Shift+A brings the assistant up from wherever the user is: the floating chat over the view they are in, or
+   * the Assistant tab on the two screens the chat windows stay out of.
+   */
+  function handleShortcut(event: KeyboardEvent) {
+    if (windowView || event.key.toLowerCase() !== 'a' || !event.shiftKey || !(event.ctrlKey || event.metaKey)) return;
+    event.preventDefault();
+    if (dockFits($activeView)) openAssistant();
+    else openView('assistant');
+  }
 </script>
+
+<svelte:window on:keydown={handleShortcut} />
 
 {#if (windowView && !$sessionReady) || (!windowView && !$serversRestored)}
   <p role="status" class="p-6 text-gray-600">Loading…</p>
