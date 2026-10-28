@@ -86,12 +86,19 @@ credential store. The link is not registered with the system yet, so it is paste
 
 ## What it already knows
 
-The assistant is told what the app is showing before it answers, so it does not ask you for what is on your screen:
+The assistant is told what the app is showing before it answers, as a short list, so it does not ask you for what is
+on your screen:
 
-- **today's date**, so "this week", "today" and "already" mean what you mean;
-- **the server the app is showing**, and the login you are signed in with there — a question that names no server is
-  about that one, and the other servers are read only when you name them;
-- **the project you have selected** next to the user menu, if any: questions about your tasks and time mean that project.
+- **today's date** with the weekday, so "yesterday", "this week" and "already" mean what you mean;
+- **the server the app is showing**, with the login and the name you are signed in with there — and, when it is your
+  only server, that there is nothing to choose, so it never asks which server a question is about;
+- **your other servers** by name, if you have any: a question that names none of them is about the one in front of you;
+- **the project you have selected** next to the user menu, if any;
+- **the view you are looking at** — the dashboard, the calendar, your to-do list, or the task or log entry in the
+  tab — so "this", "it" and "here" mean that.
+
+The instructions that come with it say to answer from that list rather than ask for it, to take the obvious reading and
+say what it took the question to mean, and to ask back only when two readings would give different answers.
 
 The addresses of your servers and your API keys are never part of it. The assistant also works dates out for itself, so
 "how much have I logged this month" needs no dates from you: it reads them with `list_my_time`, which totals the time

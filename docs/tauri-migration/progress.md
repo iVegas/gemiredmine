@@ -24,6 +24,7 @@ that changes in `plan.md`, with the reason.
 | The assistant floats over the app | **implemented** | | Branch `ccr-d8f0472d-l5mxth`, after the owner's request of 2026-10-28. See "The assistant as a floating panel" below |
 | Several chats, dragged and resized, and a shortcut | **implemented** | | Branch `ccr-d8f0472d-l5mxth`, after the owner's request of 2026-10-28. See "Chat windows: several at once, moved and resized" below |
 | What the assistant knows before it answers | **implemented** | | Branch `ccr-d8f0472d-l5mxth`, after the owner's request of 2026-10-28. See "The assistant is told what the app is showing" below |
+| The obvious things the assistant was still asking for | **implemented** | | Branch `ccr-d8f0472d-l5mxth`, after the owner's screenshot of 2026-10-29. See "One server is no choice at all" below |
 | PR 3: end-to-end tests, rename `src/bun` to `src/core` | optional | | Best at the start of the Android phase |
 | Android on Tauri, retire Capacitor | **started: groundwork** | | Outline in `plan.md`. Done here: `android` in `PLATFORMS` and `BuildInfo`, About text, no window layer on Android (`isAndroidWebview`). **Not done, and not possible in this sandbox:** `tauri android init` (needs the Android SDK), the NDK build of `ring`, the APK. See "Android" below |
 
@@ -587,6 +588,34 @@ model answering the screenshot's question, which needs a real service and a real
 
 Not done: the chat started from a task does not tell the model which task it is about beyond the question it begins
 with; nothing of the context is sent to the model on the device, which has no tools to use it with.
+
+### One server is no choice at all (2026-10-29)
+
+The context block worked — the assistant answered "yesterday" with `list_my_time` — but it still opened with "What
+server are you asking about?" on an app with a single server, and then explained that it asks "in case there are
+multiple servers". The owner's point: say the obvious things, or the model will not infer them.
+
+- **The context says what there is to choose.** With one server the block now adds "It is the user's only server. There
+  is nothing to choose: never ask which server a question is about."; with several, the line that names the others also
+  says that a question naming none of them is about the active one.
+- **Who the user is**: the active server's line carries the name from the sign-in next to the login (`signed in as
+  "voleger" (Oleh Vehera)`), so "I" has a face.
+- **What they are looking at**: `viewInWords` (`src/mainview/lib/assistant.ts`) turns the active view into a thing the
+  model can refer to — the dashboard, the calendar of their logged time, their to-do list, or the task or log entry in
+  the tab, named as the tab names it — and the block says that "this", "it" and "here" mean it. Settings and the
+  assistant's own tab say nothing about the work, so they add no line.
+- **The instructions** now say never to ask for what the block already says, to take the obvious reading and say in one
+  clause what it took the question to mean, and to ask back only when two readings would give different answers.
+  "Yesterday" was added to the dates line.
+- **The context is a list of its own** under "What the app is showing right now:", one line each, rather than more
+  sentences in the same paragraph: a small model follows a line it can point at.
+- **The `server` argument of every tool** now reads "Leave it out and the server the app is showing is used, which is
+  what a question that names no server means." The old wording ("Without it, the server the app shows is used") is what
+  the model quoted back as "some of my tools require a specific server identifier".
+
+Verified here: `npm test` (95 files, 1266 tests, one skipped) and `tsc`. The prompt tests pin the one-server sentence,
+the several-servers sentence, the view line and the three instructions. Not verified: the same question against a live
+model, which is what the owner's screenshot was.
 
 ## How it was verified
 

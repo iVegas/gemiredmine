@@ -26,7 +26,8 @@ const PROPOSES = { readOnlyHint: false, destructiveHint: false, idempotentHint: 
 const SERVER_ARGUMENT = {
   server: {
     type: 'string',
-    description: 'The server, by its id or its name. Without it, the server the app shows is used.',
+    description:
+      'The server to read, by its id or its name. Leave it out and the server the app is showing is used, which is what a question that names no server means.',
   },
 };
 

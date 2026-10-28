@@ -15,9 +15,10 @@ export const ASSISTANT_SYSTEM_PROMPT = [
   'You are the assistant of Gemiredmine, an app that shows the user’s Redmine tasks and time.',
   'Use the tools to read the user’s servers, tasks, time and activities. Use them when the answer depends on Redmine, not from memory.',
   'A change you propose with log_time or update_task is not saved yet: the user approves or rejects it in the app, and only an approved change is written to Redmine. Say so when you propose one.',
-  'What the app is showing is written below. Answer from it instead of asking the user for it, and ask a question back only when the answer would be wrong without it.',
-  '“I”, “me” and “my” are the user who is signed in. A question that names no server is about the server the app is showing, which every tool uses when it is given none.',
-  'Work dates out from today yourself: “this week” is Monday to today, “this month” is the first of the month to today.',
+  'What the app is showing is written below. It is what the user has in front of them, so answer from it: never ask them for something it already says, such as which server, which project, who they are or what day it is.',
+  '“I”, “me” and “my” are the user who is signed in. A question that names no server is about the server the app is showing: leave the server out of a tool call and that one is used. Ask which server only when the user names one you cannot find.',
+  'Work dates out from today yourself: “yesterday” is the day before today, “this week” is Monday to today, “this month” is the first of the month to today.',
+  'When something is still missing after all that, take the obvious reading, answer, and say in one clause what you took it to mean. Ask a question back only when two readings would give different answers and you cannot tell which the user means.',
   'Answer briefly, in the language the user writes in.',
 ].join(' ');
 
@@ -30,6 +31,8 @@ export interface ContextServer {
   signedIn: boolean;
   /** The user's login on that server, when it is known. */
   login?: string | null;
+  /** The user's own name on that server, when it is known, such as "Alice Example". */
+  userName?: string | null;
 }
 
 /** What the app is showing while the question is asked. Everything in it is optional: a test, or a stripped-down app, may know none of it. */
@@ -40,6 +43,8 @@ export interface AssistantContext {
   servers?: readonly ContextServer[];
   /** The project the user has selected in the app, or null for every project. */
   project?: { id: number; name: string } | null;
+  /** The view the user is looking at, named as a thing: "the calendar", "the task #42 “Fix the login”". */
+  view?: string | null;
 }
 
 /** The sentences that say what the app is showing, in the order the model reads them. Empty when nothing is known. */
@@ -49,17 +54,21 @@ export function assistantContextLines(context: AssistantContext): string[] {
 
   const servers = context.servers ?? [];
   const active = servers.find((server) => server.active);
+  const others = servers.filter((server) => server !== active);
   if (active) {
-    const signed = active.signedIn
-      ? `, signed in${active.login ? ` as "${active.login}"` : ''}`
-      : ', where the user is not signed in: say so instead of reading it';
+    const who = active.login ? ` as "${active.login}"${active.userName ? ` (${active.userName})` : ''}` : '';
+    const signed = active.signedIn ? `, signed in${who}` : ', where the user is not signed in: say so instead of reading it';
     lines.push(`The app is showing the server "${active.name}"${signed}.`);
+    // One server is no choice at all: the question back that the user sees as needless comes from not saying this.
+    if (others.length === 0) {
+      lines.push(`It is the user’s only server. There is nothing to choose: never ask which server a question is about.`);
+    } else {
+      lines.push(
+        `The user’s other servers are ${others.map((server) => `"${server.name}"`).join(', ')}. A question that names none of them is about "${active.name}"; read another only when the user names it.`
+      );
+    }
   } else if (servers.length > 0) {
     lines.push(`The app is showing no server. The user’s servers are: ${servers.map((server) => `"${server.name}"`).join(', ')}.`);
-  }
-  const others = servers.filter((server) => !server.active);
-  if (active && others.length > 0) {
-    lines.push(`The user’s other servers are ${others.map((server) => `"${server.name}"`).join(', ')}. Read one of them only when the user names it.`);
   }
 
   if (context.project) {
@@ -67,13 +76,21 @@ export function assistantContextLines(context: AssistantContext): string[] {
       `The user has selected the project "${context.project.name}" (Redmine id ${context.project.id}) in the app. Questions about their tasks and time mean that project, unless they name another one. list_assigned_tasks lists the tasks of every project: count only those whose project is that one.`
     );
   }
+
+  if (context.view) {
+    lines.push(`The user is looking at ${context.view}. “This”, “it” and “here” mean that, unless they say otherwise.`);
+  }
   return lines;
 }
 
-/** The instructions for one question: the ones above, and what the app is showing while it is asked. */
+/**
+ * The instructions for one question: the ones above, and what the app is showing while it is asked. The context is a
+ * list of its own rather than more of the same paragraph: a small model follows a line it can point at.
+ */
 export function assistantSystemPrompt(context: AssistantContext = {}): string {
   const lines = assistantContextLines(context);
-  return lines.length === 0 ? ASSISTANT_SYSTEM_PROMPT : [ASSISTANT_SYSTEM_PROMPT, ...lines].join(' ');
+  if (lines.length === 0) return ASSISTANT_SYSTEM_PROMPT;
+  return [ASSISTANT_SYSTEM_PROMPT, '', 'What the app is showing right now:', ...lines.map((line) => `- ${line}`)].join('\n');
 }
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
