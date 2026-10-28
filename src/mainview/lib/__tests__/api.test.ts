@@ -85,14 +85,6 @@ describe('in the desktop app', () => {
     for (const method of Object.values(fake.backend)) method.mockReset().mockResolvedValue('result');
   });
 
-  it('passes a project scope on to the backend, and leaves it out when there is none', async () => {
-    await redmineApi.listAssignedTasks(access, { projectId: 2 });
-    await redmineApi.listAssignedTasks(access);
-
-    expect(fake.backend.listAssignedTasks).toHaveBeenNthCalledWith(1, access, { projectId: 2 });
-    expect(fake.backend.listAssignedTasks.mock.calls[1]).toEqual([access]);
-  });
-
   it('runs one backend on the Tauri platform, created when first needed', async () => {
     await redmineApi.getDevPreviewStatus();
     await redmineApi.getDevPreviewStatus();
@@ -170,6 +162,15 @@ describe('in the desktop app', () => {
     await expect(redmineApi.signIn({ baseUrl: 'https://r', username: 'a', password: 'b' })).rejects.toThrow(
       'did not answer within 30 seconds'
     );
+  });
+
+  // Last, because the first call creates the one backend that every later test shares.
+  it('passes a project scope on to the backend, and leaves it out when there is none', async () => {
+    await redmineApi.listAssignedTasks(access, { projectId: 2 });
+    await redmineApi.listAssignedTasks(access);
+
+    expect(fake.backend.listAssignedTasks).toHaveBeenNthCalledWith(1, access, { projectId: 2 });
+    expect(fake.backend.listAssignedTasks.mock.calls[1]).toEqual([access]);
   });
 });
 
