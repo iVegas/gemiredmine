@@ -13,7 +13,8 @@ import { redmineApi } from './api';
 import { hasDesktopBackend } from './bridge';
 import { chatById, titleFrom, updateChat, NEW_CHAT_TITLE } from './chats';
 import { storeHost } from './mcp-host';
-import { activeProject } from './store';
+import { activeProject, activeServer } from './store';
+import { activeView, parseDetailView, viewLabels } from './views';
 import { askOnDevice } from './on-device-ai';
 import { tauriFetch } from './tauri-platform';
 
@@ -25,15 +26,47 @@ const httpFetch: FetchLike = (url, init) => (hasDesktopBackend() ? tauriFetch(ur
 
 const sentence = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
+/** What the user is looking at, named as a thing the assistant can refer to, or null for a view that says nothing. */
+export function viewInWords(view: string, labels: Record<string, string>): string | null {
+  const detail = parseDetailView(view);
+  if (detail) {
+    // The label of a task view is "#42 Fix the login", which already carries the number.
+    const label = labels[view];
+    const thing = detail.kind === 'task' ? 'task' : 'log entry';
+    return label ? `the ${thing} ${label}` : `the ${thing} #${detail.id}`;
+  }
+  switch (view) {
+    case 'dashboard':
+      return 'the dashboard, which shows the month at a glance and the tasks that are due';
+    case 'calendar':
+      return 'the calendar of their logged time';
+    case 'todo':
+      return 'their to-do list';
+    default:
+      // The settings and the assistant's own tab say nothing about the user's work.
+      return null;
+  }
+}
+
 /**
  * What the app is showing, so the assistant does not ask the user for what is on their screen: the day, the servers
- * with the one in front of them, and the project they have selected. No address and no API key is part of it.
+ * with the one in front of them and who is signed in to it, the project they have selected, and the view they are
+ * looking at. No server address and no API key is part of it.
  */
 export function assistantContext(): AssistantContext {
+  const user = get(activeServer)?.user;
+  const userName = user ? `${user.firstname} ${user.lastname}`.trim() || user.login : null;
   return {
     today: assistantToday(new Date()),
-    servers: storeHost.servers().map(({ name, active, signedIn, login }) => ({ name, active, signedIn, login: login ?? null })),
+    servers: storeHost.servers().map(({ name, active, signedIn, login }) => ({
+      name,
+      active,
+      signedIn,
+      login: login ?? null,
+      userName: active ? userName : null,
+    })),
     project: get(activeProject),
+    view: viewInWords(get(activeView), get(viewLabels)),
   };
 }
 

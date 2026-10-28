@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { get } from 'svelte/store';
 import { redmineApi } from '../api';
-import { askAssistant, assistantContext } from '../assistant';
+import { askAssistant, assistantContext, viewInWords } from '../assistant';
 import { chatById, resetChats, startChat, updateChat } from '../chats';
-import { activeServerId, projectSelection } from '../store';
+import { activeServerId, projectSelection, servers } from '../store';
+import { activeView, resetViews } from '../views';
 import type { AssistantSettings } from '../../../shared/assistant';
 
 vi.mock('../api', () => ({
@@ -265,7 +266,52 @@ describe('what the app tells the assistant about itself', () => {
   it('says what the app shows without ever naming an address or a key', () => {
     const context = assistantContext();
 
-    expect(context.servers).toEqual([{ name: 'Dev', active: true, signedIn: true, login: null }]);
+    expect(context.servers).toEqual([{ name: 'Dev', active: true, signedIn: true, login: null, userName: null }]);
     expect(JSON.stringify(context)).not.toContain('dev.local');
+  });
+});
+
+describe('what the app says the user is looking at', () => {
+  it('names a task by its number and its subject, as the tab already calls it', () => {
+    expect(viewInWords('task:dev:6137', { 'task:dev:6137': '#6137 Fix the login' })).toBe('the task #6137 Fix the login');
+    expect(viewInWords('task:dev:6137', {})).toBe('the task #6137');
+    expect(viewInWords('log:dev:12', {})).toBe('the log entry #12');
+  });
+
+  it('names the views of the user’s own work', () => {
+    expect(viewInWords('dashboard', {})).toContain('the dashboard');
+    expect(viewInWords('calendar', {})).toBe('the calendar of their logged time');
+    expect(viewInWords('todo', {})).toBe('their to-do list');
+  });
+
+  it('says nothing about the screens that say nothing about the work', () => {
+    expect(viewInWords('settings', {})).toBeNull();
+    expect(viewInWords('assistant', {})).toBeNull();
+    expect(viewInWords('about', {})).toBeNull();
+  });
+
+  it('carries the view and the user’s own name into the question', async () => {
+    activeView.set('todo');
+    servers.set([
+      {
+        id: 'dev',
+        name: 'Dev',
+        url: 'https://dev.local',
+        apiToken: 'k',
+        user: { id: 1, login: 'voleger', firstname: 'Oleh', lastname: 'Vehera' },
+      },
+    ]);
+    api.getAssistantSettings.mockResolvedValue(configured);
+    api.loadAssistantKey.mockResolvedValue(null);
+    const fetch = stubModel([{ choices: [{ message: { content: 'Five hours.' } }] }]);
+    const chat = startChat();
+
+    await askAssistant(chat, 'What did I log yesterday?');
+
+    const sent = JSON.parse(String(fetch.mock.calls[0][1]?.body));
+    expect(sent.messages[0].content).toContain('It is the user’s only server');
+    expect(sent.messages[0].content).toContain('The user is looking at their to-do list.');
+    // The user's own name comes from the server they are signed in to, next to the login the host gives.
+    expect(assistantContext().servers?.[0].userName).toBe('Oleh Vehera');
   });
 });

@@ -182,13 +182,28 @@ describe('what the assistant is told about the app', () => {
   it('names the server the app shows and who is signed in to it', () => {
     const lines = assistantContextLines({
       servers: [
-        { name: 'Work', active: true, signedIn: true, login: 'ana' },
+        { name: 'Work', active: true, signedIn: true, login: 'ana', userName: 'Ana Kova' },
         { name: 'Home', active: false, signedIn: true, login: 'ana' },
       ],
     });
 
-    expect(lines[0]).toBe('The app is showing the server "Work", signed in as "ana".');
-    expect(lines[1]).toBe('The user’s other servers are "Home". Read one of them only when the user names it.');
+    expect(lines[0]).toBe('The app is showing the server "Work", signed in as "ana" (Ana Kova).');
+    expect(lines[1]).toBe(
+      'The user’s other servers are "Home". A question that names none of them is about "Work"; read another only when the user names it.'
+    );
+  });
+
+  it('says that one server is no choice at all, which is where the needless question came from', () => {
+    const lines = assistantContextLines({ servers: [{ name: 'Golems', active: true, signedIn: true, login: 'voleger' }] });
+
+    expect(lines[0]).toBe('The app is showing the server "Golems", signed in as "voleger".');
+    expect(lines[1]).toBe('It is the user’s only server. There is nothing to choose: never ask which server a question is about.');
+  });
+
+  it('names the view the user is looking at, so “this” and “here” mean something', () => {
+    const lines = assistantContextLines({ view: 'the task #6137 “Fix the login”' });
+
+    expect(lines).toEqual(['The user is looking at the task #6137 “Fix the login”. “This”, “it” and “here” mean that, unless they say otherwise.']);
   });
 
   it('says when the server the app shows cannot be read, rather than letting the model try', () => {
@@ -214,7 +229,8 @@ describe('what the assistant is told about the app', () => {
   });
 
   it('tells the model to answer from this instead of asking the user for it', () => {
-    expect(ASSISTANT_SYSTEM_PROMPT).toContain('Answer from it instead of asking the user for it');
+    expect(ASSISTANT_SYSTEM_PROMPT).toContain('never ask them for something it already says');
     expect(ASSISTANT_SYSTEM_PROMPT).toContain('A question that names no server is about the server the app is showing');
+    expect(ASSISTANT_SYSTEM_PROMPT).toContain('Ask a question back only when two readings would give different answers');
   });
 });
