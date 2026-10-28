@@ -12,6 +12,7 @@ import { redmineApi } from './api';
 import { hasDesktopBackend } from './bridge';
 import { chatById, titleFrom, updateChat, NEW_CHAT_TITLE } from './chats';
 import { storeHost } from './mcp-host';
+import { activeProject } from './store';
 import { askOnDevice } from './on-device-ai';
 import { tauriFetch } from './tauri-platform';
 
@@ -66,6 +67,7 @@ export async function askAssistant(chatId: string, question: string): Promise<bo
       tools: TOOLS,
       deps: { host: storeHost, api: redmineApi, version: buildInfo.version },
       fetch: httpFetch,
+      project: get(activeProject),
     });
     updateChat(chatId, { messages: result.conversation });
     return true;

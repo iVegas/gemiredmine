@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ask, MAX_MODEL_ROUNDS } from '../assistant/chat';
+import { ask, ASSISTANT_SYSTEM_PROMPT, MAX_MODEL_ROUNDS } from '../assistant/chat';
 import { TOOLS } from '../mcp/tools';
 import type { McpApi, McpDeps, McpHost } from '../mcp/host';
 import type { AssistantSettings } from '../../shared/assistant';
@@ -61,6 +61,27 @@ describe('asking the assistant', () => {
     const second = JSON.parse(String(fetch.mock.calls[1][1]?.body));
     expect(second.messages.at(-1)).toMatchObject({ role: 'tool', tool_call_id: 'c1' });
     expect(JSON.parse(second.messages.at(-1).content).servers[0]).toMatchObject({ id: 'dev', name: 'Dev' });
+  });
+
+  it('tells the model which project the user has selected, after the usual instructions', async () => {
+    const { dependencies } = deps();
+    const fetch = model([text('Two tasks in Shop.')]);
+
+    await ask({ settings: openai, apiKey: 'k', conversation: question, tools: TOOLS, deps: dependencies, fetch, project: { id: 1, name: 'Shop' } });
+
+    const sent = JSON.parse(String(fetch.mock.calls[0][1]?.body));
+    expect(sent.messages[0].content).toContain(ASSISTANT_SYSTEM_PROMPT);
+    expect(sent.messages[0].content).toContain('the project "Shop" (Redmine id 1)');
+  });
+
+  it('gives the model no project when every project is shown', async () => {
+    const { dependencies } = deps();
+    const fetch = model([text('Four tasks.')]);
+
+    await ask({ settings: openai, apiKey: 'k', conversation: question, tools: TOOLS, deps: dependencies, fetch, project: null });
+
+    const sent = JSON.parse(String(fetch.mock.calls[0][1]?.body));
+    expect(sent.messages[0].content).toBe(ASSISTANT_SYSTEM_PROMPT);
   });
 
   it('turns a log of time into a proposal, and never writes it to Redmine', async () => {

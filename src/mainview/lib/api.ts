@@ -9,7 +9,9 @@ export const redmineApi: GemiBackend = {
   getCurrentUser: (access) => backend().getCurrentUser(access),
   listTimeEntries: (access, range) => backend().listTimeEntries(access, range),
   listOpenTasks: (access, dueRange) => backend().listOpenTasks(access, dueRange),
-  listAssignedTasks: (access) => backend().listAssignedTasks(access),
+  // The arguments are passed on as they were given, so a call without a project scope stays a call without one.
+  listAssignedTasks: (...args) => backend().listAssignedTasks(...args),
+  listMyProjects: (access) => backend().listMyProjects(access),
   getTask: (access, taskId) => backend().getTask(access, taskId),
   listTaskLogEntries: (access, taskId) => backend().listTaskLogEntries(access, taskId),
   getLogEntry: (access, entryId) => backend().getLogEntry(access, entryId),

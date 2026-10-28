@@ -86,6 +86,17 @@ export interface CurrentUserResponse {
   user: RedmineUser;
 }
 
+/** A membership of the user in a project, as `GET /users/current.json?include=memberships` lists it. */
+export interface RedmineMembership {
+  id: number;
+  project: RedmineReference;
+  roles?: RedmineReference[];
+}
+
+export interface CurrentUserMembershipsResponse {
+  user: RedmineUser & { memberships?: RedmineMembership[] };
+}
+
 /** A custom field of an issue or a time entry, with the value it has there. */
 export interface RedmineCustomFieldValue {
   id: number;

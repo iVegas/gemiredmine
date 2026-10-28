@@ -53,6 +53,22 @@ describe('CalendarView Component', () => {
     );
   });
 
+  it('loads and summarises only the project it is given', async () => {
+    api.listTimeEntries.mockResolvedValueOnce([entries[0]]);
+    api.listOpenTasks.mockResolvedValueOnce([]);
+    const view = render(CalendarView, { props: { server, project: { id: 1, name: 'Shop' } } });
+
+    expect(await view.findByText('1.5 h logged across 1 entry this month in Shop.')).toBeInTheDocument();
+    expect(api.listTimeEntries).toHaveBeenCalledWith(
+      { baseUrl: 'https://dev.local', apiKey: 'key' },
+      { ...currentMonth, projectId: 1 }
+    );
+    expect(api.listOpenTasks).toHaveBeenCalledWith(
+      { baseUrl: 'https://dev.local', apiKey: 'key' },
+      { dueFrom: currentMonth.from, dueTo: currentMonth.to, projectId: 1 }
+    );
+  });
+
   it('shows each time entry on its day in the Logs view', async () => {
     const view = render(CalendarView, { props: { server } });
 

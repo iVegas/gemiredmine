@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { ServerConnection } from './lib/store';
-  import type { RedmineIssue, RedmineTimeEntry } from '../bun/redmine/types';
+  import type { RedmineIssue, RedmineReference, RedmineTimeEntry } from '../bun/redmine/types';
   import { redmineApi } from './lib/api';
   import { redmineChanges } from './lib/data-changes';
   import {
@@ -15,6 +15,8 @@
   import { openLogEntry, openTask } from './lib/views';
 
   export let server: ServerConnection;
+  /** The project the calendar shows, or null for every project the user takes part in. */
+  export let project: RedmineReference | null = null;
 
   type View = 'logs' | 'tasks';
   const MAX_ITEMS_PER_DAY = 3;
@@ -31,10 +33,10 @@
   // Each load gets a number so responses for a month the user already left are ignored.
   let latestRequest = 0;
 
-  // Reloads after a write in this window, see CalendarPreview.svelte.
-  $: void $redmineChanges, loadMonth(server.url, server.apiToken, year, month);
+  // Reloads after a write in this window, see CalendarPreview.svelte, and when the project changes.
+  $: void $redmineChanges, loadMonth(server.url, server.apiToken, year, month, project?.id);
 
-  async function loadMonth(baseUrl: string, apiKey: string | undefined, year: number, month: number) {
+  async function loadMonth(baseUrl: string, apiKey: string | undefined, year: number, month: number, projectId?: number) {
     if (!apiKey) return;
 
     const request = ++latestRequest;
@@ -45,8 +47,8 @@
     error = '';
     try {
       const [logs, dueTasks] = await Promise.all([
-        redmineApi.listTimeEntries(access, { from, to }),
-        redmineApi.listOpenTasks(access, { dueFrom: from, dueTo: to }),
+        redmineApi.listTimeEntries(access, { from, to, projectId }),
+        redmineApi.listOpenTasks(access, { dueFrom: from, dueTo: to, projectId }),
       ]);
       if (request !== latestRequest) return;
       entries = logs;
@@ -74,6 +76,7 @@
 
   $: weeks = buildMonthGrid(year, month);
   $: monthLabel = new Date(year, month, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+  $: scope = project ? ` in ${project.name}` : '';
   $: logsByDay = groupLogsByDay(entries);
   $: tasksByDay = groupTasksByDay(tasks);
   $: totalHours = sumHours(entries);
@@ -112,16 +115,16 @@
     {#if loading}
       Loading…
     {:else if view === 'logs'}
-      {formatHours(totalHours)} logged across {entries.length} {entries.length === 1 ? 'entry' : 'entries'} this month.
+      {formatHours(totalHours)} logged across {entries.length} {entries.length === 1 ? 'entry' : 'entries'} this month{scope}.
     {:else}
-      {tasks.length} open {tasks.length === 1 ? 'task' : 'tasks'} due this month.
+      {tasks.length} open {tasks.length === 1 ? 'task' : 'tasks'} due this month{scope}.
     {/if}
   </p>
 
   {#if error}
     <div role="alert" class="flex flex-wrap items-center justify-between gap-3 p-3 rounded border border-red-200 bg-red-50 text-sm text-red-800">
       <span>Could not load data from {server.name}: {error}</span>
-      <button type="button" class="py-1 px-3 border border-red-300 rounded bg-white hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-blue-500" on:click={() => loadMonth(server.url, server.apiToken, year, month)}>
+      <button type="button" class="py-1 px-3 border border-red-300 rounded bg-white hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-blue-500" on:click={() => loadMonth(server.url, server.apiToken, year, month, project?.id)}>
         Try again
       </button>
     </div>

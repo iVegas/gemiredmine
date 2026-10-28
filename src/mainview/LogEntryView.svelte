@@ -7,6 +7,7 @@
   import { formatDueDate } from './lib/todo';
   import { customFieldText, formatTimestamp, serverPage } from './lib/task-details';
   import { logView, openTask, setViewLabel } from './lib/views';
+  import DayTimeTotals from './components/DayTimeTotals.svelte';
   import HoursField from './components/HoursField.svelte';
 
   export let server: ServerConnection;
@@ -195,6 +196,8 @@
             </select>
           </label>
         </div>
+        <!-- The entry keeps its project, so that is the one the figures name; the entry itself is not counted. -->
+        <DayTimeTotals {server} day={draft.spentOn} project={entry.project} excludeEntryId={entryId} />
         <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
           Comment
           <textarea rows="3" bind:value={draft.comments} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>

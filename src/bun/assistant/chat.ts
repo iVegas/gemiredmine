@@ -18,6 +18,15 @@ export const ASSISTANT_SYSTEM_PROMPT = [
   'Answer briefly, in the language the user writes in.',
 ].join(' ');
 
+/** The instructions for one question: the ones above, and the project the user has selected in the app, when there is one. */
+export function assistantSystemPrompt(project: AskInput['project']): string {
+  if (!project) return ASSISTANT_SYSTEM_PROMPT;
+  return [
+    ASSISTANT_SYSTEM_PROMPT,
+    `The user has selected the project "${project.name}" (Redmine id ${project.id}) in the app. Questions about their tasks and time mean that project, unless they name another one. list_assigned_tasks lists the tasks of every project: count only those whose project is that one.`,
+  ].join(' ');
+}
+
 export interface AskInput {
   settings: AssistantSettings;
   /** The key of the chat model, or null when the service needs none. */
@@ -28,6 +37,8 @@ export interface AskInput {
   /** The same dependencies as the MCP endpoint: the servers, the Redmine calls and the app's version. */
   deps: McpDeps;
   fetch: FetchLike;
+  /** The project the user has selected in the app, or null for every project. */
+  project?: { id: number; name: string } | null;
 }
 
 export interface AskResult {
@@ -62,7 +73,7 @@ export async function ask(input: AskInput): Promise<AskResult> {
 }
 
 async function askModel(input: AskInput, specs: ToolSpec[], conversation: ChatMessage[]): Promise<ModelReply> {
-  const request = buildModelRequest(input.settings, input.apiKey, conversation, specs, ASSISTANT_SYSTEM_PROMPT);
+  const request = buildModelRequest(input.settings, input.apiKey, conversation, specs, assistantSystemPrompt(input.project));
   const response = await input.fetch(request.url, {
     method: 'POST',
     headers: request.headers,

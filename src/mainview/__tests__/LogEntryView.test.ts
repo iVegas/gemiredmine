@@ -7,7 +7,7 @@ import { activeView, openViews, resetViews, viewLabels } from '../lib/views';
 import type { RedmineTimeEntry } from '../../bun/redmine/types';
 
 vi.mock('../lib/api', () => ({
-  redmineApi: { getLogEntry: vi.fn(), listTimeActivities: vi.fn(), updateLogEntry: vi.fn() },
+  redmineApi: { getLogEntry: vi.fn(), listTimeEntries: vi.fn(), listTimeActivities: vi.fn(), updateLogEntry: vi.fn() },
 }));
 
 const api = vi.mocked(redmineApi);
@@ -31,6 +31,7 @@ describe('LogEntryView', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     api.getLogEntry.mockResolvedValue(entry());
+    api.listTimeEntries.mockResolvedValue([]);
     resetViews();
     viewLabels.set({});
   });

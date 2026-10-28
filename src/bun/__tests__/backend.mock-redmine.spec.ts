@@ -94,6 +94,23 @@ describe('the backend against a Redmine server', () => {
     expect(entries).toHaveLength(5);
   });
 
+  it('lists the projects the user takes part in, and narrows the lists to one of them', async () => {
+    const projects = await backend.listMyProjects({ baseUrl, apiKey: API_KEY });
+    expect(projects.map((project) => project.name)).toEqual(['Infrastructure', 'Mobile app', 'Website']);
+
+    const website = projects.find((project) => project.name === 'Website')!;
+    const tasks = await backend.listAssignedTasks({ baseUrl, apiKey: API_KEY }, { projectId: website.id });
+    const entries = await backend.listTimeEntries(
+      { baseUrl, apiKey: API_KEY },
+      { from: '2026-10-05', to: '2026-10-09', projectId: website.id }
+    );
+
+    expect(tasks.length).toBeGreaterThan(0);
+    expect(tasks.every((task) => task.project.id === website.id)).toBe(true);
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.every((entry) => entry.project.id === website.id)).toBe(true);
+  });
+
   it('tells a server that moved from wrong credentials, when the HTTP client does not follow redirects', async () => {
     const strict = backendWith({ fetch: (url, init) => fetch(url, { ...init, redirect: 'manual' }) });
 

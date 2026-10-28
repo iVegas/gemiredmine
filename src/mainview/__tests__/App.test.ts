@@ -15,6 +15,7 @@ vi.mock('../lib/api', () => ({
     listTimeEntries: vi.fn(),
     listOpenTasks: vi.fn(),
     listAssignedTasks: vi.fn(),
+    listMyProjects: vi.fn(),
     getTask: vi.fn(),
     listTaskLogEntries: vi.fn(),
     getDevPreviewStatus: vi.fn(),
@@ -34,6 +35,7 @@ describe('App', () => {
     vi.resetAllMocks();
     api.listTimeEntries.mockResolvedValue([]);
     api.listOpenTasks.mockResolvedValue([]);
+    api.listMyProjects.mockResolvedValue([]);
     api.listAssignedTasks.mockResolvedValue([]);
     api.getDevPreviewStatus.mockResolvedValue({ available: true, enabled: false, dataDir: '', logBytes: 0, pendingEntries: 0 });
     servers.set([]);

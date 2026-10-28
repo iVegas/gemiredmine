@@ -3,7 +3,7 @@
 **Start here.** This file says what is done, what is next, and how to check it. The reasoning and the full
 specification of the remaining work are in [`plan.md`](./plan.md).
 
-*Last updated 2026-10-28 (several chat windows, dragged and resized, a keyboard shortcut, and asking about a task). Before: 2026-10-28 (the assistant floats over the app instead of being a tab). Before: 2026-10-27 (the navigation bar, and an assistant that finds a model on the computer instead of asking for a key). Before: 2026-10-17 (issue #25: user menu layer, task and log tabs in windows, logging time from a task, Secret Service retry). Before: 2026-10-15, after one instance of the app, remembering the sign-in, and the task and log entry views on `claude/sharp-pascal-qbz3f6`. PR 0 and PR 1 are merged (`648fe5b`), and so are pull requests #21, #22 and #23 (PR 2, PR 2b), as `main` shows (`3baf9a8`); the rows below for them were written before that.*
+*Last updated 2026-10-28 (a project selector next to the user widget, and what is already logged on the day in the time forms). Before: 2026-10-28 (several chat windows, dragged and resized, a keyboard shortcut, and asking about a task). Before: 2026-10-28 (the assistant floats over the app instead of being a tab). Before: 2026-10-27 (the navigation bar, and an assistant that finds a model on the computer instead of asking for a key). Before: 2026-10-17 (issue #25: user menu layer, task and log tabs in windows, logging time from a task, Secret Service retry). Before: 2026-10-15, after one instance of the app, remembering the sign-in, and the task and log entry views on `claude/sharp-pascal-qbz3f6`. PR 0 and PR 1 are merged (`648fe5b`), and so are pull requests #21, #22 and #23 (PR 2, PR 2b), as `main` shows (`3baf9a8`); the rows below for them were written before that.*
 
 **Keep this file current.** Whoever does a step updates this file in the same pull request: the status table, the
 commit SHAs, anything that went differently from the plan, and what you learned about the environment. Put a decision
@@ -537,6 +537,30 @@ service.
 
 Not done: chats that outlive the app (nothing is written to disk), and a window dragged out of the app into a window of
 its own, the way a tab can be.
+
+### The project selector, and the day's time in the time forms (2026-10-28)
+
+- **`src/mainview/ProjectSelector.svelte`** sits next to the user widget in the main window's header. "All projects" is the
+  default, which is every project the user takes part in. The list is the projects the user is a member of on the active
+  server (`listMyProjects`, which reads `/users/current.json?include=memberships`).
+- **What it narrows:** the Dashboard's two cards, the Calendar and the To-do list. Their requests take `projectId`, which
+  becomes Redmine's `project_id` on `time_entries.json` and `issues.json` (Redmine includes the subprojects, as it does
+  by default). The assistant's prompt names the selected project, and says to count only its tasks, because its
+  `list_assigned_tasks` tool still lists every project. Task and log entry tabs show one record, so they are not narrowed.
+- **Where the choice lives:** `projectSelection` in `lib/store.ts`, per server id (project ids belong to one server), kept
+  in `localStorage` under `gemiredmine.projects` and carried in the window session, so a detached calendar follows the
+  main window. A project the user is no longer a member of is dropped when the list loads.
+- **The time forms** (`components/DayTimeTotals.svelte`): the task's log form and the edit form of a log entry show what is
+  already logged on the chosen day, across all projects and, when there is some, in the project the time goes to (the
+  task's, or the entry's). The entry being edited is not counted. The figures reload after a write in the window.
+- **The mock Redmine** lists the memberships on `include=memberships` and filters by `project_id`.
+
+**Not verified here**
+- The sandbox could not install the npm packages: the registry was refused by the egress proxy. So `npm test`,
+  `npm run typecheck` and the Svelte build were **not run**; the tests were written by reading the code. Run them first.
+- `include=memberships` on `/users/current.json` is not checked against a live Redmine. If a server does not list memberships,
+  the selector offers only "All projects". The mock lists them.
+- The selector, the detached calendar following it, and the day's totals were not driven in the desktop app.
 
 ## How it was verified
 

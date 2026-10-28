@@ -1,7 +1,7 @@
 // What the user interface asks of the backend: the Redmine calls and the developer preview.
 // The desktop shell answers over RPC (see rpc.ts); a backend that runs inside the webview
 // implements the same interface. Type-only imports keep this file free of runtime code.
-import type { RedmineIssue, RedmineIssueDetails, RedmineTimeEntry, RedmineUser } from '../bun/redmine/types';
+import type { RedmineIssue, RedmineIssueDetails, RedmineReference, RedmineTimeEntry, RedmineUser } from '../bun/redmine/types';
 import type { DevPreviewStatus, FeedbackResult } from '../bun/diagnostics/service';
 import type { FeedbackInput } from '../bun/diagnostics/feedback';
 import type { LogLevel } from '../bun/diagnostics/aggregator';
@@ -24,6 +24,11 @@ export interface DueRange {
   dueFrom: string;
   /** YYYY-MM-DD, inclusive */
   dueTo: string;
+}
+
+/** Narrows a list to one project and its subprojects, as Redmine does. Without it, the list covers every project. */
+export interface ProjectScope {
+  projectId?: number;
 }
 
 export interface SignInParams {
@@ -142,9 +147,14 @@ import type { Proposal } from './proposals';
 export interface GemiBackend {
   signIn(params: SignInParams): Promise<SignInResponse>;
   getCurrentUser(access: ServerAccess): Promise<CurrentUserSummary>;
-  listTimeEntries(access: ServerAccess, range: DateRange): Promise<RedmineTimeEntry[]>;
-  listOpenTasks(access: ServerAccess, dueRange: DueRange): Promise<RedmineIssue[]>;
-  listAssignedTasks(access: ServerAccess): Promise<RedmineIssue[]>;
+  /** The time the user logged in the range, in the project of `projectId` when one is given. */
+  listTimeEntries(access: ServerAccess, range: DateRange & ProjectScope): Promise<RedmineTimeEntry[]>;
+  /** The open tasks assigned to the user that are due in the range, in the project of `projectId` when one is given. */
+  listOpenTasks(access: ServerAccess, dueRange: DueRange & ProjectScope): Promise<RedmineIssue[]>;
+  /** The open tasks assigned to the user, highest priority first, in the project of `projectId` when one is given. */
+  listAssignedTasks(access: ServerAccess, scope?: ProjectScope): Promise<RedmineIssue[]>;
+  /** The projects the user takes part in on this server, which are the ones they are a member of, by name. */
+  listMyProjects(access: ServerAccess): Promise<RedmineReference[]>;
   /** One task with its history, attachments, subtasks and relations. Rejects with a 404 for one that cannot be seen. */
   getTask(access: ServerAccess, taskId: number): Promise<TaskDetails>;
   /** The time logged on a task, by anyone the user may see, the latest day first. */

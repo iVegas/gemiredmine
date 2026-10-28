@@ -15,6 +15,7 @@
     serverPage,
   } from './lib/task-details';
   import { openLogEntry, openTask, setViewLabel, taskView } from './lib/views';
+  import DayTimeTotals from './components/DayTimeTotals.svelte';
   import { startChatPanel } from './lib/assistant-dock';
   import HoursField from './components/HoursField.svelte';
 
@@ -525,6 +526,8 @@
               </select>
             </label>
           </div>
+          <!-- The time is logged to the task's project, so that is the one the figures name. -->
+          <DayTimeTotals {server} day={draft.spentOn} project={issue.project} />
           <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
             Comment
             <input type="text" bind:value={draft.comments} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />

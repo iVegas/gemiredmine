@@ -1,12 +1,14 @@
 <script lang="ts">
   import type { ServerConnection } from './lib/store';
-  import type { RedmineIssue } from '../bun/redmine/types';
+  import type { RedmineIssue, RedmineReference } from '../bun/redmine/types';
   import { redmineApi } from './lib/api';
   import { redmineChanges } from './lib/data-changes';
   import { formatDueDate, groupTasksByPriority, isOverdue } from './lib/todo';
   import { openTask } from './lib/views';
 
   export let server: ServerConnection;
+  /** The project the list shows, or null for every project the user takes part in. */
+  export let project: RedmineReference | null = null;
 
   let tasks: RedmineIssue[] = [];
   let loading = false;
@@ -14,17 +16,18 @@
   // Responses for a server the user already switched away from are ignored.
   let latestRequest = 0;
 
-  // Reloads after a write in this window, such as an approved task change (see CalendarPreview.svelte).
-  $: void $redmineChanges, load(server.url, server.apiToken);
+  // Reloads after a write in this window, such as an approved task change (see CalendarPreview.svelte), and when the
+  // project changes.
+  $: void $redmineChanges, load(server.url, server.apiToken, project?.id);
 
-  async function load(baseUrl: string, apiKey: string | undefined) {
+  async function load(baseUrl: string, apiKey: string | undefined, projectId?: number) {
     if (!apiKey) return;
 
     const request = ++latestRequest;
     loading = true;
     error = '';
     try {
-      const assigned = await redmineApi.listAssignedTasks({ baseUrl, apiKey });
+      const assigned = await redmineApi.listAssignedTasks({ baseUrl, apiKey }, { projectId });
       if (request !== latestRequest) return;
       tasks = assigned;
     } catch (err) {
@@ -36,9 +39,10 @@
     }
   }
 
-  const reload = () => load(server.url, server.apiToken);
+  const reload = () => load(server.url, server.apiToken, project?.id);
 
   $: groups = groupTasksByPriority(tasks);
+  $: where = project ? `in ${project.name}` : 'across all projects';
 </script>
 
 <section aria-labelledby="todo-heading" aria-busy={loading} class="flex flex-col gap-4 min-w-0">
@@ -49,7 +53,7 @@
         {#if loading}
           Loading…
         {:else if !error}
-          {tasks.length} open {tasks.length === 1 ? 'task' : 'tasks'} assigned to you across all projects, by priority.
+          {tasks.length} open {tasks.length === 1 ? 'task' : 'tasks'} assigned to you {where}, by priority.
         {/if}
       </p>
     </div>

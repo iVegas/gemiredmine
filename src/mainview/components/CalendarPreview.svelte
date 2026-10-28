@@ -1,7 +1,7 @@
 <script lang="ts">
   import DashboardCard from './DashboardCard.svelte';
   import type { ServerConnection } from '../lib/store';
-  import type { RedmineIssue, RedmineTimeEntry } from '../../bun/redmine/types';
+  import type { RedmineIssue, RedmineReference, RedmineTimeEntry } from '../../bun/redmine/types';
   import { redmineApi } from '../lib/api';
   import { redmineChanges } from '../lib/data-changes';
   import { openView } from '../lib/views';
@@ -16,6 +16,8 @@
   } from '../lib/calendar';
 
   export let server: ServerConnection;
+  /** The project the calendar shows, or null for every project the user takes part in. */
+  export let project: RedmineReference | null = null;
 
   const today = new Date();
   const year = today.getFullYear();
@@ -31,9 +33,9 @@
   let latestRequest = 0;
 
   // The write count is read so that an entry or task changed in this window shows here at once, including an approval.
-  $: void $redmineChanges, load(server.url, server.apiToken);
+  $: void $redmineChanges, load(server.url, server.apiToken, project?.id);
 
-  async function load(baseUrl: string, apiKey: string | undefined) {
+  async function load(baseUrl: string, apiKey: string | undefined, projectId?: number) {
     if (!apiKey) return;
 
     const request = ++latestRequest;
@@ -44,8 +46,8 @@
     error = '';
     try {
       const [logs, dueTasks] = await Promise.all([
-        redmineApi.listTimeEntries(access, { from, to }),
-        redmineApi.listOpenTasks(access, { dueFrom: from, dueTo: to }),
+        redmineApi.listTimeEntries(access, { from, to, projectId }),
+        redmineApi.listOpenTasks(access, { dueFrom: from, dueTo: to, projectId }),
       ]);
       if (request !== latestRequest) return;
       entries = logs;
@@ -71,11 +73,12 @@
 
   $: logsByDay = groupLogsByDay(entries);
   $: tasksByDay = groupTasksByDay(tasks);
+  $: scope = project ? ` in ${project.name}` : '';
   $: summary = loading
     ? `Loading ${monthLabel}…`
     : error
       ? `Could not load the calendar: ${error}`
-      : `${formatHours(sumHours(entries))} logged and ${tasks.length} open ${tasks.length === 1 ? 'task' : 'tasks'} due in ${monthLabel}.`;
+      : `${formatHours(sumHours(entries))} logged and ${tasks.length} open ${tasks.length === 1 ? 'task' : 'tasks'} due in ${monthLabel}${scope}.`;
 </script>
 
 <DashboardCard id="calendar-preview" title="Calendar" actionLabel="Open calendar" {summary} onOpen={() => openView('calendar')}>
