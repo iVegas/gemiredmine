@@ -37,7 +37,8 @@ Four tools read, and answer at once.
 | `list_servers` | none | The servers you added, whether you are signed in to each, and which one the app shows |
 | `list_assigned_tasks` | `server` (optional) | The open tasks assigned to you on that server, up to 100 |
 | `get_task` | `server` (optional), `taskId` | One task in full: description, people, estimate, time spent, dates |
-| `list_task_time` | `server` (optional), `taskId` | The time logged on a task, with the total hours |
+| `list_task_time` | `server` (optional), `taskId` | The time logged on a task, by anyone you may see, with the total hours |
+| `list_my_time` | `server` (optional), `from` and `to` (optional, YYYY-MM-DD) | The time **you** logged across every task, with the total hours and the totals per project and per task. Without dates it covers the last 30 days |
 | `list_time_activities` | `server` (optional) | The activities that time can be logged under, with their ids |
 
 Three tools propose a change. **Nothing reaches Redmine until you approve it** in **Settings > AI agents**, under

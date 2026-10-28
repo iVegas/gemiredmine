@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ask, ASSISTANT_SYSTEM_PROMPT, MAX_MODEL_ROUNDS } from '../assistant/chat';
+import {
+  ask,
+  assistantContextLines,
+  assistantSystemPrompt,
+  assistantToday,
+  ASSISTANT_SYSTEM_PROMPT,
+  MAX_MODEL_ROUNDS,
+} from '../assistant/chat';
 import { TOOLS } from '../mcp/tools';
 import type { McpApi, McpDeps, McpHost } from '../mcp/host';
 import type { AssistantSettings } from '../../shared/assistant';
@@ -63,22 +70,40 @@ describe('asking the assistant', () => {
     expect(JSON.parse(second.messages.at(-1).content).servers[0]).toMatchObject({ id: 'dev', name: 'Dev' });
   });
 
-  it('tells the model which project the user has selected, after the usual instructions', async () => {
+  it('tells the model what the app is showing, after the usual instructions', async () => {
     const { dependencies } = deps();
     const fetch = model([text('Two tasks in Shop.')]);
 
-    await ask({ settings: openai, apiKey: 'k', conversation: question, tools: TOOLS, deps: dependencies, fetch, project: { id: 1, name: 'Shop' } });
+    await ask({
+      settings: openai,
+      apiKey: 'k',
+      conversation: question,
+      tools: TOOLS,
+      deps: dependencies,
+      fetch,
+      context: {
+        today: '2026-10-28 (Wednesday)',
+        servers: [
+          { name: 'Work', active: true, signedIn: true, login: 'ana' },
+          { name: 'Home', active: false, signedIn: false },
+        ],
+        project: { id: 1, name: 'Shop' },
+      },
+    });
 
     const sent = JSON.parse(String(fetch.mock.calls[0][1]?.body));
     expect(sent.messages[0].content).toContain(ASSISTANT_SYSTEM_PROMPT);
+    expect(sent.messages[0].content).toContain('Today is 2026-10-28 (Wednesday).');
+    expect(sent.messages[0].content).toContain('showing the server "Work", signed in as "ana"');
+    expect(sent.messages[0].content).toContain('other servers are "Home"');
     expect(sent.messages[0].content).toContain('the project "Shop" (Redmine id 1)');
   });
 
-  it('gives the model no project when every project is shown', async () => {
+  it('gives the model the usual instructions alone when nothing about the app is known', async () => {
     const { dependencies } = deps();
     const fetch = model([text('Four tasks.')]);
 
-    await ask({ settings: openai, apiKey: 'k', conversation: question, tools: TOOLS, deps: dependencies, fetch, project: null });
+    await ask({ settings: openai, apiKey: 'k', conversation: question, tools: TOOLS, deps: dependencies, fetch });
 
     const sent = JSON.parse(String(fetch.mock.calls[0][1]?.body));
     expect(sent.messages[0].content).toBe(ASSISTANT_SYSTEM_PROMPT);
@@ -144,5 +169,52 @@ describe('asking the assistant', () => {
       ask({ settings: openai, apiKey: 'wrong', conversation: question, tools: TOOLS, deps: dependencies, fetch })
     ).rejects.toThrow('The model service refused the API key. Check the key in Settings.');
     expect(question).toHaveLength(1);
+  });
+});
+
+describe('what the assistant is told about the app', () => {
+  it('starts with the day, so “this week” and “today” need no question back', () => {
+    expect(assistantContextLines({ today: '2026-10-28 (Wednesday)' })).toEqual(['Today is 2026-10-28 (Wednesday).']);
+    expect(assistantToday(new Date(2026, 9, 28, 9, 30))).toBe('2026-10-28 (Wednesday)');
+    expect(assistantToday(new Date(2026, 0, 3, 23, 59))).toBe('2026-01-03 (Saturday)');
+  });
+
+  it('names the server the app shows and who is signed in to it', () => {
+    const lines = assistantContextLines({
+      servers: [
+        { name: 'Work', active: true, signedIn: true, login: 'ana' },
+        { name: 'Home', active: false, signedIn: true, login: 'ana' },
+      ],
+    });
+
+    expect(lines[0]).toBe('The app is showing the server "Work", signed in as "ana".');
+    expect(lines[1]).toBe('The user’s other servers are "Home". Read one of them only when the user names it.');
+  });
+
+  it('says when the server the app shows cannot be read, rather than letting the model try', () => {
+    const lines = assistantContextLines({ servers: [{ name: 'Work', active: true, signedIn: false }] });
+
+    expect(lines[0]).toContain('where the user is not signed in: say so instead of reading it');
+  });
+
+  it('says when no server is shown, and names the ones there are', () => {
+    const lines = assistantContextLines({
+      servers: [
+        { name: 'Work', active: false, signedIn: true },
+        { name: 'Home', active: false, signedIn: false },
+      ],
+    });
+
+    expect(lines).toEqual(['The app is showing no server. The user’s servers are: "Work", "Home".']);
+  });
+
+  it('knows nothing when it is told nothing, and the prompt is then the instructions alone', () => {
+    expect(assistantContextLines({})).toEqual([]);
+    expect(assistantSystemPrompt()).toBe(ASSISTANT_SYSTEM_PROMPT);
+  });
+
+  it('tells the model to answer from this instead of asking the user for it', () => {
+    expect(ASSISTANT_SYSTEM_PROMPT).toContain('Answer from it instead of asking the user for it');
+    expect(ASSISTANT_SYSTEM_PROMPT).toContain('A question that names no server is about the server the app is showing');
   });
 });

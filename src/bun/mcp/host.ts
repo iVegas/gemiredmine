@@ -38,7 +38,14 @@ export interface McpHost {
 /** The Redmine calls the tools make, and the ones a proposal makes when the user approves it. */
 export type McpApi = Pick<
   GemiBackend,
-  'listAssignedTasks' | 'getTask' | 'listTaskLogEntries' | 'listTimeActivities' | 'listTaskOptions' | 'createLogEntry' | 'updateTask'
+  | 'listAssignedTasks'
+  | 'getTask'
+  | 'listTaskLogEntries'
+  | 'listTimeEntries'
+  | 'listTimeActivities'
+  | 'listTaskOptions'
+  | 'createLogEntry'
+  | 'updateTask'
 >;
 
 export interface McpDeps {

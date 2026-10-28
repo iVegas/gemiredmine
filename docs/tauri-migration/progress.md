@@ -23,6 +23,7 @@ that changes in `plan.md`, with the reason.
 | Navigation bar, and setting the assistant up without typing | **implemented** | | Branch `ccr-d8f0472d-l5mxth`, after the owner's request of 2026-10-27. See "The navigation bar, and an assistant that sets itself up" below |
 | The assistant floats over the app | **implemented** | | Branch `ccr-d8f0472d-l5mxth`, after the owner's request of 2026-10-28. See "The assistant as a floating panel" below |
 | Several chats, dragged and resized, and a shortcut | **implemented** | | Branch `ccr-d8f0472d-l5mxth`, after the owner's request of 2026-10-28. See "Chat windows: several at once, moved and resized" below |
+| What the assistant knows before it answers | **implemented** | | Branch `ccr-d8f0472d-l5mxth`, after the owner's request of 2026-10-28. See "The assistant is told what the app is showing" below |
 | PR 3: end-to-end tests, rename `src/bun` to `src/core` | optional | | Best at the start of the Android phase |
 | Android on Tauri, retire Capacitor | **started: groundwork** | | Outline in `plan.md`. Done here: `android` in `PLATFORMS` and `BuildInfo`, About text, no window layer on Android (`isAndroidWebview`). **Not done, and not possible in this sandbox:** `tauri android init` (needs the Android SDK), the NDK build of `ring`, the APK. See "Android" below |
 
@@ -561,6 +562,31 @@ its own, the way a tab can be.
 - `include=memberships` on `/users/current.json` is not checked against a live Redmine. If a server does not list memberships,
   the selector offers only "All projects". The mock lists them.
 - The selector, the detached calendar following it, and the day's totals were not driven in the desktop app.
+
+### The assistant is told what the app is showing (2026-10-28)
+
+The owner's screenshot: asked "how many hours have I already logged", the assistant asked back which project, then
+which server, then said it could not total time across tasks at all. Two faults, one of them real.
+
+- **The context block.** `assistantSystemPrompt` now takes an `AssistantContext` (`src/bun/assistant/chat.ts`) and
+  `assistantContextLines` turns it into sentences after the standing instructions: today's date with its weekday
+  (`assistantToday`), the server the app is showing with the login signed in to it, the other servers by name, and the
+  project the user has selected. The instructions themselves gained three lines: answer from the context rather than
+  asking for it, "I" is the signed-in user and a question naming no server is about the server the app shows, and work
+  "this week" and "this month" out from today. `src/mainview/lib/assistant.ts` builds the context with
+  `assistantContext()` from `storeHost.servers()` and `activeProject`; no address and no API key is part of it, which a
+  test pins.
+- **`list_my_time`** (`src/bun/mcp/tools.ts`) is the tool that was missing: the time the user logged themselves on a
+  server between two days, with the total hours and the totals per project and per task, largest first. Without dates
+  it covers the last 30 days ending today. `listTimeEntries` is now part of `McpApi`, so the MCP endpoint offers the
+  tool to agents as well; `docs/ai-agents.md` lists it.
+
+Verified here: `npm test` (95 files, 1260 tests, one skipped) and `tsc`. The prompt tests pin each sentence of the
+context, and the tool tests pin the totals, the default range and a range that runs backwards. Not verified: a live
+model answering the screenshot's question, which needs a real service and a real Redmine.
+
+Not done: the chat started from a task does not tell the model which task it is about beyond the question it begins
+with; nothing of the context is sent to the model on the device, which has no tools to use it with.
 
 ## How it was verified
 
