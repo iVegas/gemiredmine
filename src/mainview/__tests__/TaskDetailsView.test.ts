@@ -5,6 +5,8 @@ import TaskDetailsView from '../TaskDetailsView.svelte';
 import { redmineApi } from '../lib/api';
 import { toDateKey } from '../lib/calendar';
 import { activeView, openViews, resetViews, viewLabels } from '../lib/views';
+import { chats, newestChat, resetChats } from '../lib/chats';
+import { panels, resetDock } from '../lib/assistant-dock';
 import type { RedmineIssueDetails, RedmineTimeEntry } from '../../bun/redmine/types';
 import type { TaskDetails } from '../../shared/backend';
 
@@ -85,6 +87,22 @@ describe('TaskDetailsView', () => {
     expect(await view.findByRole('heading', { name: '#42 Fix the login' })).toBeInTheDocument();
     expect(api.getTask).toHaveBeenCalledExactlyOnceWith(access, 42);
     expect(api.listTaskLogEntries).toHaveBeenCalledExactlyOnceWith(access, 42);
+  });
+
+  it('asks the assistant about this task, in a chat window beside it', async () => {
+    resetChats();
+    resetDock();
+    const view = render(TaskDetailsView, { props: { server, taskId: 42 } });
+    await view.findByRole('heading', { name: '#42 Fix the login' });
+
+    await fireEvent.click(view.getByRole('button', { name: 'Ask the assistant' }));
+
+    // The chat is started about the task, with the question begun, and its window is open.
+    expect(newestChat(get(chats))).toMatchObject({
+      title: 'Task #42',
+      draft: 'About task #42 (Fix the login): ',
+    });
+    expect(get(panels).map((panel) => panel.chatId)).toEqual([newestChat(get(chats))!.id]);
   });
 
   it('says that it is loading, and then shows what the task is', async () => {

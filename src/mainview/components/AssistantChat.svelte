@@ -1,21 +1,23 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte';
   import { redmineApi } from '../lib/api';
-  import { askAssistant, assistantError, asking, conversation, readAloud, transcribeSpeech } from '../lib/assistant';
+  import { askAssistant, readAloud, transcribeSpeech } from '../lib/assistant';
+  import { clearChat, updateChat, type Chat } from '../lib/chats';
   import { RecordingUnsupportedError, startRecording } from '../lib/recorder';
   import { openView } from '../lib/views';
   import { assistantSettingsProblem, isOnDeviceProvider, type AssistantSettings } from '../../shared/assistant';
 
-  // The chat itself, in the Assistant tab and in the floating panel. Both show the same conversation, because it is
-  // kept in assistant.ts: what is asked in the panel is there in the tab, and the other way round.
+  // One chat, in its floating window and in the Assistant tab. Both read it from chats.ts, so what is asked in the
+  // window is there in the tab, and the other way round, down to the half-typed question.
 
-  /** The panel is small: the conversation scrolls, and the controls take as little room as they can. */
+  /** The chat this shows. Everything about it, down to what is being typed, is kept in the chats store. */
+  export let chat: Chat;
+  /** The floating window is small: the conversation scrolls, and the controls take as little room as they can. */
   export let compact = false;
-  /** Keeps the element ids apart where two chats could be on the page at once. */
+  /** Keeps the element ids apart where two chats are on the page at once. */
   export let idPrefix = 'assistant';
 
   let settings: AssistantSettings | null = null;
-  let draft = '';
   let readReplies = false;
   let stopRecording: (() => Promise<Blob>) | null = null;
   let recording = false;
@@ -28,7 +30,7 @@
     redmineApi
       .getAssistantSettings()
       .then((loaded) => (settings = loaded))
-      .catch((error: unknown) => assistantError.set(error instanceof Error ? error.message : String(error)));
+      .catch((error: unknown) => say(error instanceof Error ? error.message : String(error)));
   });
 
   // Stops a recording that is still running when the chat goes away, so the microphone is released.
@@ -40,13 +42,16 @@
   $: ready = settings !== null && problem === null;
   $: canListen = ready && settings?.voice != null && canRecordHere;
   $: canSpeak = ready && settings?.voice?.speech != null;
-  $: shown = $conversation.filter((message) => message.role !== 'tool');
+  $: draft = chat.draft;
+  $: shown = chat.messages.filter((message) => message.role !== 'tool');
   // The model on the device answers without the app's tools, so it never reads Redmine. The chat says so once.
   $: onDevice = settings !== null && isOnDeviceProvider(settings.provider);
   // In the panel the newest message is the one to see, so the conversation follows it.
-  $: if (compact) void keepAtNewest(shown.length, $asking);
+  $: if (compact) void keepAtNewest(shown.length, chat.asking);
 
   const sentence = (error: unknown) => (error instanceof Error ? error.message : String(error));
+  const setDraft = (text: string) => updateChat(chat.id, { draft: text });
+  const say = (problem: string) => updateChat(chat.id, { error: problem });
 
   async function keepAtNewest(_messages: number, _thinking: boolean) {
     await tick();
@@ -54,12 +59,12 @@
   }
 
   async function send() {
-    const answered = await askAssistant(draft);
+    const asked = chat.id;
+    const answered = await askAssistant(asked, draft);
     if (!answered) return;
-    draft = '';
-    const last = $conversation[$conversation.length - 1];
+    const last = chat.messages[chat.messages.length - 1];
     if (readReplies && canSpeak && last?.role === 'assistant' && last.content) {
-      readAloud(last.content).catch((error: unknown) => assistantError.set(sentence(error)));
+      readAloud(last.content).catch((error: unknown) => say(sentence(error)));
     }
   }
 
@@ -80,9 +85,9 @@
       transcribing = true;
       try {
         const words = await transcribeSpeech(await stop());
-        draft = draft.trim() ? `${draft.trim()} ${words}` : words;
+        setDraft(draft.trim() ? `${draft.trim()} ${words}` : words);
       } catch (error) {
-        assistantError.set(sentence(error));
+        say(sentence(error));
       } finally {
         transcribing = false;
       }
@@ -94,7 +99,7 @@
     } catch (error) {
       // A window without a recorder will not get one: the button goes, and the replies can still be read aloud.
       if (error instanceof RecordingUnsupportedError) canRecordHere = false;
-      assistantError.set(sentence(error));
+      say(sentence(error));
     }
   }
 
@@ -118,8 +123,8 @@
     </p>
   {/if}
 
-  {#if $assistantError}
-    <p role="alert" class="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900">{$assistantError}</p>
+  {#if chat.error}
+    <p role="alert" class="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900">{chat.error}</p>
   {/if}
 
   <ol
@@ -145,7 +150,7 @@
     {/each}
   </ol>
 
-  {#if $asking}
+  {#if chat.asking}
     <p role="status" class="text-sm text-gray-500">Thinking…</p>
   {/if}
 
@@ -154,16 +159,17 @@
     <textarea
       id="{idPrefix}-message"
       rows={compact ? 2 : 3}
-      bind:value={draft}
-      disabled={!ready || $asking}
+      value={draft}
+      disabled={!ready || chat.asking}
+      on:input={(event) => setDraft(event.currentTarget.value)}
       on:keydown={onKeydown}
       placeholder="Ask about your tasks or your time"
       class="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
     ></textarea>
     <div class="flex flex-wrap items-center gap-2">
-      <button type="submit" class={primary} disabled={!ready || $asking || !draft.trim()}>Send</button>
+      <button type="submit" class={primary} disabled={!ready || chat.asking || !draft.trim()}>Send</button>
       {#if canListen}
-        <button type="button" class={button} aria-pressed={recording} on:click={toggleVoice} disabled={transcribing || $asking}>
+        <button type="button" class={button} aria-pressed={recording} on:click={toggleVoice} disabled={transcribing || chat.asking}>
           {recording ? 'Stop and transcribe' : transcribing ? 'Transcribing…' : 'Speak'}
         </button>
       {/if}
@@ -173,7 +179,7 @@
           Read replies aloud
         </label>
       {/if}
-      <button type="button" class="{button} ml-auto" on:click={() => conversation.set([])} disabled={$conversation.length === 0 || $asking}>
+      <button type="button" class="{button} ml-auto" on:click={() => clearChat(chat.id)} disabled={chat.messages.length === 0 || chat.asking}>
         Clear
       </button>
     </div>
