@@ -4,6 +4,7 @@
   import ViewTabs from './ViewTabs.svelte';
   import PrimaryNav from './PrimaryNav.svelte';
   import AssistantDock from './components/AssistantDock.svelte';
+  import ProjectSelector from './ProjectSelector.svelte';
   import UserMenu from './UserMenu.svelte';
   import ServerLogin from './ServerLogin.svelte';
   import DashboardView from './DashboardView.svelte';
@@ -18,7 +19,7 @@
   import { credentialProblem, credentialsRestoring } from './lib/credentials';
   import { restoreAgentEndpoint } from './lib/mcp-host';
   import { serversRestored, startPersistence, storageProblem } from './lib/persistence';
-  import { servers, activeServer } from './lib/store';
+  import { servers, activeServer, activeProject } from './lib/store';
   import { activeView, closeView, isDetailView, needsServer, openView, openViews, viewPanelId, viewTabId } from './lib/views';
   import { dockFits, openAssistant } from './lib/assistant-dock';
   import { attachToMainWindow, sessionReady, startMainWindow, startViewWindow, viewWindowFromLocation } from './lib/windows';
@@ -69,7 +70,11 @@
           </button>
         {:else}
           <PrimaryNav />
-          <UserMenu />
+          <!-- The project the views show sits next to the user widget, so that it is in reach from every view. -->
+          <div class="flex shrink-0 items-center gap-3">
+            <ProjectSelector />
+            <UserMenu />
+          </div>
         {/if}
       </div>
       <div class="flex items-end px-4 pt-1" data-tauri-drag-region={windowView ? '' : undefined}>
@@ -121,11 +126,11 @@
               {/if}
             {/if}
           {:else if view === 'dashboard' && $activeServer}
-            <DashboardView server={$activeServer} />
+            <DashboardView server={$activeServer} project={$activeProject} />
           {:else if view === 'calendar' && $activeServer}
-            <CalendarView server={$activeServer} />
+            <CalendarView server={$activeServer} project={$activeProject} />
           {:else if view === 'todo' && $activeServer}
-            <TodoView server={$activeServer} />
+            <TodoView server={$activeServer} project={$activeProject} />
           {:else if view === 'assistant'}
             <AssistantView />
           {:else if view === 'settings'}

@@ -113,6 +113,7 @@ const LAYOUT: TabStripLayout = {
 const session: SessionSnapshot = {
   servers: [{ id: 's1', name: 'Dev', url: 'https://dev.local', apiToken: 'key' }],
   activeServerId: 's1',
+  projectSelection: {},
 };
 
 /** A screen point over the main window's webview. */

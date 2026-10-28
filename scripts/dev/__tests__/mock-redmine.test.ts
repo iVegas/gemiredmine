@@ -83,6 +83,21 @@ describe('lists', () => {
       '2026-10-09',
     ]);
   });
+
+  it('lists the projects the user is a member of, and keeps the lists to one of them', async () => {
+    const memberships = await client().getMemberships();
+    expect(memberships.map((membership) => membership.project.name)).toEqual(['Website', 'Mobile app', 'Infrastructure']);
+
+    const website = memberships[0].project.id;
+    const tasks = await client().getAssignedTasks(website);
+    const entries = await client().getTimeEntries({ from: '2026-10-05', to: '2026-10-09', projectId: website });
+
+    expect(tasks.length).toBeGreaterThan(0);
+    expect(tasks.length).toBeLessThan(ISSUE_COUNT);
+    expect(tasks.every((task) => task.project.id === website)).toBe(true);
+    expect(entries.length).toBeGreaterThan(0);
+    expect(entries.every((entry) => entry.project.id === website)).toBe(true);
+  });
 });
 
 describe('redirects', () => {

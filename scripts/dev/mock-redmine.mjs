@@ -5,9 +5,10 @@
 //   node scripts/dev/mock-redmine.mjs [--port 8123] [--host 127.0.0.1] [--delay-ms 31000]
 //
 // Endpoints (Redmine REST API subset the app uses):
-//   GET /users/current.json   Basic alice:secret, or X-Redmine-API-Key: <API_KEY>; anything else gets 401
-//   GET /issues.json          130 open issues assigned to the user; limit/offset paging, due_date and sort filters
-//   GET /time_entries.json    the user's time entries of the last 60 days; limit/offset paging, from/to and issue_id filters
+//   GET /users/current.json   Basic alice:secret, or X-Redmine-API-Key: <API_KEY>; anything else gets 401;
+//     with ?include=memberships, the projects the user is a member of (every project of the server)
+//   GET /issues.json          130 open issues assigned to the user; limit/offset paging, due_date, sort and project_id filters
+//   GET /time_entries.json    the user's time entries of the last 60 days; limit/offset paging, from/to, issue_id and project_id filters
 //   GET /issues/<id>.json     one issue, with ?include=journals,attachments,children,relations; 404 for an id that does not exist
 //   GET /time_entries/<id>.json   one time entry; 404 for an id that does not exist
 //   POST /time_entries.json   logs time: {"time_entry": {issue_id, spent_on, hours, activity_id, comments}}; 201 with the entry, 422 with errors
@@ -46,6 +47,12 @@ const PROJECTS = [
   { id: 2, name: 'Mobile app' },
   { id: 3, name: 'Infrastructure' },
 ];
+// The user is a member of every project, as the work above is spread over all of them.
+const MEMBERSHIPS = PROJECTS.map((project) => ({
+  id: 100 + project.id,
+  project,
+  roles: [{ id: 3, name: 'Developer' }],
+}));
 const TRACKERS = [
   { id: 1, name: 'Bug' },
   { id: 2, name: 'Feature' },
@@ -276,11 +283,14 @@ export function createMockRedmine({ delayMs = 31_000, today = new Date().toISOSt
     }
 
     if (pathname === '/users/current.json') {
-      sendJson(response, 200, { user: USER });
+      const included = (query.get('include') ?? '').split(',');
+      sendJson(response, 200, { user: included.includes('memberships') ? { ...USER, memberships: MEMBERSHIPS } : USER });
     } else if (pathname === '/issues.json') {
       let list = issues;
       const due = query.get('due_date');
       if (due) list = list.filter((issue) => inRange(issue.due_date, due));
+      const projectId = query.get('project_id');
+      if (projectId) list = list.filter((issue) => issue.project.id === Number(projectId));
       if (query.get('sort') === 'priority:desc') {
         list = [...list].sort((a, b) => b.priority.id - a.priority.id || a.id - b.id);
       }
@@ -289,8 +299,10 @@ export function createMockRedmine({ delayMs = 31_000, today = new Date().toISOSt
       const from = query.get('from') ?? '0000-01-01';
       const to = query.get('to') ?? '9999-12-31';
       const issueId = query.get('issue_id');
+      const projectId = query.get('project_id');
       let list = timeEntries.filter((entry) => entry.spent_on >= from && entry.spent_on <= to);
       if (issueId) list = list.filter((entry) => entry.issue.id === Number(issueId));
+      if (projectId) list = list.filter((entry) => entry.project.id === Number(projectId));
       if (query.get('sort') === 'spent_on:desc') list = [...list].sort((a, b) => (a.spent_on < b.spent_on ? 1 : a.spent_on > b.spent_on ? -1 : b.id - a.id));
       sendJson(response, 200, page(list, query, 'time_entries'));
     } else if (/^\/issues\/\d+\.json$/.test(pathname)) {

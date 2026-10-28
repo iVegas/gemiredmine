@@ -14,6 +14,7 @@ vi.mock('../lib/api', () => ({
   redmineApi: {
     getTask: vi.fn(),
     listTaskLogEntries: vi.fn(),
+    listTimeEntries: vi.fn(),
     listTimeActivities: vi.fn(),
     createLogEntry: vi.fn(),
     listTaskOptions: vi.fn(),
@@ -75,6 +76,7 @@ describe('TaskDetailsView', () => {
     vi.resetAllMocks();
     api.getTask.mockResolvedValue(task());
     api.listTaskLogEntries.mockResolvedValue([]);
+    api.listTimeEntries.mockResolvedValue([]);
     resetViews();
     viewLabels.set({});
   });
@@ -490,6 +492,7 @@ describe('editing a task', () => {
   beforeEach(() => {
     api.getTask.mockResolvedValue(task());
     api.listTaskLogEntries.mockResolvedValue([]);
+    api.listTimeEntries.mockResolvedValue([]);
     api.listTaskOptions.mockResolvedValue(taskOptions);
     api.updateTask.mockResolvedValue(undefined);
     resetViews();

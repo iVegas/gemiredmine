@@ -22,7 +22,7 @@ import type { DataFs } from './diagnostics/fs';
 import type { DevPreview } from './diagnostics/service';
 import { signInWithPassword } from './redmine/auth';
 import { RedmineApiError, RedmineClient, assertHttpUrl, type FetchLike } from './redmine/client';
-import type { RedmineIssueDetails } from './redmine/types';
+import type { RedmineIssueDetails, RedmineReference } from './redmine/types';
 import { openAppStorage, type AppStorage } from './storage/app-storage';
 import type { SqlDatabase } from './storage/database';
 import { withTimeout } from './timeout';
@@ -278,16 +278,26 @@ export function createBackend(platform: BackendPlatform, options: BackendOptions
       })
     ),
 
-    listTimeEntries: traced('listTimeEntries', (access, { from, to }) =>
-      authorized(access, (transport) => clientFor(access, transport).getTimeEntries({ from, to }))
+    listTimeEntries: traced('listTimeEntries', (access, { from, to, projectId }) =>
+      authorized(access, (transport) => clientFor(access, transport).getTimeEntries({ from, to, projectId }))
     ),
 
-    listOpenTasks: traced('listOpenTasks', (access, { dueFrom, dueTo }) =>
-      authorized(access, (transport) => clientFor(access, transport).getAssignedOpenIssues({ dueFrom, dueTo }))
+    listOpenTasks: traced('listOpenTasks', (access, { dueFrom, dueTo, projectId }) =>
+      authorized(access, (transport) => clientFor(access, transport).getAssignedOpenIssues({ dueFrom, dueTo, projectId }))
     ),
 
-    listAssignedTasks: traced('listAssignedTasks', (access) =>
-      authorized(access, (transport) => clientFor(access, transport).getAssignedTasks())
+    listAssignedTasks: traced('listAssignedTasks', (access, scope) =>
+      authorized(access, (transport) => clientFor(access, transport).getAssignedTasks(scope?.projectId))
+    ),
+
+    listMyProjects: traced('listMyProjects', (access) =>
+      authorized(access, async (transport) => {
+        const memberships = await clientFor(access, transport).getMemberships();
+        // A project can be listed by more than one membership, such as one through a group: each is named once.
+        const projects = new Map<number, RedmineReference>();
+        for (const { project } of memberships) projects.set(project.id, { id: project.id, name: project.name });
+        return [...projects.values()].sort((a, b) => a.name.localeCompare(b.name));
+      })
     ),
 
     getTask: traced('getTask', (access, taskId) =>

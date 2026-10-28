@@ -1,12 +1,14 @@
 <script lang="ts">
   import DashboardCard from './DashboardCard.svelte';
   import type { ServerConnection } from '../lib/store';
-  import type { RedmineIssue } from '../../bun/redmine/types';
+  import type { RedmineIssue, RedmineReference } from '../../bun/redmine/types';
   import { redmineApi } from '../lib/api';
   import { openTask, openView } from '../lib/views';
   import { formatDueDate, groupTasksByPriority, isOverdue } from '../lib/todo';
 
   export let server: ServerConnection;
+  /** The project the list shows, or null for every project the user takes part in. */
+  export let project: RedmineReference | null = null;
 
   const TOP_TASKS = 3;
 
@@ -16,16 +18,16 @@
   // Responses for a server the user already switched away from are ignored.
   let latestRequest = 0;
 
-  $: load(server.url, server.apiToken);
+  $: load(server.url, server.apiToken, project?.id);
 
-  async function load(baseUrl: string, apiKey: string | undefined) {
+  async function load(baseUrl: string, apiKey: string | undefined, projectId?: number) {
     if (!apiKey) return;
 
     const request = ++latestRequest;
     loading = true;
     error = '';
     try {
-      const assigned = await redmineApi.listAssignedTasks({ baseUrl, apiKey });
+      const assigned = await redmineApi.listAssignedTasks({ baseUrl, apiKey }, { projectId });
       if (request !== latestRequest) return;
       tasks = assigned;
     } catch (err) {
@@ -40,13 +42,14 @@
   $: groups = groupTasksByPriority(tasks);
   // Highest priority first, then the ones due soonest.
   $: topTasks = groups.flatMap(group => group.tasks).slice(0, TOP_TASKS);
+  $: scope = project ? ` in ${project.name}` : '';
   $: summary = loading
     ? 'Loading your tasks…'
     : error
       ? `Could not load your tasks: ${error}`
       : tasks.length === 0
-        ? 'Nothing is assigned to you right now.'
-        : `${tasks.length} open ${tasks.length === 1 ? 'task' : 'tasks'} assigned to you.`;
+        ? `Nothing is assigned to you${scope} right now.`
+        : `${tasks.length} open ${tasks.length === 1 ? 'task' : 'tasks'} assigned to you${scope}.`;
 </script>
 
 <DashboardCard id="todo-preview" title="To-do" actionLabel="Open to-do list" {summary} onOpen={() => openView('todo')}>

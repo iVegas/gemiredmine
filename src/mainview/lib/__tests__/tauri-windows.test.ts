@@ -103,7 +103,11 @@ class FakeSystem implements WindowSystem {
   }
 }
 
-const session: SessionSnapshot = { servers: [{ id: 's1', name: 'Dev', url: 'https://dev.local', apiToken: 'key' }], activeServerId: 's1' };
+const session: SessionSnapshot = {
+  servers: [{ id: 's1', name: 'Dev', url: 'https://dev.local', apiToken: 'key' }],
+  activeServerId: 's1',
+  projectSelection: {},
+};
 
 // The main window at (100, 50) in CSS pixels, with its webview under a 37-pixel title bar.
 const LAYOUT: TabStripLayout = {

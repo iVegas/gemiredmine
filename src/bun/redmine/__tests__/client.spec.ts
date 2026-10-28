@@ -190,6 +190,50 @@ describe('RedmineClient', () => {
     expect(requestedUrl(0).searchParams.get('sort')).toBe('priority:desc');
     expect(requestedUrl(0).searchParams.has('due_date')).toBe(false);
   });
+
+  it('narrows each list to one project when a project is given, and to none when it is not', async () => {
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce(jsonResponse({ time_entries: [], total_count: 0, offset: 0, limit: 100 }))
+      .mockResolvedValueOnce(jsonResponse({ issues: [], total_count: 0, offset: 0, limit: 100 }))
+      .mockResolvedValueOnce(jsonResponse({ issues: [], total_count: 0, offset: 0, limit: 100 }))
+      .mockResolvedValueOnce(jsonResponse({ issues: [], total_count: 0, offset: 0, limit: 100 }));
+
+    await client.getTimeEntries({ from: '2026-10-01', to: '2026-10-31', projectId: 7 });
+    await client.getAssignedOpenIssues({ dueFrom: '2026-10-01', dueTo: '2026-10-31', projectId: 7 });
+    await client.getAssignedTasks(7);
+    await client.getAssignedTasks();
+
+    expect(requestedUrl(0).searchParams.get('project_id')).toBe('7');
+    expect(requestedUrl(1).searchParams.get('project_id')).toBe('7');
+    expect(requestedUrl(2).searchParams.get('project_id')).toBe('7');
+    expect(requestedUrl(3).searchParams.has('project_id')).toBe(false);
+  });
+
+  it('refuses a project id that is not a whole number before it reaches the server', async () => {
+    await expect(client.getAssignedTasks(Number.NaN)).rejects.toThrow('NaN is not a Redmine id.');
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('asks for the memberships of the current user, and gives none when the server does not list them', async () => {
+    vi.mocked(global.fetch)
+      .mockResolvedValueOnce(
+        jsonResponse({
+          user: {
+            id: 1,
+            login: 'alice',
+            memberships: [{ id: 101, project: { id: 7, name: 'Shop' }, roles: [{ id: 3, name: 'Developer' }] }],
+          },
+        })
+      )
+      .mockResolvedValueOnce(jsonResponse({ user: { id: 1, login: 'alice' } }));
+
+    expect(await client.getMemberships()).toEqual([
+      { id: 101, project: { id: 7, name: 'Shop' }, roles: [{ id: 3, name: 'Developer' }] },
+    ]);
+    expect(requestedUrl(0).pathname).toBe('/users/current.json');
+    expect(requestedUrl(0).searchParams.get('include')).toBe('memberships');
+    expect(await client.getMemberships()).toEqual([]);
+  });
 });
 
 describe('RedmineClient transport', () => {

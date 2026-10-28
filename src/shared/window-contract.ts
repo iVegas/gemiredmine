@@ -3,18 +3,19 @@
 import type { LogEvent } from '../bun/diagnostics/aggregator';
 import type { FeedbackInput } from '../bun/diagnostics/feedback';
 import type { DevPreviewStatus, FeedbackResult } from '../bun/diagnostics/service';
-import type { ServerConnection } from '../mainview/lib/store';
+import type { ProjectSelection, ServerConnection } from '../mainview/lib/store';
 import type { ViewId } from '../mainview/lib/views';
 import type { Point, Rect, TabEdges } from './windows';
 
 /**
- * The servers and the server in use. Every window of the app shows the same ones, so the
- * window layer passes them between windows. It keeps them in memory only, and only while a view
+ * The servers, the server in use and the project each server's views show. Every window of the app shows the same
+ * ones, so the window layer passes them between windows. It keeps them in memory only, and only while a view
  * has a window of its own.
  */
 export interface SessionSnapshot {
   servers: ServerConnection[];
   activeServerId: string | null;
+  projectSelection: ProjectSelection;
 }
 
 /** Where the main window's tab strip is, so that a view window dragged over it can rejoin it. */

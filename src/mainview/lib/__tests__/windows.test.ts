@@ -37,7 +37,7 @@ import {
   windowDropTarget,
 } from '../windows';
 import { activeView, closeView, openView, openViews, resetViews } from '../views';
-import { activeServerId, servers } from '../store';
+import { activeProject, activeServerId, projectSelection, selectProject, servers } from '../store';
 
 /** The backend sends a message to this window. */
 function receive<K extends keyof WindowMessages>(name: K, payload: WindowMessages[K]) {
@@ -62,6 +62,7 @@ describe('view windows', () => {
     resetViews();
     servers.set([dev]);
     activeServerId.set('s1');
+    projectSelection.set({});
     detachedViews.set([]);
     windowDropTarget.set(null);
   });
@@ -102,7 +103,7 @@ describe('view windows', () => {
       expect(desktop.requests.detachView).toHaveBeenCalledWith({
         view: 'calendar',
         title: 'Calendar',
-        session: { servers: [dev], activeServerId: 's1' },
+        session: { servers: [dev], activeServerId: 's1', projectSelection: {} },
       });
       expect(get(openViews)).toEqual(['dashboard', 'todo']);
       expect(get(detachedViews)).toEqual(['calendar']);
@@ -185,17 +186,38 @@ describe('view windows', () => {
       await settle();
 
       expect(desktop.requests.shareSession).toHaveBeenCalledTimes(1);
-      expect(desktop.requests.shareSession).toHaveBeenCalledWith({ servers: [dev, prod], activeServerId: 's2' });
+      expect(desktop.requests.shareSession).toHaveBeenCalledWith({ servers: [dev, prod], activeServerId: 's2', projectSelection: {} });
+    });
+
+    it('shares the project each server shows with the other windows', async () => {
+      await detachView('calendar');
+
+      selectProject('s1', { id: 1, name: 'Shop' });
+      await settle();
+
+      expect(desktop.requests.shareSession).toHaveBeenLastCalledWith(
+        expect.objectContaining({ projectSelection: { s1: { id: 1, name: 'Shop' } } })
+      );
     });
 
     it('takes server changes from other windows without sending them back', async () => {
       await detachView('calendar');
 
-      receive('sessionChanged', { servers: [prod], activeServerId: 's2' });
+      receive('sessionChanged', { servers: [prod], activeServerId: 's2', projectSelection: {} });
       await settle();
 
       expect(get(servers)).toEqual([prod]);
       expect(get(activeServerId)).toBe('s2');
+      expect(desktop.requests.shareSession).not.toHaveBeenCalled();
+    });
+
+    it('takes the project choice of other windows without sending it back', async () => {
+      await detachView('calendar');
+
+      receive('sessionChanged', { servers: [dev], activeServerId: 's1', projectSelection: { s1: { id: 2, name: 'Internal' } } });
+      await settle();
+
+      expect(get(projectSelection)).toEqual({ s1: { id: 2, name: 'Internal' } });
       expect(desktop.requests.shareSession).not.toHaveBeenCalled();
     });
 
@@ -207,6 +229,7 @@ describe('view windows', () => {
       receive('sessionChanged', {
         activeServerId: 's2',
         servers: [{ url: prod.url, name: prod.name, id: prod.id }],
+        projectSelection: {},
       });
       await settle();
 
@@ -259,7 +282,7 @@ describe('view windows', () => {
     it('shows only its view, with the servers from the main window', async () => {
       servers.set([]);
       activeServerId.set(null);
-      desktop.requests.getSession.mockResolvedValueOnce({ servers: [dev], activeServerId: 's1' });
+      desktop.requests.getSession.mockResolvedValueOnce({ servers: [dev], activeServerId: 's1', projectSelection: {} });
 
       stop = startViewWindow('calendar');
 
@@ -273,15 +296,30 @@ describe('view windows', () => {
       expect(desktop.requests.shareSession).not.toHaveBeenCalled();
     });
 
+    it('shows the project that the main window shows', async () => {
+      servers.set([]);
+      activeServerId.set(null);
+      desktop.requests.getSession.mockResolvedValueOnce({
+        servers: [dev],
+        activeServerId: 's1',
+        projectSelection: { s1: { id: 1, name: 'Shop' } },
+      });
+
+      stop = startViewWindow('calendar');
+      await settle();
+
+      expect(get(activeProject)).toEqual({ id: 1, name: 'Shop' });
+    });
+
     it('shares its server changes with the other windows', async () => {
-      desktop.requests.getSession.mockResolvedValueOnce({ servers: [dev], activeServerId: 's1' });
+      desktop.requests.getSession.mockResolvedValueOnce({ servers: [dev], activeServerId: 's1', projectSelection: {} });
       stop = startViewWindow('settings');
       await settle();
 
       servers.set([dev, prod]);
       await settle();
 
-      expect(desktop.requests.shareSession).toHaveBeenCalledWith({ servers: [dev, prod], activeServerId: 's1' });
+      expect(desktop.requests.shareSession).toHaveBeenCalledWith({ servers: [dev, prod], activeServerId: 's1', projectSelection: {} });
     });
 
     it('opens other views in the main window', () => {

@@ -50,7 +50,15 @@ describe('TodoView Component', () => {
     const view = render(TodoView, { props: { server } });
 
     expect(await view.findByText('4 open tasks assigned to you across all projects, by priority.')).toBeInTheDocument();
-    expect(api.listAssignedTasks).toHaveBeenCalledWith({ baseUrl: 'https://dev.local', apiKey: 'key' });
+    expect(api.listAssignedTasks).toHaveBeenCalledWith({ baseUrl: 'https://dev.local', apiKey: 'key' }, { projectId: undefined });
+  });
+
+  it('lists only the tasks of the project it is given', async () => {
+    api.listAssignedTasks.mockResolvedValueOnce([tasks[2]]);
+    const view = render(TodoView, { props: { server, project: { id: 2, name: 'Docs' } } });
+
+    expect(await view.findByText('1 open task assigned to you in Docs, by priority.')).toBeInTheDocument();
+    expect(api.listAssignedTasks).toHaveBeenCalledWith({ baseUrl: 'https://dev.local', apiKey: 'key' }, { projectId: 2 });
   });
 
   it('groups the tasks by priority, highest first', async () => {

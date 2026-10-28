@@ -20,6 +20,8 @@ import type {
   IssuePrioritiesResponse,
   TimeEntryActivitiesResponse,
   CurrentUserResponse,
+  CurrentUserMembershipsResponse,
+  RedmineMembership,
   RedmineTimeEntry,
   TimeEntriesResponse,
   TimeEntryResponse,
@@ -162,6 +164,11 @@ function recordId(id: number): number {
   return id;
 }
 
+/** The filter that keeps a list to one project and its subprojects. Without a project, nothing is filtered. */
+function projectFilter(projectId: number | undefined): Record<string, string> {
+  return projectId === undefined ? {} : { project_id: String(recordId(projectId)) };
+}
+
 export class RedmineClient {
   private config: RedmineClientConfig;
 
@@ -245,39 +252,50 @@ export class RedmineClient {
     return this.request<CurrentUserResponse>('/users/current.json');
   }
 
-  /** Time entries logged by the authenticated user between `from` and `to` (YYYY-MM-DD, inclusive). */
-  async getTimeEntries(range: { from: string; to: string }): Promise<RedmineTimeEntry[]> {
+  /**
+   * The projects the authenticated user is a member of. Redmine lists them with `include=memberships`; a server
+   * that does not list them answers with none, and the list is then empty.
+   */
+  async getMemberships(): Promise<RedmineMembership[]> {
+    const { user } = await this.request<CurrentUserMembershipsResponse>('/users/current.json?include=memberships');
+    return user.memberships ?? [];
+  }
+
+  /** Time entries logged by the authenticated user between `from` and `to` (YYYY-MM-DD, inclusive), in one project if given. */
+  async getTimeEntries(range: { from: string; to: string; projectId?: number }): Promise<RedmineTimeEntry[]> {
     return this.fetchAllPages<TimeEntriesResponse, RedmineTimeEntry>(
       '/time_entries.json',
-      { user_id: 'me', from: range.from, to: range.to },
+      { user_id: 'me', from: range.from, to: range.to, ...projectFilter(range.projectId) },
       (response) => response.time_entries
     );
   }
 
-  /** Open issues assigned to the authenticated user whose due date falls in the range. */
-  async getAssignedOpenIssues(range: { dueFrom: string; dueTo: string }): Promise<RedmineIssue[]> {
+  /** Open issues assigned to the authenticated user whose due date falls in the range, in one project if given. */
+  async getAssignedOpenIssues(range: { dueFrom: string; dueTo: string; projectId?: number }): Promise<RedmineIssue[]> {
     return this.fetchAllPages<IssuesResponse, RedmineIssue>(
       '/issues.json',
       {
         assigned_to_id: 'me',
         status_id: 'open',
-        due_date: `><${range.dueFrom}|${range.dueTo}`
+        due_date: `><${range.dueFrom}|${range.dueTo}`,
+        ...projectFilter(range.projectId)
       },
       (response) => response.issues
     );
   }
 
   /**
-   * Every open issue assigned to the authenticated user, across all projects.
+   * Every open issue assigned to the authenticated user, across all projects or in one of them if given.
    * Redmine sorts priorities by their configured position, so the highest priority comes first.
    */
-  async getAssignedTasks(): Promise<RedmineIssue[]> {
+  async getAssignedTasks(projectId?: number): Promise<RedmineIssue[]> {
     return this.fetchAllPages<IssuesResponse, RedmineIssue>(
       '/issues.json',
       {
         assigned_to_id: 'me',
         status_id: 'open',
-        sort: 'priority:desc'
+        sort: 'priority:desc',
+        ...projectFilter(projectId)
       },
       (response) => response.issues
     );

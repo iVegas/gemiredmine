@@ -2,7 +2,7 @@ import { get, writable } from 'svelte/store';
 import type { SessionSnapshot, TabStripLayout, ViewPlacement, WindowMessages } from '../../shared/window-contract';
 import { stableJson, viewFromHash } from '../../shared/windows';
 import { hasWindowLayer, onBackendMessage, windowBackend } from './bridge';
-import { activeServerId, servers } from './store';
+import { activeServerId, projectSelection, servers } from './store';
 import {
   activeView,
   canDetach,
@@ -46,13 +46,14 @@ export function canDetachViews(): boolean {
 let lastShared = '';
 
 function snapshot(): SessionSnapshot {
-  return { servers: get(servers), activeServerId: get(activeServerId) };
+  return { servers: get(servers), activeServerId: get(activeServerId), projectSelection: get(projectSelection) };
 }
 
 function applySession(session: SessionSnapshot) {
   lastShared = stableJson(session);
   servers.set(session.servers);
   activeServerId.set(session.activeServerId);
+  projectSelection.set(session.projectSelection);
 }
 
 /** Sends changes to the servers to the other windows, while `active` says there are any. */
@@ -72,7 +73,7 @@ function shareSessionChanges(active: () => boolean): () => void {
       void windowBackend().shareSession(session);
     });
   };
-  const unsubscribers = [servers.subscribe(queue), activeServerId.subscribe(queue)];
+  const unsubscribers = [servers.subscribe(queue), activeServerId.subscribe(queue), projectSelection.subscribe(queue)];
   return () => unsubscribers.forEach(unsubscribe => unsubscribe());
 }
 
