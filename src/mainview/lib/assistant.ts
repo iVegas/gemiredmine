@@ -2,6 +2,7 @@
 // words and words into speech. The model and the voice are reached through the app's HTTP client, and the tools are the
 // ones of the MCP endpoint, so a change the assistant proposes waits in the approval notice like any other.
 
+import { get } from 'svelte/store';
 import { TOOLS } from '../../bun/mcp/tools';
 import { ask } from '../../bun/assistant/chat';
 import { transcribe, speak } from '../../bun/assistant/voice';
