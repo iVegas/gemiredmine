@@ -18,6 +18,11 @@ on:
         description: stable, canary, unstable or dev
         required: true
         type: string
+      commit:
+        description: Commit to build. Empty builds the commit that started the run.
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -29,9 +34,12 @@ jobs:
     timeout-minutes: 180
     env:
       CHANNEL: ${{ inputs.channel }}
+      RELEASE_COMMIT: ${{ inputs.commit || github.sha }}
     steps:
       - name: Check out
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
 
       - name: Pull the Flatpak environment
         run: |
@@ -48,11 +56,11 @@ jobs:
           # flatpak-builder needs namespaces and a sandbox, so the container runs privileged. It holds the build only.
           docker run --rm --privileged \
             -v "$PWD:/work" \
-            -e CHANNEL -e GITHUB_RUN_NUMBER -e GITHUB_SHA \
+            -e CHANNEL -e GITHUB_RUN_NUMBER -e GITHUB_SHA="$RELEASE_COMMIT" \
             "$ENV" scripts/release/flatpak-build.sh
 
       - name: Package the bundle
-        run: node scripts/release/package-flatpak.mjs
+        run: GITHUB_SHA="$RELEASE_COMMIT" node scripts/release/package-flatpak.mjs
 
       - name: Smoke test the installed app on Wayland
         run: |

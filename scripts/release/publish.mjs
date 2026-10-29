@@ -3,12 +3,14 @@
 // release workflows; authenticates through the GH_TOKEN environment variable of `gh`.
 //
 //   node scripts/release/publish.mjs validate --channel <stable|canary|unstable> [--branch <name>] [--releases-json <file>]
+//   node scripts/release/publish.mjs bump-candidate --candidate <next-rc|next-patch|next-minor|next-major|manual> [--manual-version <version>] [--branch <name>]
 //   node scripts/release/publish.mjs publish  --dir dist/linux/<channel> [--dir dist/windows/<channel>] [--dir dist/android/<channel>] [--dry-run]
 //   node scripts/release/publish.mjs prune    [--releases-json <file>] [--dry-run]
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { nextCandidate } from './candidate.mjs';
 import {
   KEEP,
   assertCanaryRelease,
@@ -70,6 +72,25 @@ export function validate({ channel, branch, releasesJson, env = process.env, log
   log(`version ${version} may be released on ${channel} (latest stable: ${latest ?? 'none yet'})`);
   if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, `version=${version}\n`);
   return { version, latestStable: latest };
+}
+
+/** Writes `version` into package.json and leaves the rest of the file as it is. package-lock.json is not touched. */
+export function writeVersion(version, root = ROOT) {
+  const path = join(root, 'package.json');
+  const manifest = JSON.parse(readFileSync(path, 'utf8'));
+  writeFileSync(path, `${JSON.stringify({ ...manifest, version }, null, 2)}\n`);
+}
+
+/**
+ * Starts a canary: works out its version from the candidate choice, writes it into package.json, and checks it against
+ * the canary policy. The workflow commits and pushes package.json only when this returns, so a refused version pushes nothing.
+ */
+export function bumpCandidate({ candidate, manualVersion, branch, releasesJson, env = process.env, log = console.log }) {
+  const releases = listReleases({ releasesJson, log });
+  const version = nextCandidate({ packageVersion: packageVersion(), candidate, manualVersion, releases });
+  writeVersion(version);
+  log(`candidate "${candidate}" sets the version to ${version}`);
+  return validate({ channel: 'canary', branch, releasesJson, env, log });
 }
 
 const PLATFORM_NOTES = {
@@ -220,6 +241,14 @@ function main() {
   switch (options.command) {
     case 'validate':
       validate({ channel: options.channel, branch: options.branch ?? process.env.GITHUB_REF_NAME, releasesJson: options['releases-json'] });
+      break;
+    case 'bump-candidate':
+      bumpCandidate({
+        candidate: options.candidate,
+        manualVersion: options['manual-version'],
+        branch: options.branch ?? process.env.GITHUB_REF_NAME,
+        releasesJson: options['releases-json'],
+      });
       break;
     case 'publish':
       publish({ dirs: options.dir, dryRun: options.dryRun });

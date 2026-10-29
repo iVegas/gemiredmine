@@ -1,9 +1,26 @@
-# Canary channel: a manually started release candidate for Linux and Windows. The version in
-# package.json must be a release candidate (for example 1.0.0-rc.1) and newer than the latest stable release.
+# Canary channel: a manually started release candidate for Linux, Windows and Android.
+# The form chooses the version. next-rc keeps the version in package.json and takes the next rc number; next-patch,
+# next-minor and next-major raise that version first and start at rc.1; manual uses manual_version. The prepare job
+# writes the version into package.json, checks it against the channel policy, and commits and pushes it to the branch
+# this run started from. The builds then check out that commit, and the release tag points at it.
 name: Canary
 
 on:
   workflow_dispatch:
+    inputs:
+      candidate:
+        description: >-
+          next-rc: the version in package.json with the next release-candidate number.
+          next-patch, next-minor, next-major: the next version up, starting at rc.1.
+          manual: the version typed in manual_version.
+        required: true
+        default: next-rc
+        type: choice
+        options: [next-rc, next-patch, next-minor, next-major, manual]
+      manual_version:
+        description: Only for manual, for example 1.1.0-rc.1. Ignored otherwise.
+        required: false
+        type: string
 
 concurrency:
   group: release-canary
@@ -14,10 +31,17 @@ permissions:
   packages: read
 
 jobs:
-  validate:
+  prepare:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       GH_TOKEN: ${{ github.token }}
+      CANDIDATE: ${{ inputs.candidate }}
+      MANUAL_VERSION: ${{ inputs.manual_version }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      commit: ${{ steps.commit.outputs.commit }}
     steps:
       - name: Check out
         uses: actions/checkout@v7
@@ -27,28 +51,50 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Check the candidate version against the channel policy
-        run: node scripts/release/publish.mjs validate --channel canary --branch "$GITHUB_REF_NAME"
+      - name: Set the candidate version and check it against the channel policy
+        id: version
+        run: node scripts/release/publish.mjs bump-candidate --candidate "$CANDIDATE" --manual-version "$MANUAL_VERSION" --branch "$GITHUB_REF_NAME"
+
+      - name: Commit and push the version
+        id: commit
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          if git diff --cached --quiet; then
+            echo "package.json already has $VERSION, so there is nothing to commit."
+          else
+            git commit -m "chore(release): canary $VERSION"
+            # Pushed before the builds start, so each build checks out this commit and the tag points at it.
+            git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"
+          fi
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   build-linux:
-    needs: validate
+    needs: prepare
     uses: ./.github/workflows/build-linux.yml
     with:
       channel: canary
+      commit: ${{ needs.prepare.outputs.commit }}
 
   build-windows:
-    needs: validate
+    needs: prepare
     uses: ./.github/workflows/build-windows.yml
     with:
       channel: canary
       signing: self-signed
+      commit: ${{ needs.prepare.outputs.commit }}
     secrets: inherit
 
   build-android:
-    needs: validate
+    needs: prepare
     uses: ./.github/workflows/build-android.yml
     with:
       channel: canary
+      commit: ${{ needs.prepare.outputs.commit }}
     secrets: inherit
 
   publish:
