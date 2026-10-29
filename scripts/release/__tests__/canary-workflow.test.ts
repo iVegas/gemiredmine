@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { CANDIDATE_CHOICES } from '../candidate.mjs';
 
-const read = (path: string) => readFileSync(new URL(`../../../${path}`, import.meta.url), 'utf8');
+const ROOT = resolve(fileURLToPath(import.meta.url), '../../../..');
+const read = (...parts: string[]) => readFileSync(join(ROOT, ...parts), 'utf8');
 
 describe('the Canary workflow', () => {
   const canary = read('.github/workflows/canary.yml');
