@@ -11,7 +11,7 @@ and from the channel, by `scripts/release/channels.mjs`:
 | Channel  | Built when                          | Version                          | Example                       |
 |----------|-------------------------------------|----------------------------------|-------------------------------|
 | Stable   | Stable workflow, started by hand    | `package.json` version (x.y.z)   | `1.0.0`                       |
-| Canary   | Canary workflow, started by hand    | `package.json` version (x.y.z-rc.n) | `1.0.0-rc.1`               |
+| Canary   | Canary workflow, started by hand    | `x.y.z-rc.n`, written to `package.json` by the workflow | `1.0.0-rc.1`    |
 | Unstable | Every push to `main`                | `<x.y.z>-unstable.<run number>`  | `1.0.0-unstable.42`           |
 
 The version shown in the app's About screen, the Flatpak bundle file name, and the release tag all come
@@ -23,7 +23,9 @@ from this derivation.
 publishes it as a pre-release tagged `unstable-v<version>`, and removes older unstable releases and
 their tags.
 
-**Canary** is a release candidate, started manually from any branch. Its version must be a
+**Canary** is a release candidate, started manually from any branch. The Canary workflow offers the choices
+`next-rc` (the version in `package.json` with the next `rc.n`), `next-patch`, `next-minor` and `next-major`
+(the next version up, starting at `rc.1`), and `manual` (a version typed into the form). Its version must be a
 pre-release (`x.y.z-rc.n`) and newer than the latest stable release. Before the first stable release
 any candidate is allowed. The canary channel only contains versions newer than the latest stable
 release: when a stable release is published, older canary releases are removed.
@@ -136,8 +138,10 @@ included.
 ## Running a release
 
 1. **Unstable**: merge to `main`. Nothing else to do.
-2. **Canary**: set `version` in `package.json` to the candidate, for example `1.1.0-rc.1`, commit
-   it, then run the *Canary* workflow on that branch.
+2. **Canary**: run the *Canary* workflow on the branch to build from, and choose the candidate. The workflow
+   writes the version into `package.json`, commits and pushes it to that branch, then builds and tags that
+   commit. Nothing is built or pushed when the version is refused. The branch must let the GitHub Actions bot
+   push; on a protected branch, allow it in the protection rule.
 3. **Stable**: set `version` in `package.json` to the release, for example `1.1.0`, merge it to
    `main`, then run the *Stable* workflow on `main`. The workflow creates the `v1.1.0` tag. The
    publish job uses the `stable-release` environment, so configure required reviewers there.

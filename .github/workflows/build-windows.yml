@@ -29,6 +29,11 @@ on:
         description: self-signed (canary, unstable) or trusted (stable)
         required: true
         type: string
+      commit:
+        description: Commit to build. Empty builds the commit that started the run.
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -42,9 +47,12 @@ jobs:
       TARGET_PLATFORM: windows
       REQUIRE_SIGNING: '1'
       WINDOWS_SIGNING: ${{ inputs.signing }}
+      RELEASE_COMMIT: ${{ inputs.commit || github.sha }}
     steps:
       - name: Check out
         uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.commit }}
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -104,7 +112,9 @@ jobs:
           WINDOWS_TRUSTED_PFX_BASE64: ${{ secrets.WINDOWS_TRUSTED_PFX_BASE64 }}
           WINDOWS_TRUSTED_PASSWORD: ${{ secrets.WINDOWS_TRUSTED_PASSWORD }}
           WINDOWS_TRUSTED_PUBLISHER: ${{ secrets.WINDOWS_TRUSTED_PUBLISHER }}
-        run: node scripts/release/package-windows.mjs
+        run: |
+          $env:GITHUB_SHA = $env:RELEASE_COMMIT
+          node scripts/release/package-windows.mjs
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7

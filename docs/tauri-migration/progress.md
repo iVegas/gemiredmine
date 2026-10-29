@@ -617,6 +617,29 @@ Verified here: `npm test` (95 files, 1266 tests, one skipped) and `tsc`. The pro
 the several-servers sentence, the view line and the three instructions. Not verified: the same question against a live
 model, which is what the owner's screenshot was.
 
+### The canary chooses its version (2026-10-29)
+
+A canary must be a release candidate (`x.y.z-rc.n`), so a run failed while `package.json` still said `1.0.0`, and the
+version had to be edited, committed and pushed by hand before each run. The form now asks for the candidate:
+
+- **The choices**: `next-rc` (the version in `package.json` with the next `rc.n`), `next-patch`, `next-minor` and
+  `next-major` (the next version up, starting at `rc.1`), or `manual` with `manual_version`. GitHub's dropdown cannot
+  show the computed versions, so the run's log shows the one it chose. `scripts/release/candidate.mjs` works out the
+  version, and the next `rc.n` comes from the canary releases already published.
+- **The `prepare` job** (`publish.mjs bump-candidate`) writes `version` into `package.json`, checks it against the canary
+  policy, and commits it to the branch the run started from. A refused version pushes nothing.
+- **The builds** take a `commit` input and check it out, and report it as `GITHUB_SHA`, so the release tag points at the
+  pushed commit. Unstable and stable pass nothing, so they build the commit that started the run, as before.
+- **`package-lock.json` is not changed.** The Android dependency image is tagged with a hash of that file, so a bump there
+  would send the build to an image that has not been built.
+
+Verified here: the candidate rules and the version writer with Node's `assert`, the `bump-candidate` command in a scratch
+copy of the repository (a new `rc.n`, a refused stable version, nothing written to `GITHUB_OUTPUT` on refusal), and the
+commit step against a bare remote (commit and push, then nothing to commit). Not verified: `npm test` and `tsc`, because
+the package registry is refused in this sandbox, so the new tests (`candidate.test.ts`, `canary-workflow.test.ts`) have
+not run; whether `npm ci` accepts a `package.json` version that differs from the lock file's root version; and a Canary
+run on GitHub, which publishes a release.
+
 ## How it was verified
 
 - All suites pass with the default channel and with `CHANNEL=stable`; `tsc` and the webview build are clean. This was
