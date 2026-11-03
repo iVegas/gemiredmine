@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validate, prune, publish, releaseFiles } from '../publish.mjs';
+import { validate, prune, publish, releaseFiles, writeVersion } from '../publish.mjs';
 
 describe('publish CLI logic', () => {
   let dir: string;
@@ -25,26 +25,51 @@ describe('publish CLI logic', () => {
     return releasesFile;
   };
 
+  // validate() reads the version from a package.json; the tests give it their own, because the repo's version changes
+  // with every canary the workflow commits.
+  const withVersion = (version: string) => {
+    const root = join(dir, 'repo');
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, 'package.json'), '{}\n');
+    writeVersion(version, root);
+    return root;
+  };
+
   it('validates stable only from main and only for a new release version', () => {
     const releasesJson = withReleases([{ tagName: 'v0.9.0' }]);
-    // package.json holds 1.0.0, which is newer than 0.9.0 and not yet released.
-    expect(validate({ channel: 'stable', branch: 'main', releasesJson, env: {}, log }).version).toBe('1.0.0');
-    expect(() => validate({ channel: 'stable', branch: 'feature/x', releasesJson, env: {}, log })).toThrow('made from main');
+    // 1.0.0 is newer than 0.9.0 and not yet released.
+    const root = withVersion('1.0.0');
+    expect(validate({ channel: 'stable', branch: 'main', releasesJson, root, env: {}, log }).version).toBe('1.0.0');
+    expect(() => validate({ channel: 'stable', branch: 'feature/x', releasesJson, root, env: {}, log })).toThrow('made from main');
   });
 
   it('refuses a stable version that is already released', () => {
     const releasesJson = withReleases([{ tagName: 'v1.0.0' }]);
-    expect(() => validate({ channel: 'stable', branch: 'main', releasesJson, env: {}, log })).toThrow('already released');
+    const root = withVersion('1.0.0');
+    expect(() => validate({ channel: 'stable', branch: 'main', releasesJson, root, env: {}, log })).toThrow('already released');
+  });
+
+  it('refuses a release candidate on stable', () => {
+    const releasesJson = withReleases([]);
+    const root = withVersion('1.0.0-rc.1');
+    expect(() => validate({ channel: 'stable', branch: 'main', releasesJson, root, env: {}, log })).toThrow('plain version');
   });
 
   it('validates canary as a release candidate and writes the version to the workflow output', () => {
     const outputFile = join(dir, 'github-output');
     writeFileSync(outputFile, '');
-    // package.json holds 1.0.0 (stable), which canary must refuse.
     const releasesJson = withReleases([]);
-    expect(() => validate({ channel: 'canary', branch: 'main', releasesJson, env: {}, log })).toThrow(
+
+    // A stable version is refused on canary.
+    expect(() => validate({ channel: 'canary', branch: 'main', releasesJson, root: withVersion('1.0.0'), env: {}, log })).toThrow(
       'release candidate'
     );
+
+    const root = withVersion('1.0.0-rc.1');
+    expect(validate({ channel: 'canary', branch: 'main', releasesJson, root, env: { GITHUB_OUTPUT: outputFile }, log }).version).toBe(
+      '1.0.0-rc.1'
+    );
+    expect(readFileSync(outputFile, 'utf8')).toBe('version=1.0.0-rc.1\n');
   });
 
   it('lists what pruning would remove during a dry run, without touching GitHub', () => {

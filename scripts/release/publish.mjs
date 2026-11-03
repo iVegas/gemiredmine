@@ -51,13 +51,14 @@ export function listReleases({ releasesJson, dryRun = false, log }) {
   return output ? JSON.parse(output) : [];
 }
 
-function packageVersion() {
-  return JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
+function packageVersion(root = ROOT) {
+  return JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
 }
 
-export function validate({ channel, branch, releasesJson, env = process.env, log = console.log }) {
+/** Checks the version in `root`'s package.json against the channel policy. Tests pass their own `root`. */
+export function validate({ channel, branch, releasesJson, root = ROOT, env = process.env, log = console.log }) {
   const releases = listReleases({ releasesJson, log });
-  const version = packageVersion();
+  const version = packageVersion(root);
 
   if (channel === 'stable') {
     if (branch !== 'main') throw new Error(`Stable releases are made from main, not from "${branch}".`);
@@ -85,12 +86,12 @@ export function writeVersion(version, root = ROOT) {
  * Starts a canary: works out its version from the candidate choice, writes it into package.json, and checks it against
  * the canary policy. The workflow commits and pushes package.json only when this returns, so a refused version pushes nothing.
  */
-export function bumpCandidate({ candidate, manualVersion, branch, releasesJson, env = process.env, log = console.log }) {
+export function bumpCandidate({ candidate, manualVersion, branch, releasesJson, root = ROOT, env = process.env, log = console.log }) {
   const releases = listReleases({ releasesJson, log });
-  const version = nextCandidate({ packageVersion: packageVersion(), candidate, manualVersion, releases });
-  writeVersion(version);
+  const version = nextCandidate({ packageVersion: packageVersion(root), candidate, manualVersion, releases });
+  writeVersion(version, root);
   log(`candidate "${candidate}" sets the version to ${version}`);
-  return validate({ channel: 'canary', branch, releasesJson, env, log });
+  return validate({ channel: 'canary', branch, releasesJson, root, env, log });
 }
 
 const PLATFORM_NOTES = {
