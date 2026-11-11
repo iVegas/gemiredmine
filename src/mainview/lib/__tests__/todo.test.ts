@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { groupTasksByPriority, isOverdue, formatDueDate } from '../todo';
+import { filterTasksByProject, groupTasksByPriority, isOverdue, formatDueDate, listProjects } from '../todo';
 import type { RedmineIssue } from '../../../bun/redmine/types';
 
 const urgent = { id: 4, name: 'Urgent' };
@@ -39,6 +39,28 @@ describe('groupTasksByPriority', () => {
 
   it('returns no groups for no tasks', () => {
     expect(groupTasksByPriority([])).toEqual([]);
+  });
+});
+
+describe('project filter', () => {
+  const shop = { id: 1, name: 'Shop' };
+  const docs = { id: 2, name: 'Docs' };
+  const inProject = (id: number, project: { id: number; name: string }): RedmineIssue => ({ ...task(id, high), project });
+  const tasks = [inProject(1, shop), inProject(2, docs), inProject(3, shop)];
+
+  it('lists each project once, by name', () => {
+    expect(listProjects(tasks)).toEqual([docs, shop]);
+    expect(listProjects([])).toEqual([]);
+  });
+
+  it('keeps every task when no project is chosen', () => {
+    expect(filterTasksByProject(tasks, null)).toBe(tasks);
+  });
+
+  it('keeps only the tasks of the chosen project', () => {
+    expect(filterTasksByProject(tasks, 1).map(t => t.id)).toEqual([1, 3]);
+    expect(filterTasksByProject(tasks, 2).map(t => t.id)).toEqual([2]);
+    expect(filterTasksByProject(tasks, 99)).toEqual([]);
   });
 });
 

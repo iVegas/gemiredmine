@@ -35,6 +35,18 @@ export function groupTasksByPriority(tasks: RedmineIssue[]): PriorityGroup[] {
   return ordered;
 }
 
+/** The distinct projects the tasks belong to, by name. */
+export function listProjects(tasks: RedmineIssue[]): RedmineReference[] {
+  const projects = new Map<number, RedmineReference>();
+  for (const task of tasks) projects.set(task.project.id, task.project);
+  return [...projects.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The tasks of one project, or all of them when no project is chosen. */
+export function filterTasksByProject(tasks: RedmineIssue[], projectId: number | null): RedmineIssue[] {
+  return projectId === null ? tasks : tasks.filter(task => task.project.id === projectId);
+}
+
 export function isOverdue(task: RedmineIssue, today: Date = new Date()): boolean {
   return Boolean(task.due_date) && task.due_date! < toDateKey(today);
 }

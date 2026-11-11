@@ -3,7 +3,7 @@
   import type { RedmineIssue, RedmineReference } from '../bun/redmine/types';
   import { redmineApi } from './lib/api';
   import { redmineChanges } from './lib/data-changes';
-  import { formatDueDate, groupTasksByPriority, isOverdue } from './lib/todo';
+  import { filterTasksByProject, formatDueDate, groupTasksByPriority, isOverdue, listProjects } from './lib/todo';
   import { openTask } from './lib/views';
 
   export let server: ServerConnection;
@@ -41,8 +41,26 @@
 
   const reload = () => load(server.url, server.apiToken, project?.id);
 
-  $: groups = groupTasksByPriority(tasks);
-  $: where = project ? `in ${project.name}` : 'across all projects';
+  // The project the list is narrowed to, among the tasks loaded; null keeps all of them. The `project` prop (the one
+  // chosen in the header) decides what is loaded, and it includes that project's subprojects, so this can narrow to one.
+  let narrowedId: number | null = null;
+  let narrowedServerId = server.id;
+
+  $: projects = listProjects(tasks);
+
+  // A project id means nothing on another server, so a new server starts with all the tasks.
+  $: if (server.id !== narrowedServerId) {
+    narrowedServerId = server.id;
+    narrowedId = null;
+  }
+
+  // A reload may leave the chosen project without tasks; fall back rather than show an empty list.
+  $: if (!loading && narrowedId !== null && !projects.some(entry => entry.id === narrowedId)) narrowedId = null;
+
+  $: narrowed = projects.find(entry => entry.id === narrowedId);
+  $: visible = filterTasksByProject(tasks, narrowedId);
+  $: groups = groupTasksByPriority(visible);
+  $: where = narrowed ? `in ${narrowed.name}` : project ? `in ${project.name}` : 'across all projects';
 </script>
 
 <section aria-labelledby="todo-heading" aria-busy={loading} class="flex flex-col gap-4 min-w-0">
@@ -53,18 +71,32 @@
         {#if loading}
           Loading…
         {:else if !error}
-          {tasks.length} open {tasks.length === 1 ? 'task' : 'tasks'} assigned to you {where}, by priority.
+          {visible.length} open {visible.length === 1 ? 'task' : 'tasks'} assigned to you {where}, by priority.
         {/if}
       </p>
     </div>
-    <button
-      type="button"
-      disabled={loading}
-      class="py-1.5 px-3 border border-gray-300 rounded-md text-sm bg-white hover:bg-gray-50 disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-blue-500"
-      on:click={reload}
-    >
-      Refresh
-    </button>
+    <div class="flex items-end gap-2">
+      {#if projects.length > 1}
+        <!-- Not called "Project": the header's project selector has that name, and it decides what is loaded. -->
+        <label class="flex flex-col gap-1 text-xs font-medium text-gray-700">
+          Narrow to
+          <select bind:value={narrowedId} class="rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value={null}>{project ? `All of ${project.name}` : 'All projects'}</option>
+            {#each projects as entry (entry.id)}
+              <option value={entry.id}>{entry.name}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
+      <button
+        type="button"
+        disabled={loading}
+        class="py-1.5 px-3 border border-gray-300 rounded-md text-sm bg-white hover:bg-gray-50 disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        on:click={reload}
+      >
+        Refresh
+      </button>
+    </div>
   </div>
 
   {#if error}

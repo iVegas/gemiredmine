@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, fireEvent, within } from '@testing-library/svelte';
+import { render, fireEvent, screen, within } from '@testing-library/svelte';
 import TodoView from '../TodoView.svelte';
 import { redmineApi } from '../lib/api';
 import { toDateKey } from '../lib/calendar';
@@ -114,6 +114,126 @@ describe('TodoView Component', () => {
     await fireEvent.click(view.getByRole('button', { name: 'Refresh' }));
 
     await vi.waitFor(() => expect(api.listAssignedTasks).toHaveBeenCalledTimes(2));
+  });
+
+  describe('narrowing the list to a project', () => {
+    const projectSelect = () => screen.getByRole('combobox', { name: 'Narrow to' });
+
+    it('offers every project that has tasks, by name', async () => {
+      const view = render(TodoView, { props: { server } });
+      await view.findByText('Payment fails');
+
+      const options = within(projectSelect()).getAllByRole('option');
+      expect(options.map(option => option.textContent)).toEqual(['All projects', 'Docs', 'Shop']);
+    });
+
+    it('narrows the list to the chosen project, and back to all of them', async () => {
+      const view = render(TodoView, { props: { server } });
+      await view.findByText('Payment fails');
+
+      await fireEvent.change(projectSelect(), { target: { value: '2' } });
+
+      expect(view.getByText('1 open task assigned to you in Docs, by priority.')).toBeInTheDocument();
+      expect(view.getByText('Fix typo')).toBeInTheDocument();
+      expect(view.queryByText('Payment fails')).not.toBeInTheDocument();
+      expect(view.getAllByRole('heading', { level: 3 }).map(h => h.textContent?.replace(/\s+/g, ' ').trim())).toEqual(['Normal 1 task']);
+
+      await fireEvent.change(projectSelect(), { target: { value: '' } });
+
+      expect(view.getByText('4 open tasks assigned to you across all projects, by priority.')).toBeInTheDocument();
+      expect(view.getByText('Payment fails')).toBeInTheDocument();
+    });
+
+    it('filters the tasks already loaded, without asking the server again', async () => {
+      const view = render(TodoView, { props: { server } });
+      await view.findByText('Payment fails');
+
+      await fireEvent.change(projectSelect(), { target: { value: '2' } });
+
+      expect(api.listAssignedTasks).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the chosen project when the list is refreshed', async () => {
+      const view = render(TodoView, { props: { server } });
+      await view.findByText('Payment fails');
+      await fireEvent.change(projectSelect(), { target: { value: '2' } });
+
+      await fireEvent.click(view.getByRole('button', { name: 'Refresh' }));
+      await vi.waitFor(() => expect(api.listAssignedTasks).toHaveBeenCalledTimes(2));
+
+      expect(await view.findByText('1 open task assigned to you in Docs, by priority.')).toBeInTheDocument();
+    });
+
+    it('goes back to all projects when a refresh leaves the chosen project without tasks', async () => {
+      const view = render(TodoView, { props: { server } });
+      await view.findByText('Payment fails');
+      await fireEvent.change(projectSelect(), { target: { value: '2' } });
+
+      api.listAssignedTasks.mockResolvedValue(tasks.filter(t => t.project.name !== 'Docs'));
+      await fireEvent.click(view.getByRole('button', { name: 'Refresh' }));
+
+      expect(await view.findByText('3 open tasks assigned to you across all projects, by priority.')).toBeInTheDocument();
+      expect(view.getByText('Payment fails')).toBeInTheDocument();
+    });
+
+    it('starts from all projects on another server', async () => {
+      const view = render(TodoView, { props: { server } });
+      await view.findByText('Payment fails');
+      await fireEvent.change(projectSelect(), { target: { value: '2' } });
+
+      await view.rerender({ server: { ...server, id: '2', url: 'https://other.local' } });
+
+      expect(await view.findByText('4 open tasks assigned to you across all projects, by priority.')).toBeInTheDocument();
+    });
+
+    it('has no filter when every task is in one project', async () => {
+      api.listAssignedTasks.mockResolvedValue(tasks.filter(t => t.project.name === 'Shop'));
+      const view = render(TodoView, { props: { server } });
+      await view.findByText('Payment fails');
+
+      expect(view.queryByRole('combobox', { name: 'Narrow to' })).not.toBeInTheDocument();
+    });
+
+    describe('within the project chosen in the header', () => {
+      // Redmine includes a project's subprojects when it is asked for the project's issues.
+      const shop = { id: 1, name: 'Shop' };
+      const inShop = [
+        tasks[0],
+        issue(14, 'Cache the API', { id: 2, name: 'Normal' }, { project: { id: 3, name: 'Shop API' } }),
+      ];
+
+      beforeEach(() => api.listAssignedTasks.mockResolvedValue(inShop));
+
+      it('offers the project and its subprojects, and starts with all of the project', async () => {
+        const view = render(TodoView, { props: { server, project: shop } });
+
+        expect(await view.findByText('2 open tasks assigned to you in Shop, by priority.')).toBeInTheDocument();
+        expect(within(projectSelect()).getAllByRole('option').map(option => option.textContent)).toEqual(['All of Shop', 'Shop', 'Shop API']);
+      });
+
+      it('narrows to a subproject without asking the server again', async () => {
+        const view = render(TodoView, { props: { server, project: shop } });
+        await view.findByText('Payment fails');
+
+        await fireEvent.change(projectSelect(), { target: { value: '3' } });
+
+        expect(view.getByText('1 open task assigned to you in Shop API, by priority.')).toBeInTheDocument();
+        expect(view.queryByText('Payment fails')).not.toBeInTheDocument();
+        expect(api.listAssignedTasks).toHaveBeenCalledTimes(1);
+      });
+
+      it('goes back to all of the new project when the header project changes', async () => {
+        const view = render(TodoView, { props: { server, project: shop } });
+        await view.findByText('Payment fails');
+        await fireEvent.change(projectSelect(), { target: { value: '3' } });
+
+        api.listAssignedTasks.mockResolvedValue([tasks[2]]);
+        await view.rerender({ server, project: { id: 2, name: 'Docs' } });
+
+        expect(await view.findByText('1 open task assigned to you in Docs, by priority.')).toBeInTheDocument();
+        expect(view.queryByRole('combobox', { name: 'Narrow to' })).not.toBeInTheDocument();
+      });
+    });
   });
 
   it('opens a task in a tab of its own, on this server, when its subject is selected', async () => {
